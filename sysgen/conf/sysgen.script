@@ -1,0 +1,11 @@
+#
+####################################################################
+#                HERCULES EMULATOR SCRIPT FILE                     #
+####################################################################
+#
+# use for attaching new dasd volumes during MVS system generation
+#
+attach 149 3350 dasd/mvsres.3350
+attach 14a 3350 dasd/mvs000.3350
+attach 14b 3350 dasd/spool1.3350
+attach 14c 3350 dasd/page00.3350

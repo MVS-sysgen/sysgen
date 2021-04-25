@@ -1,0 +1,36 @@
+#
+####################################################################
+#                HERCULES EMULATOR CONTROL FILE                    #
+####################################################################
+#
+# use for running SMP related jobs to build the distribution libraries
+# (last modified for use with Hercules 3.11 on 16 Dec 2014)
+#
+
+ARCHMODE  S/370
+CPUSERIAL 000611
+CPUMODEL  0148
+MAINSIZE  8
+XPNDSIZE  0
+CNSLPORT  3270
+NUMCPU    1
+LOADPARM  ........
+SYSEPOCH  1900
+#YROFFSET  -28       # offset for non-Y2k compliant OS
+#TZOFFSET  -0100     # daylight savings time in effect
+PANRATE   250
+OSTAILOR  NULL       # controls number of error messages logged
+
+# .-----------------------------Device number
+# |     .-----------------------Device type
+# |     |       .---------------File name
+# |     |       |
+# V     V       V
+#---    ----    --------------------
+0170    3420    *
+000E    1403    prt00e.txt
+0012    3505    jcl/null.jcl eof
+0013    3525    pch013.txt ascii
+001F    3215                       
+0150    3330    dasd/start1.3330    # mvs 3.7 "starter" system residence
+0151    3330    dasd/spool0.3330    # mvs 3.7 jes2 spool volume

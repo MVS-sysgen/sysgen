@@ -1,0 +1,10 @@
+#
+####################################################################
+#                HERCULES EMULATOR SCRIPT FILE                     #
+####################################################################
+#
+# use for attaching new dasd volumes during distribution library build
+#
+attach 148 3350 dasd/smp000.3350
+attach 149 3350 dasd/work00.3350
+attach 14a 3350 dasd/work01.3350

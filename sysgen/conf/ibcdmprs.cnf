@@ -1,0 +1,36 @@
+#
+####################################################################
+#                HERCULES EMULATOR CONTROL FILE                    #
+####################################################################
+#
+# use for building starter system volumes
+# (last modified for use with Hercules 3.11 on 16 Dec 2014)
+#
+
+ARCHMODE  S/370
+CPUSERIAL 000611
+CPUMODEL  0148
+MAINSIZE  8
+XPNDSIZE  0
+CNSLPORT  3270
+NUMCPU    1
+LOADPARM  ........
+SYSEPOCH  1900
+#YROFFSET  -28       # offset for non-Y2k compliant OS
+#TZOFFSET  -0100     # daylight savings time in effect
+
+# .-----------------------------Device number
+# |     .-----------------------Device type
+# |     |       .---------------File name
+# |     |       |
+# V     V       V
+#---    ----    --------------------
+0009    1052-C  /
+000C    1442    sajobs/instart1.sajob
+000D    1442    sajobs/rsstart1.sajob
+000E    1442    sajobs/inspool0.sajob
+000F    1442    sajobs/rsspool0.sajob
+0150    3330    dasd/start1.3330
+0151    3330    dasd/spool0.3330
+0280    3420    tape/vs2start.het
+0281    3420    tape/vs2spool.het
