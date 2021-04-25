@@ -1,11 +1,3 @@
-# Automated MVS3.8 Sysgen
-
-## Changes
-
-* Edited `create.dasd.sh`: removed read to ask for compression. Always compress now.
-* Edited `condcode.rexx`: returns non-zero if any jobs have a return code greater than 0004. Can now be used in scripts.
-
-
 # Tapes
 
 These files were downloaded from http://www.jaymoseley.com/hercules/installMVS/iPREREQv7.htm
