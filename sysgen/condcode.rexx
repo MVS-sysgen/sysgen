@@ -130,6 +130,7 @@ ccKey='COND CODE '; /* text preceeding condition code in message line */
 
 /* process all lines in the text file: */
 
+failed=0
 DO WHILE LINES(printFile)\=0    /* while there are lines remaining to be processed */
 
   inpLine=LINEIN(printFile);    /* read a line from the file */
@@ -147,8 +148,11 @@ DO WHILE LINES(printFile)\=0    /* while there are lines remaining to be process
       ccPos=POS(ccKey,inpLine)+LENGTH(ccKey); /* location of cc in message line */
       condCode=SUBSTR(inpLine,ccPos,4);     /* extract condition code from message line */
 
-      IF condCode\='0000'                   /* make non-zero condition codes stand out */
-        THEN ccFlag=' <--';
+      IF condCode\='0000' THEN DO           /* make non-zero condition codes stand out */
+        ccFlag=' <--';
+	if condCode\='0004' THEN
+	  failed=1
+      end
       ELSE
         ccFlag='';
 
@@ -179,7 +183,7 @@ DO ix=0 BY 1 TO 65535
     SAY RIGHT(rcRecap.thisCC,3,' ') 'steps received completion code =' thisCC
 END;
 
-EXIT 0; /* exit script */
+EXIT failed; /* exit script */
 
 /* The subroutine below will test job name from current message line against
    the job name submitted as an argument to the script. 

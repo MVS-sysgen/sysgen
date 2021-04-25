@@ -26,15 +26,15 @@ esac
 #
 # Prompt for compression
 # ----------------------
-while true; do
-    read -p "Do you want to create compressed DASD images? (y or n)" yn
-    case $yn in
-        [Yy]* ) compress='-z'; break;;
-        [Nn]* ) compress=''; break;;
-        * ) echo "Please answer y or n.";;
-    esac
-done
-
+# while true; do
+#     read -p "Do you want to create compressed DASD images? (y or n)" yn
+#     case $yn in
+#         [Yy]* ) compress='-z'; break;;
+#         [Nn]* ) compress=''; break;;
+#         * ) echo "Please answer y or n.";;
+#     esac
+# done
+compress='-z'
 #
 # Ensure that there is a dasd directory below this one
 # ----------------------------------------------------
@@ -61,7 +61,7 @@ case $1 in
       rm start1.3330
     fi
     echo "dasdinit -a $compress start1.3330 3330 111111"
-    dasdinit -a $compress start1.3330 3330 111111  
+    dasdinit -a $compress start1.3330 3330 111111
     #
     # Creating SPOOL0 (3330)
     # ----------------------
@@ -70,7 +70,7 @@ case $1 in
       rm spool0.3330
     fi
     echo "dasdinit -a $compress spool0.3330 3330 222222"
-    dasdinit -a $compress spool0.3330 3330 222222  
+    dasdinit -a $compress spool0.3330 3330 222222
   ;;
   dlibs )
     #
@@ -81,7 +81,7 @@ case $1 in
       rm work00.3350
     fi
     echo "dasdinit -a $compress work00.3350 3350 111111"
-    dasdinit -a $compress work00.3350 3350 111111  
+    dasdinit -a $compress work00.3350 3350 111111
     #
     # Creating WORK01 (3350)
     # ----------------------
@@ -90,7 +90,7 @@ case $1 in
       rm work01.3350
     fi
     echo "dasdinit -a $compress work01.3350 3350 222222"
-    dasdinit -a $compress work01.3350 3350 222222  
+    dasdinit -a $compress work01.3350 3350 222222
     #
     # Creating SMP000 (3350)
     # ----------------------
@@ -99,7 +99,7 @@ case $1 in
       rm smp000.3350
     fi
     echo "dasdinit -a $compress smp000.3350 3350 333333"
-    dasdinit -a $compress smp000.3350 3350 333333  
+    dasdinit -a $compress smp000.3350 3350 333333
   ;;
   sysgen )
     #
@@ -110,7 +110,7 @@ case $1 in
       rm mvsres.3350
     fi
     echo "dasdinit -a $compress mvsres.3350 3350 111111"
-    dasdinit -a $compress mvsres.3350 3350 111111  
+    dasdinit -a $compress mvsres.3350 3350 111111
     #
     # Creating MVS000 (3350)
     # ----------------------
@@ -119,7 +119,7 @@ case $1 in
       rm mvs000.3350
     fi
     echo "dasdinit -a $compress mvs000.3350 3350 222222"
-    dasdinit -a $compress mvs000.3350 3350 222222  
+    dasdinit -a $compress mvs000.3350 3350 222222
     #
     # Creating SPOOL1 (3350)
     # ----------------------
@@ -128,7 +128,7 @@ case $1 in
       rm spool1.3350
     fi
     echo "dasdinit -a $compress spool1.3350 3350 333333"
-    dasdinit -a $compress spool1.3350 3350 333333  
+    dasdinit -a $compress spool1.3350 3350 333333
     #
     # Creating PAGE00 (3350)
     # ----------------------
@@ -137,7 +137,7 @@ case $1 in
       rm page00.3350
     fi
     echo "dasdinit -a $compress page00.3350 3350 444444"
-    dasdinit -a $compress page00.3350 3350 444444  
+    dasdinit -a $compress page00.3350 3350 444444
   ;;
   user )
     #
@@ -148,7 +148,7 @@ case $1 in
       rm pub000.3380
     fi
     echo "dasdinit -a $compress pub000.3380 3380 111111"
-    dasdinit -a $compress pub000.3380 3380 111111  
+    dasdinit -a $compress pub000.3380 3380 111111
     #
     # Creating PUB001 (3390)
     # ----------------------
@@ -157,7 +157,7 @@ case $1 in
       rm pub001.3390
     fi
     echo "dasdinit -a $compress pub001.3390 3390 222222"
-    dasdinit -a $compress pub001.3390 3390 222222  
+    dasdinit -a $compress pub001.3390 3390 222222
     #
     # Creating SORTW1 (2314)
     # ----------------------
@@ -166,7 +166,7 @@ case $1 in
       rm sortw1.2314
     fi
     echo "dasdinit -a $compress sortw1.2314 2314 333333"
-    dasdinit -a $compress sortw1.2314 2314 333333  
+    dasdinit -a $compress sortw1.2314 2314 333333
     #
     # Creating SORTW2 (2314)
     # ----------------------
@@ -175,7 +175,7 @@ case $1 in
       rm sortw2.2314
     fi
     echo "dasdinit -a $compress sortw2.2314 2314 444444"
-    dasdinit -a $compress sortw2.2314 2314 444444  
+    dasdinit -a $compress sortw2.2314 2314 444444
     #
     # Creating SORTW3 (2314)
     # ----------------------
@@ -184,7 +184,7 @@ case $1 in
       rm sortw3.2314
     fi
     echo "dasdinit -a $compress sortw3.2314 2314 555555"
-    dasdinit -a $compress sortw3.2314 2314 555555  
+    dasdinit -a $compress sortw3.2314 2314 555555
     #
     # Creating SORTW4 (2314)
     # ----------------------
@@ -193,7 +193,7 @@ case $1 in
       rm sortw4.2314
     fi
     echo "dasdinit -a $compress sortw4.2314 2314 666666"
-    dasdinit -a $compress sortw4.2314 2314 666666  
+    dasdinit -a $compress sortw4.2314 2314 666666
     #
     # Creating SORTW5 (2314)
     # ----------------------
@@ -202,7 +202,7 @@ case $1 in
       rm sortw5.2314
     fi
     echo "dasdinit -a $compress sortw5.2314 2314 777777"
-    dasdinit -a $compress sortw5.2314 2314 777777  
+    dasdinit -a $compress sortw5.2314 2314 777777
     #
     # Creating SORTW6 (2314)
     # ----------------------
@@ -211,8 +211,8 @@ case $1 in
       rm sortw6.2314
     fi
     echo "dasdinit -a $compress sortw6.2314 2314 888888"
-    dasdinit -a $compress sortw6.2314 2314 888888  
-  ;;  
+    dasdinit -a $compress sortw6.2314 2314 888888
+  ;;
 esac
 
 #
