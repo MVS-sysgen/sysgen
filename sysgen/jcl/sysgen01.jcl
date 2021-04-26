@@ -66,9 +66,8 @@ CONSMST  CONSOLE                                                       C
 CONSALT  CONSOLE                                                       C
                SECONS=009,                                             C
                ALTCONS=010,                                            C
-               AREA=04,                                                C
-               PFK=12,                                                 C
                ROUTCDE=ALL                                              
+* Removed 'AREA=04,PFK=12,'                                            
 *                                                                       
 CONSHC   CONSOLE                                                       C
                SECONS=O-015,                                           C
@@ -83,11 +82,9 @@ MSTCONS  IODEVICE                                                      C
                SELPEN,PTREAD)                                           
 *                                                                       
 ALTCONS  IODEVICE                                                      C
-               UNIT=3277,                                              C
-               MODEL=2,                                                C
-               ADDRESS=009,                                            C
-               FEATURE=(EBKY3277,DOCHAR,KB78KEY,AUDALRM,NUMLOCK,       C
-               SELPEN,PTREAD)                                           
+               UNIT=3215,                                              C
+               ADDRESS=009                                             
+* Removed MODEL and FEATURE
 *                                                                       
 HCCONS   IODEVICE                                                      C
                UNIT=1403,                                              C
