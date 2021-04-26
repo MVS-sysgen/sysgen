@@ -60,9 +60,9 @@ OSTAILOR  NULL       # controls number of error messages logged
 0252    3350    dasd/work01.3350
 #0253    3350    dasd/syscpk.3350
 # ----------------------------------------------- consoles
-0010    3270    console                    # master console
-0009    3215-C  console                    # alternate console (not required)
-0015    1403    mvslog.txt                 # hardcopy of master console
+0010    3270    console      # master console
+0009    3215-C  /            # alternate console (required for automation)
+0015    1403    mvslog.txt   # hardcopy of master console
 # ----------------------------------------------- 3270's for TSO
 0400.8  3270    tso
 
