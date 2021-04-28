@@ -31,7 +31,7 @@ OSTAILOR  NULL       # controls number of error messages logged
 000E    1403    prt00e.txt noclear
 0012    3505    jcl/smpmount.jcl eof
 0013    3525    pch013.txt ascii
-001F    3215                       
+001F    3215-C  /                   
 0148    3350    dasd/smp000.3350    # target for distribution libraries
 0149    3350    dasd/work00.3350    # mvs 3.7 work volume
 014A    3350    dasd/work01.3350    # work volume during smp/sysgen & in mvs 3.8j system
