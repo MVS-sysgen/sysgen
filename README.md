@@ -4,6 +4,7 @@
 
 * Edited `create.dasd.sh`: removed read to ask for compression. Always compress now.
 * Edited `condcode.rexx`: returns non-zero if any jobs have a return code greater than 0004. Can now be used in scripts.
+* Edited `smp1.cnf`, `smp2.cnf`, and `sysgen.cnf` to change 3215 console to 3215-C for automation
 
 ## Info
 
