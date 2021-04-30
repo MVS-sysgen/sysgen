@@ -1,0 +1,4 @@
+* Installing RPF
+* Launching Automation REXX script
+exec ../automate.rexx ../RPF/install_rpf_automation.txt hercules.log -d &&
+ipl 150
