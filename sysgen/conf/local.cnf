@@ -1,0 +1,70 @@
+#
+####################################################################
+#                HERCULES EMULATOR CONTROL FILE                    #
+####################################################################
+#
+# use for running newly built MVS 3.8j system
+# (last modified for use with Hercules 3.11 on 20 Dec 2014)
+#
+
+ARCHMODE  S/370
+CPUSERIAL 134001
+CPUMODEL  0148
+MAINSIZE  8
+XPNDSIZE  0
+CNSLPORT  3270
+NUMCPU    1
+LOADPARM  ........
+SYSEPOCH  1900
+#YROFFSET  -28       # offset for non-Y2k compliant OS
+#TZOFFSET  -0100     # daylight savings time in effect
+PANRATE   250
+OSTAILOR  NULL       # controls number of error messages logged
+
+# .-----------------------------Device number
+# |     .-----------------------Device type
+# |     |       .---------------File name
+# |     |       |
+# V     V       V
+#---    ----    --------------------------------- card readers
+000C    3505    localhost:3505 sockdev autopad trunc ascii eof
+001C    3505    jcl/null.jcl eof 
+# ----------------------------------------------- card punches & printers
+000D    3525    pch00d.txt ascii           # JES2
+000E    1403    prt00e.txt                 # JES2
+000F    3211    prt00f.txt                 # JES2
+001D    3525    pch01d.txt ascii
+# ----------------------------------------------- 2401 on channel 1
+0100.4  3420    *
+# ----------------------------------------------- 3420 on channel 3
+0310.4  3420    *
+# ----------------------------------------------- 3350 on Channel 1
+0150    3350    dasd/mvsres.3350
+0151    3350    dasd/mvs000.3350
+0152    3350    dasd/page00.3350
+0153    3350    dasd/spool1.3350
+#------------------------------------------------ 3380 on Channel 1
+0180    3380    dasd/pub000.3380    
+#------------------------------------------------ 3390 on Channel 1
+0190    3390    dasd/pub001.3390 cu=3880
+#------------------------------------------------ 2314 on Channel 2
+0220    2314    dasd/sortw1.2314
+0221    2314    dasd/sortw2.2314
+0222    2314    dasd/sortw3.2314
+0223    2314    dasd/sortw4.2314
+0224    2314    dasd/sortw5.2314
+0225    2314    dasd/sortw6.2314
+#------------------------------------------------ 3350 on Channel 2
+0250    3350    dasd/smp000.3350
+0251    3350    dasd/work00.3350
+0252    3350    dasd/work01.3350
+0253    3350    dasd/syscpk.3350
+# ----------------------------------------------- consoles
+0010    3270    console      # master console
+0009    3215-C  /            # alternate console (required for automation)
+0015    1403    mvslog.txt   # hardcopy of master console
+# ----------------------------------------------- 3270's for TSO
+0400.8  3270    
+
+
+
