@@ -7,7 +7,7 @@ This installs the newest version of RPF (1.8.8+) on to the Automated Sysgen MVS 
   - `install_rpf.rc` Hercules script file
   - `install_rpf_automation.txt` semi-colon seperated challenge response used by `automate.rexx`
   - `update_rpf.sh` updates RPF and generates new jcl files based on RPF version
-  - **JCL**
+- **JCL**
   - :warning: **do not edit these files, edit the templates in `./templates` instead. These JCL files are overwritten by the install script**
   - `00_rpf_alias_profile.jcl` creates `RPF` HLQ alias and `RPF.PROFILE`
   - `01_rpf_install_jcl.jcl` installs `JCL.xmi` to `RPF.V#R#M#.SRPFJCL`
