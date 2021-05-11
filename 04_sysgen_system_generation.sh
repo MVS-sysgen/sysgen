@@ -11,8 +11,8 @@ tar -xvf $prev_dasd
 echo_step "Create additional DASD Volumes"
 bash create.dasd.sh sysgen
 chmod +x stage2.rexx
-echo_step "Starting Hercules: hercules -f conf/sysgen.cnf -r ../rc/04_sysgen_system_generation.rc"
-hercules -f conf/sysgen.cnf -r ../rc/04_sysgen_system_generation.rc > hercules.log
+echo_step "Starting Hercules: hercules -f conf/sysgen.cnf -r ../04_sysgen_system_generation.rc"
+hercules -f conf/sysgen.cnf -r ../04_sysgen_system_generation.rc > hercules.log
 echo_step "Backing up hercules.log to hercules_log.sysgen.$date_time.log"
 mv hercules.log hercules_log.sysgen.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_sysgen.$date_time.txt"

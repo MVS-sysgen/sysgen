@@ -16,6 +16,10 @@ function echo_step {
     echo "$(tput bold)$(tput setaf 4)[+] $1$(tput sgr0)"
 }
 
+function echo_warn {
+    echo "$(tput bold)$(tput setaf 3)[+] $1$(tput sgr0)"
+}
+
 
 function check_failure {
     echo_step "Checking automate.rexx return code (check sysgen/hercules.log for errors if this check fails)"
