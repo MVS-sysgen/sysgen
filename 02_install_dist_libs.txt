@@ -1,0 +1,33 @@
+# Building the MVS 3.8j Distribution Libraries
+HHC00010A Enter input for console 0:001F;/
+/*00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0;/r 0,noreq
+/*01 IEF166D REPLY Y/N TO EXECUTE/SUPPRESS COMMAND;/r 1,y
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob00.jcl
+# [1/8] SMPJOB00 - will first delete any of datasets that exist and then allocate and initialize all the required datasets
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob01.jcl
+# [2/8] SMPJOB01 - will load all of the MVS 3.8j product elements into the SMP datasets from the tape datasets.
+/ IEF247I SMPJOB01 - 471,570,571,670,671 NOT ACCESSIBLE;devinit 170 tape/zdlib1.het
+/*02 IEF238D SMPJOB01 - REPLY DEVICE NAME OR 'CANCEL'.;/r 02,170
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob02.jcl
+# [3/8] SMPJOB02 - loads all 1,482 PTFs into the SMP datasets.
+/ IEC501A SMPJOB02,SMP;devinit 170 tape/ptfs.het
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob03.jcl
+# [4/8] SMPJOB03 - accept all the product elements and those PTFs
+# **NOTE** This step can take upwards of twenty minutes or more!
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob04.jcl
+# [5/8] SMPJOB04 - Load Jim Morrison Usermods for 3375, 3380, and 3390 DASD devices
+/*IEF233A M 170,J90009,,SMPJOB04,SMP;devinit 170 tape/j90009.het
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob05.jcl
+# [6/8] SMPJOB05 - Accept the Usermods
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob06.jcl
+# [7/8] SMPJOB06 - Remove unwanted elements
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 12 jcl/smpjob07.jcl
+# [8/8] SMPJOB07 - Build ICKDSF Utility and Re-Link IFOX00
+/*03 IEC507D REPLY 'U'-USE OR 'M'-UNLOAD;/r 3,U
+/*04 IEC507D REPLY 'U'-USE OR 'M'-UNLOAD;/r 4,u
+/*05 IEC507D REPLY 'U'-USE OR 'M'-UNLOAD;/r 5,u
+# Shutting down
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;/$p jes2
+IEF196I IEF285I   VOL SER NOS= SPOOL0.;/z eod
+IEE334I HALT     EOD SUCCESSFUL;/quiesce
+CP00: disabled wait state;quit

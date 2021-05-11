@@ -1,0 +1,9 @@
+* Duild Distribution System
+rexx msgp on
+shcmdopt enable
+ostailor quiet
+panopt msgcolor=dark
+* Launching Automation REXX script
+exec ../automate.rexx ../01_install_smp4.txt hercules.log -d &&
+ipl 150
+

@@ -1,0 +1,8 @@
+* System Generation
+rexx msgp on
+shcmdopt enable
+ostailor quiet
+panopt msgcolor=dark
+* Launching Automation REXX script
+exec ../automate.rexx ../03_system_generation.txt hercules.log -d &&
+ipl 150

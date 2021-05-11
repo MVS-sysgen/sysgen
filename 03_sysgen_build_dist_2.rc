@@ -1,0 +1,8 @@
+* IPLing the Starter System
+rexx msgp on
+shcmdopt enable
+ostailor quiet
+panopt msgcolor=dark
+* Launching Automation REXX script
+exec ../automate.rexx ../02_install_dist_libs.txt hercules.log -d &&
+ipl 150
