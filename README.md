@@ -1,17 +1,53 @@
 # Automated MVS3.8 Sysgen
 
-Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments. Currently only Debian/Ubuntu based systems are supported.
+Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments. Currently only Debian/Ubuntu based systems are supported. If your system requires a password for sudo commands you may get prompted for your password to install needed software.
 
 Running sysgen will:
 
 - Compile the newest version of SDL Hercules and install it
 - Build the Jay Moseley sysgen MVS 3.8J automatically
 - Install RAKF
-- Install `INSTALL` and clist that uses MDDIAG8 to install software contained in the [SOFTWARE](SOFTWARE) folder.
+- Install `INSTALL`, a clist that uses MDDIAG8 to install software contained in the [SOFTWARE](SOFTWARE) folder.
 - Install Review Front End
 - Install IND$FILE v205
 - Install FTP server
 - Install BREXX
+
+`sysgen.sh` can take multiple arguments:
+
+
+- `-h`/`--help` Display this help message.
+- `-n`/`--no-install` This setting will prevent this script from installing any software other than RAKF/MDDIAG8.
+- `-r`/`--no-rakf` Do not install any software after the customization step
+
+The remaining arguments will skip the previous steps and start the system generation process from the next step. It will remove the current `dasd` folder and extract the most recent backed up dasd folder from the previous step. For example, if you made changes to any of the `jcl/sysgen*.jcl` files you don't have to rebuild the whole environment, just use `./sysgen.sh --skip-distrib` and it will start rebuilding from the sysgen process onward.
+
+- `--skip-hercules` Skip building hercules, remove any dasd and start automated sysgen
+- `--skip-starter`  Skip building hercules and building starter
+- `--skip-distrib`  Skip building hercules, starter and distribution
+- `--skip-sysgen`   Skip building hercules, starter, distribution and sysgen
+- `--skip-custom`   Skip all steps and install RAKF/Software
+
+Logs of both hercules output and the hercules printer is saved for each step. If a step fails you can review the log to see the error.
+
+## Usernames/Passwords
+
+**RAKF**
+
+| Username | Password |
+|:--------:|:--------:|
+| IBMUSER  | SYS1     |
+| HMVS01   | CUL8TR   |
+| HMVS02   | PASS4U   |
+
+**Without RAKF**
+
+Without RAKF installed the account do not need a password
+
+| Username | Password |
+|:--------:|:--------:|
+| HMVS01   | -        |
+| HMVS02   | -        |
 
 ## Available Software
 
@@ -37,8 +73,9 @@ To install any of these login and run `INSTALL THING` where *THING* is any of th
 
 \* These items are installed automatically unless disabled by passing the sysgen script `--no-install` and `--no-rakf`
 
+In the [SOFTWARE](SOFTWARE) folder is software that comes with this SYSGEN. Other software, such as FTPD and RAKF exist in other repos but can be installed by cloning the repo to the `SOFTWARE` folder and following their instructions.
 
-## Changes
+## Changes From Jay Moseley Sysgen
 
 * Edited `create.dasd.sh`: removed read to ask for compression. Always compress now.
 * Edited `condcode.rexx`: returns non-zero if any jobs have a return code greater than 0004. Can now be used in scripts.
@@ -53,10 +90,6 @@ This repo is heavily based on Jay Moseley sysgen. His writeup is a wonderful res
 A lot of the information contained on this repo is directly from his sysgen walkthrough.
 
 There are lots of files and folders. Each folder has a readme explaining from a high level what each file does.
-
-## System Generation
-
-To build your own sysgen mvs 3.8j system launch: `sysgen.sh`
 
 ## System Setup Information:
 
@@ -95,9 +128,3 @@ The card punch controlled by JES2 is set to select non-held punch output in clas
 
 Some of the parameters for JES2 may be changed from the MVS console and the changes will only remain in effect until the next IPL.  Some of the parameters must be changed by altering the JES2PM00 member in SYS1.PARMLIB, then stopping and restarting JES2.
 
-
-# To Install
-
-
-
-In the [SOFTWARE](SOFTWARE) folder is software that comes with this SYSGEN.
