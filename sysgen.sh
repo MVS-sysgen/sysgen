@@ -92,6 +92,18 @@ else
     git clone https://github.com/MVS-sysgen/RAKF.git
     cd RAKF
     bash ./install_rakf.sh
+
+    echo_step "Installing MDDIAG8"
 fi
+
+## TODO add software install
+
+echo "cd sysgen" > start_mvs.sh
+echo "hercules -f conf/local.cnf -r autostart.rc > hercules.log" >> start_mvs.sh
+chmod +x start_mvs.sh
+
+echo_step "System Generation complete"
+echo_step "To launch MVS 3.8j use: ./start_mvs.sh"
+
 
 trap : 0
