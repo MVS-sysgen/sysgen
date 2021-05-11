@@ -70,14 +70,22 @@
          NAME (PUB001) -
          RELATE (UCPUB001) )
 
+  /* An Alias is defined so that all datasets and VSAM objects */
+  /* with the high-level qualifier of SYSGEN will be           */
+  /* catalogued in the User Catalog UCPUB001.                  */
+
+  DEFINE ALIAS ( -
+         NAME (SYSGEN) -
+         RELATE (UCPUB001) )
+
   /* This User Catalog will contain NON-VSAM objects that      */
   /* reside on volume MVS000.                                  */
 
-  DEFINE USERCATALOG ( -          
-         NAME (UCMVS000) -        
-         VOLUME (MVS000) -        
-         TRACKS (030 0) -         
-         FOR (9999) )             
+  DEFINE USERCATALOG ( -
+         NAME (UCMVS000) -
+         VOLUME (MVS000) -
+         TRACKS (030 0) -
+         FOR (9999) )
 
   /* An Alias is defined so that all datasets with the high-   */
   /* level qualifier of SYSO (operations related) will be      */
@@ -100,7 +108,7 @@
   /* Catalog at this point, so we will add an Update password  */
   /* to make sure that any additions/deletions/changes to      */
   /* the Master Catalog require operator approval.             */
-         
-  ALTER SYS1.VSAM.MASTER.CATALOG -  
-        UPDATEPW(SYSPROG)           
+
+  ALTER SYS1.VSAM.MASTER.CATALOG -
+        UPDATEPW(SYSPROG)
 //
