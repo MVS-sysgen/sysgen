@@ -9,7 +9,7 @@ echo_step "Installing ncat"
 sudo apt install -y ncat
 
 rm -rf dasd
-prev_dasd=$(ls -Art dasd.04.sysgen.*.tar | tail -n 1)
+prev_dasd=$(ls -Art dasd.03.sysgen.*.tar | tail -n 1)
 echo_step "Untarring $prev_dasd"
 tar -xvf $prev_dasd
 echo_step "Downloading SYSCPK"
@@ -49,7 +49,7 @@ chmod +x ./condcode.rexx
 ./condcode.rexx prt00e.txt mvs02
 
 echo_step "backing up DASD folder to dasd.customization.$date_time.tar"
-tar cvf dasd.05.customization.$date_time.tar ./dasd
+tar cvf dasd.04.customization.$date_time.tar ./dasd
 cd ..
 
 trap : 0
