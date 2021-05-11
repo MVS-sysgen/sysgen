@@ -1,10 +1,48 @@
 # Automated MVS3.8 Sysgen
 
+Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments. Currently only Debian/Ubuntu based systems are supported.
+
+Running sysgen will:
+
+- Compile the newest version of SDL Hercules and install it
+- Build the Jay Moseley sysgen MVS 3.8J automatically
+- Install RAKF
+- Install `INSTALL` and clist that uses MDDIAG8 to install software contained in the [SOFTWARE](SOFTWARE) folder.
+- Install Review Front End
+- Install IND$FILE v205
+- Install FTP server
+- Install BREXX
+
+## Available Software
+
+Included with this repo:
+
+- BREXX*
+- EXTRAS
+- INDFILE*
+- MDDIAG8*
+- OFFLOAD
+- QUEUE
+- REVIEW*
+- RPF
+
+In External Repos:
+
+- RAKF*
+- FTPD*
+
+
+To install any of these login and run `INSTALL THING` where *THING* is any of the folders in `SOFTWARE`.
+
+
+\* These items are installed automatically unless disabled by passing the sysgen script `--no-install` and `--no-rakf`
+
+
 ## Changes
 
 * Edited `create.dasd.sh`: removed read to ask for compression. Always compress now.
 * Edited `condcode.rexx`: returns non-zero if any jobs have a return code greater than 0004. Can now be used in scripts.
-* Edited `smp1.cnf`, `smp2.cnf`, and `sysgen.cnf` to change 3215 console to 3215-C for automation
+* Edited `sysgen01.jcl`, `smp1.cnf`, `smp2.cnf`, and `sysgen.cnf` to change 3215 console to 3215-C for automation
 * Added `SYSGEN` alias to `UCPUB001` for software installs in `jcl/mvs01.jcl`
 * Modified `jcl/sysgen05.jcl` changing `,DYNAMNBR=20` to `,DYNAMNBR=64`
 
@@ -60,18 +98,6 @@ Some of the parameters for JES2 may be changed from the MVS console and the chan
 
 # To Install
 
-RPF
-RFE
-QUEUE
-BREXX
-RAKF (CBT850)
 
-MDDIAG8
-MAWK
-imon370
-IND$file
-GCCMVS
-CBTTAPE 249 file 33 is BSPPILOT
-JCC
-www.tommysprinkle.com/mvs/fsi/index.htm
-TK4-.SHELBY.EZASMI.V100.ZIP
+
+In the [SOFTWARE](SOFTWARE) folder is software that comes with this SYSGEN.
