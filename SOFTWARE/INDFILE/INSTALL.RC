@@ -1,0 +1,2 @@
+# Installing IND$FILE
+exec ../automate.rexx ../SOFTWARE/INDFILE/install.txt hercules.log -d &&

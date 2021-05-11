@@ -1,0 +1,80 @@
+         MACRO
+&NME     #PUT  &MSG,&PFIX=,&SUBAD=,&MF=
+.*
+.*
+.*
+.* LAST CHANGE DATE - OCTOBER 18, 1983
+.*                  - MAILING ADDRESS CHANGE
+.*
+.* LAST CHANGE DATE - APRIL 21, 1981
+.*                  - MACRO NAME CHANGED FROM $PUT TO #PUT.
+.*
+.* LAST CHANGE DATE - APRIL 20, 1981
+.*                  - "#REGS GEN=NO" SUPPORT ADDED.
+.*
+.* LAST CHANGE DATE - JULY 18, 1980
+.*                  - INDIRECT ADDRESSING IS NOW INDICATED BY A
+.*                    TRAILING PERCENT SIGN (%) RATHER THAN A LEADING
+.*                    ONE.
+.*
+.* LAST CHANGE DATE - JANUARY 12, 1977
+.*                  - HANDLING OF THE SUBAD= OPERAND IS REWRITTEN.
+.*                  - MAILING ADDRESS CHANGE.
+.*
+.* THIS MACRO WAS WRITTEN BY DAVID B. COLE. ANY QUESTIONS CONCERNING
+.* IT MAY BE ADDRESSED TO:
+.*       RR#2 BOX 712
+.*       AFTON, VA. 22920
+.*
+         GBLA  &#TESERR
+         GBLC  &#PUTSUB
+         GBLC  &#TESRET(20)
+         LCLA  &A1
+         LCLC  &@,&C1,&N
+         AIF   ('&SUBAD' EQ '').SUBOK
+         AIF   ('&SUBAD(1)' NE '&SUBAD').SUBOK
+&#PUTSUB SETC  '&SUBAD'
+.SUBOK   AIF   ('&MF(1)' EQ 'INIT').MEND
+&N       SETC  '&NME'
+.*
+&@       SETC  '&PFIX'
+         AIF   ('&PFIX' NE '').PFIXOK
+         #TEST PFIX=
+&@       SETC  '&#TESRET(1)'
+         AGO   .DONPFIX
+.PFIXOK  #REGS &PFIX,GEN=NO
+.DONPFIX ANOP
+.*
+         AIF   ('&MSG(1)' EQ '&MSG').NOTREG
+         #TEST REGS=&MSG(1)
+         AIF   (&#TESERR NE 0).LR
+         AIF   (&#TESRET(1) EQ 1).BAL
+.LR      ANOP
+&N       LR    &@.1,&MSG(1)        --> MESSAGE LENGTH FIELD
+&N       SETC  ''
+         AGO   .BAL
+.NOTREG  AIF   ('&MSG' EQ '').BAL
+         AIF   ('&MSG'(K'&MSG,1) EQ '%').MSGINDR
+&N       LA    &@.1,&MSG-1         --> MESSAGE LENGTH FIELD
+         AGO   .MSGOK
+.MSGINDR ANOP
+&C1      SETC  '&MSG'(1,K'&MSG-1)
+&N       L     &@.1,=A(&C1-1)      --> MESSAGE LENGTH FIELD
+.MSGOK   ANOP
+&N       SETC  ''
+.BAL     AIF   ('&SUBAD(1)' NE '&SUBAD').BALR
+         AIF   ('&#PUTSUB'(1,1) EQ '%').BALINDR
+&N       BAL   &@.14,&#PUTSUB      GO DISPLAY THE MESSAGE
+         AGO   .MEND
+.BALR    ANOP
+&N       BALR  &@.14,&SUBAD(1)     GO DISPLAY THE MESSAGE
+         AGO   .MEND
+.BALINDR ANOP
+&A1      SETA  0
+.LP1     ANOP
+&A1      SETA  &A1+1
+         AIF   ('&#PUTSUB'(1,&A1) NE '&#PUTSUB').LP1
+&C1      SETC  '&#PUTSUB'(2,&A1-1)
+&N       L     &@.15,=A(&C1)       --> MESSAGE PRINTING ROUTINE
+         BALR  &@.14,&@.15         GO DISPLAY THE MESSAGE
+.MEND    MEND

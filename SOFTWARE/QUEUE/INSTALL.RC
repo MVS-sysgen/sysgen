@@ -1,0 +1,3 @@
+* Installing QUEUE
+* Launching Automation REXX script
+exec ../automate.rexx ../SOFTWARE/QUEUE/install.txt hercules.log -d &&

@@ -1,0 +1,907 @@
+         MACRO
+&N       #TEST &DCODE=OMITTED,&MEXCL=,&NUM=OMITTED,                    *
+               &PFIX=OMITTED,&REGS=,&SIZE=,&GEN=
+.*
+.*
+.*
+.* LAST CHANGE DATE - OCTOBER 18, 1983
+.*                  - MAILING ADDRESS CHANGE
+.*
+.* LAST CHANGE DATE - MARCH 16, 1983
+.*                  - COMMENTARY CHANGES
+.*                  - MAILING ADDRESS CHANGE
+.*
+.* LAST CHANGE DATE - DECEMBER 4, 1981
+.*                  - THE "SIZE=" FUNCTION HAS BEEN ENHANCED
+.*                    TO INCLUDE SUPPORT FOR THE "NE"
+.*                    RELATION.
+.*
+.* LAST CHANGE DATE - APRIL 21, 1981
+.*                  - MACRO NAME CHANGED FROM $TEST TO #TEST
+.*
+.* LAST CHANGE DATE - APRIL 15, 1981
+.*                  - THE "NUM" FUNCTION NO LONGER ISSUES AN
+.*                    ERROR MESSAGE WHEN IT ENCOUNTERS A
+.*                    NON-DIGIT. IT ONLY SETS A RETURN CODE
+.*                    OF 16 IN &#TESERR.
+.*
+.* LAST CHANGE DATE - APRIL 24, 1978
+.*                    THE GEN=EBCDIC FUNCTION HAS BEEN ADDED
+.*
+.* LAST CHANGE DATE - FEBRUARY 2, 1977
+.*                  - MAILING ADDRESS CHANGE.
+.*
+.* LAST CHANGE DATE - SEPTEMBER 10, 1976
+.*                    THE &SIZE= OPERAND SUPPORT IS CHANGED
+.*                    TO REQUIRE THREE SUB-OPERANDS WITH THE
+.*                    SECOND SPECIFYING ONE OF THE RELATION
+.*                    OPERATIONS: LT, LE, EQ, GE, OR GT.
+.*                    NOTE, THIS IS NOT COMPATIBLE WITH THE
+.*                    PREVIOUS IMPLEMENTATION.
+.*
+.* LAST CHANGE DATE - FEBRUARY 10, 1976
+.*
+.* THIS MACRO WAS WRITTEN BY DAVID B. COLE.  ANY QUESTIONS
+.* CONCERNING IT MAY BE ADDRESSED TO:
+.*       RR#2 BOX 712
+.*       AFTON, VA. 22920
+.*
+.*
+.*
+.*                                 GENERAL INFORMATION
+.*   THE #TEST MACRO IS INTENDED TO BE USED AS AN INNER
+.* MACRO. IT PERFORMS A NUMBER OF DIFFERENT TESTS AND
+.* MANIPULATIONS WHICH ARE WHOLELY INDEPENDANT OF EACH OTHER.
+.* FOR EACH OF THESE FUNCTIONS, INPUT MIGHT BE SPECIFIED
+.* EITHER VIA MACRO OPERANDS OR BOTH MACRO OPERANDS AND GLOBAL
+.* SYMBOLS (DEPENDING UPON THE FUNCTION). OUTPUT IS USUALLY
+.* COMMUNICATED VIA THE GLOBAL SYMBOLS &#TESERR AND &#TESRET.
+.*   &#TESERR IS A SCALER SETA SYMBOL WHICH IS USED IN A
+.* MANNER SIMILAR TO A PROGRAM'S COMPLETION CODE TO
+.* COMMUNICATE A GROSS INDICATION OF AN UNUSUAL OR ERROR
+.* CONDITION. IF UPON RETURN FROM #TEST &#TESERR EQUALS ZERO,
+.* THEN THE MACRO FUNCTIONED "OK"; OTHERWISE, THE VALUE OF
+.* &#TESERR VARIES DIRECTLY WITH THE SERIOUSNESS OF THE
+.* UNUSUAL OR ERROR CONDITION, AND IT IS ALWAYS SET TO
+.* REFLECT THE MOST SERIOUS CONDITION ENCOUNTERED DURING A
+.* PARTICULAR INVOCATION OF THE #TEST MACRO.
+.*   &#TESRET IS A SETC ARRAY WHICH IS USED TO CONTAIN
+.* RETURN VALUES FOR THOSE FUNCTIONS FOR WHICH RETURN
+.* VALUES ARE APPROPIATE. EACH ELEMENT OF THE ARRAY HOLDS ONE
+.* RETURN VALUE. ONLY AS MANY ELEMENTS ARE USED AS ARE
+.* NEEDED. THOSE ELEMENTS USED ALWAYS START WITH ELEMENT
+.* NUMBER ONE. IF TWO OR MORE TEST FUNCTIONS ARE INVOKED ON
+.* A SINGLE CALL AND IF EACH OF THEM GENERATE ONE OR MORE
+.* RETURN VALUES, THEN THE FIRST FUNCTION PROCESSED WILL USE
+.* THE LOW ORDER ENTRIES IN &#TESRET. THE NEXT FUNCTION WILL
+.* USE THE NEXT ENTRIES, ETC. THE VARIOUS TEST FUNCTIONS
+.* WILL ALWAYS BE PROCESSED IN THE SAME ORDER WITH WHICH
+.* THEY APPEAR BELOW.
+.*
+.*
+.*
+.* INNER MACROS USED - NONE
+.*
+         GBLA  &#REGVAL(255),&#TESERR
+         GBLC  &#REGNME(255),&#TESRET(20)
+         GBLC  &#EBCDIC(256)
+         LCLA  &CTR,&RETPTR,&P,&L,&K,&A1,&A2,&RV(22)
+         LCLB  &MESW
+         LCLC  &RN(22),&BASE
+&#TESERR SETA  0
+.*
+.*
+.*
+.*                                 THE "DCODE" FUNCTION
+.*   THIS FUNCTION WAS WRITTEN BECAUSE THE MACRO LANGUAGE
+.* DOES NOT SUPPORT THE DECODING OF "SUB-SUB-LIST" NOTATION.
+.*   THE INPUT IS COMMUNICATED VIA THE "DCODE=" OPERAND AS A
+.* CHARACTER STRING TO BE DECODED. THIS STRING MUST BE
+.* EITHER NULL, UNPARENTHESIZED, OR A PARENTHESIZED LIST OF
+.* ELEMENTS SEPERATED FROM EACH OTHER BY COMMAS. THE
+.* ELEMENTS THEMSELVES MAY BE NULL.
+.*   FOR A STRING OF N ELEMENTS, THE OUTPUT CONSISTS OF N+1
+.* ENTRIES IN &#TESRET. THE FIRST ENTRY CONTAINS THE VALUE
+.* N. THE REMAINING ENTRIES CONTAIN EACH OF THE ELEMENTS
+.* EXTRACTED FROM THE ORIGINAL STRING. IF THE ORIGINAL
+.* STRING IS NULL, THEN IT IS TREATED AS A SUB-LIST
+.* CONTAINING ZERO ELEMENTS. IF THE STRING IS
+.* UNPARENTHESIZED, THEN IT IS TREATED AS A SUB-LIST
+.* CONTAINING A SINGLE ELEMENT - NAMELY, ITSELF.
+.*   THE DCODE FUNCTION WILL NOT PROPERLY HANDLE THE
+.* FOLLOWING CONDITIONS:
+.*       A.) A SUB-LIST ELEMENT LONGER THAN EIGHT CHARACTERS;
+.*       B.) A SUB-LIST ELEMENT THAT ITSELF CONSISTS OF A
+.*           SUB-LIST;
+.*       C.) A SUB-LIST CONTAINING MORE THAN NINETEEN
+.*           ELEMENTS.
+.*
+.DCODE   AIF   ('&DCODE' EQ 'OMITTED').DCODEND
+&RETPTR  SETA  &RETPTR+1
+&CTR     SETA  0
+         AIF   (K'&DCODE EQ 0).DCDFIN
+         AIF   ('&DCODE'(1,1) EQ '(').DCDSLST
+&CTR     SETA  1
+&#TESRET(&RETPTR+1) SETC '&DCODE'
+         AGO   .DCDFIN
+.DCDSLST ANOP
+&K       SETA  K'&DCODE
+         AIF   ('&DCODE'(&K,1) EQ ')').DCDOK
+         MNOTE 8,'"&DCODE" HAS INVALID SUBLIST SYNTAX.'
+&#TESERR SETA  16
+         AGO   .DCDFIN
+.DCDOK   ANOP
+&P       SETA  1
+&L       SETA  0
+.DCDLP1  ANOP
+&P       SETA  &P+&L+1
+&L       SETA  0-1
+&CTR     SETA  &CTR+1
+&#TESRET(&RETPTR+&CTR) SETC ''
+.DCDLP2  ANOP
+&L       SETA  &L+1
+         AIF   ('&DCODE'(&P+&L,1) NE ',' AND &P+&L NE &K).DCDLP2
+         AIF   (&L EQ 0).DCDLPET
+&#TESRET(&RETPTR+&CTR) SETC '&DCODE'(&P,&L)
+         AIF   ('&#TESRET(&RETPTR+&CTR)' EQ '&DCODE'(&P,&L)).DCDLPET
+         MNOTE 8,'ERROR - THE FOLLOWING TRUNCATION HAS OCCURED:'
+         MNOTE *,'        &DCODE'
+         MNOTE *,'        &#TESRET(&RETPTR+&CTR)'
+.DCDLPET AIF   (&P+&L NE &K).DCDLP1
+.DCDFIN  ANOP
+&#TESRET(&RETPTR) SETC '&CTR'
+&RETPTR  SETA  &RETPTR+&CTR
+.DCODEND ANOP
+.*
+.*
+.*
+.*                            THE "MEXCL" FUNCTION
+.*   THIS FUNCTION CAN BE USED TO DETERMINE IF TWO OR MORE
+.* MUTUALLY EXCLUSIVE OPERANDS (OR WHATEVER) HAVE BEEN
+.* PASSED TO THE CALLING MACRO.
+.*   THE INPUT IS COMMUNICATED VIA THE "MEXCL=" OPERAND AS A
+.* SUB-LIST WITH ANY NUMBER OF ENTRIES. IF THE MEXCL
+.* FUNCTION FINDS MORE THAN ONE NON-NULL ENTRY IN THE
+.* SUB-LIST, THEN IT ISSUES A SEVERITY 8 ERROR MESSAGE, AND
+.* IT SETS &#TESERR TO A VALUE OF 16.
+.*
+.MEXCL   AIF   (N'&MEXCL LT 2).MEXCEND
+&CTR     SETA  0
+.MELP    AIF   (&CTR EQ N'&MEXCL).MEXCEND
+&CTR     SETA  &CTR+1
+         AIF   (K'&MEXCL(&CTR) EQ 0).MELP
+         AIF   (&MESW EQ 1).MEERR
+&MESW    SETB  (1)
+         AGO   .MELP
+.MEERR   MNOTE 8,'ERROR - MUTUALLY EXCLUSIVE OPERANDS HAVE BEEN USED:'
+         MNOTE *,'        &MEXCL'
+&#TESERR SETA  16
+.MEXCEND ANOP
+.*
+.*
+.*
+.*                            THE "NUM" FUNCTION
+.*   THIS FUNCTION CAN BE USED TO DETERMINE WHETHER OR NOT A
+.* GIVEN VALUE CONSISTS ENTIRELY OF DIGITS.
+.*   THE INPUT IS COMMUNICATED VIA THE "NUM=" OPERAND. IF
+.* THE NUM FUNCTION FINDS THAT ANY CHARACTER IN THE GIVEN
+.* STRING IS NOT A DIGIT, THEN IT SETS &#TESERR TO A VALUE
+.* OF 16.
+.*
+.NUM     AIF   ('&NUM' EQ 'OMITTED').NUMEND
+         AIF   (K'&NUM EQ 0).NUMERR
+&CTR     SETA  0
+.NUMLP   AIF   (&CTR EQ K'&NUM).NUMEND
+&CTR     SETA  &CTR+1
+         AIF   ('&NUM'(&CTR,1) LT '0').NUMERR
+         AIF   ('&NUM'(&CTR,1) LE '9').NUMLP
+.NUMERR  ANOP
+&#TESERR SETA  16
+.NUMEND  ANOP
+.*
+.*
+.*
+.*                            THE "PFIX" FUNCTION
+.*   THIS FUNCTION CAN BE USED TO DETERMINE THE VALIDITY OF
+.* A GIVEN REGISTER NAME PREFIX (E.G. "R" IN "R15").
+.*   THE INPUT CONSISTS OF A REGISTER NAME PREFIX
+.* COMMUNICATED VIA THE "PFIX=" OPERAND AND A TABLE OF VALID
+.* REGISTER NAME PREFIXES GENERATED VIA PRIOR #REGS MACROS
+.* AND CONTAINED IN THE &#REGNME AND &#REGVAL GLOBAL
+.* SYMBOLS. IF THE GIVEN PREFIX IS NULL, THEN A DEFAULT IS
+.* USED. IF THE GIVEN PREFIX IS INVALID, THEN A SEVERITY 4
+.* ERROR MESSAGE IS ISSUED AND A DEFAULT PREFIX IS USED. THE
+.* DEFAULT IS EITHER THE FIRST PREFIX DEFINED VIA A PRIOR
+.* #REGS MACRO OR NULL IF NO PRIOR #REGS MACRO HAS DEFINED
+.* ANY PREFIXES.
+.*   FOR OUTPUT, THE NEXT AVAILABLE &#TESRET ENTRY IS FILLED
+.* WITH EITHER THE GIVEN PREFIX OR THE DEFAULT PREFIX.
+.*
+.PFIX    AIF   ('&PFIX' EQ 'OMITTED').PFIXEND
+&RETPTR  SETA  &RETPTR+1
+&#TESRET(&RETPTR) SETC ''
+&CTR     SETA  0
+.PFXLP1  AIF   (&CTR GE 255).PFXGDEF
+&CTR     SETA  &CTR+1
+         AIF   ('&#REGNME(&CTR)' EQ '').PFXGDEF
+         AIF   (&#REGVAL(&CTR) LE 15).PFXLP1
+&#TESRET(&RETPTR) SETC '&#REGNME(&CTR)'
+.PFXGDEF AIF   (K'&PFIX EQ 0).PFIXEND
+&CTR     SETA  &CTR-1
+.PFXLP2  AIF   (&CTR GE 255).PFXERR
+&CTR     SETA  &CTR+1
+         AIF   ('&#REGNME(&CTR)' EQ '').PFXERR
+         AIF   (&#REGVAL(&CTR) LE 15).PFXLP2
+         AIF   ('&PFIX' NE '&#REGNME(&CTR)').PFXLP2
+&#TESRET(&RETPTR) SETC '&PFIX'
+         AGO   .PFIXEND
+.PFXERR  MNOTE 4,'WARNING - "&PFIX" HAS NOT BEEN PREDEFINED.'
+         MNOTE *,'          A DEFAULT VALUE WILL BE USED.'
+         MNOTE *,'          CHECK YOUR USAGE OF THE #REGS'
+         MNOTE *,'          MACRO.'
+.PFIXEND ANOP
+.*
+.*
+.*
+.*                            THE "REGS" FUNCTION
+.*   THIS FUNCTION CAN BE USED TO CONVERT A CERTAIN CLASS OF
+.* REGISTER NAMES TO THEIR CORRESPONDING NUMERIC VALUES. IN
+.* ORDER FOR A GIVEN NAME TO BE CONVERTED, IT MUST BE EITHER
+.* A SELF-DEFINING NUMERIC OR A NAME THAT HAS BEEN DEFINED
+.* VIA A PRIOR #REGS MACRO. THE PURPOSE OF THIS FUNCTION IS
+.* TO PROVIDE ARITHMETICLY MANIPULATABLE REGISTER NUMBERS.
+.*   THE INPUT CONSISTS OF A SUB-LIST OF REGISTER NAMES
+.* COMMUNICATED VIA THE "REGS=" OPERAND AND A TABLE OF VALID
+.* REGISTER NAME PREFIXES GENERATED VIA PRIOR #REGS MACROS
+.* AND COMMUNICATED VIA THE &#REGNME AND &#REGVAL GLOBAL
+.* SYMBOLS.
+.*   FOR A SUB-LIST OF N REGISTER NAMES, THE OUTPUT CONSISTS
+.* OF N ENTRIES IN &#TESRET EACH CONTAINING THE NUMBER OF
+.* THE REGISTER REPRESENTED BY THE CORRESPONDING NAME FROM
+.* THE INPUT SUB-LIST.
+.*   IF ANY REGISTER NAME CANNOT BE PROPERLY DECODED, THEN
+.* &#TESERR IS SET TO A VALUE OF 16. NO ERROR MESSAGE IS
+.* ISSUED.
+.*
+.REGS    AIF   (N'&REGS EQ 0).REGSEND
+&CTR     SETA  0
+.REGLP1  AIF   (&CTR GE 16).REGLP2
+&RN(&CTR+1) SETC '&CTR'
+&RV(&CTR+1) SETA &CTR
+&CTR     SETA  &CTR+1
+         AGO   .REGLP1
+.REGLP2  AIF   (&CTR GE 22).REGND2
+&CTR     SETA  &CTR+1
+&RN(&CTR) SETC 'ABCDEF'(&CTR-16,1)
+&RV(&CTR) SETA &CTR-7
+         AGO   .REGLP2
+.REGND2  ANOP
+&CTR     SETA  0
+.REGLP3  AIF   (&CTR GE N'&REGS).REGSEND
+&CTR     SETA  &CTR+1
+&RETPTR  SETA  &RETPTR+1
+&#TESRET(&RETPTR) SETC ''
+         AIF   (K'&REGS(&CTR) EQ 0).REGLP3
+&#TESRET(&RETPTR) SETC '&REGS(&CTR)'
+         AIF   (T'&REGS(&CTR) NE 'N').REGLP3A
+         AIF   (&REGS(&CTR) LT 0 OR &REGS(&CTR) GT 15).REGERR
+         AGO   .REGLP3
+.REGLP3A ANOP
+&A1      SETA  0
+.REGLP4  AIF   (&A1 GE 255).REGND4
+&A1      SETA  &A1+1
+         AIF   ('&#REGNME(&A1)' EQ '').REGND4
+         AIF   (&#REGVAL(&A1) GT 15).REGPFX
+         AIF   ('&REGS(&CTR)' NE '&#REGNME(&A1)').REGLP4
+&#TESRET(&RETPTR) SETC '&#REGVAL(&A1)'
+         AGO   .REGLP3
+.REGPFX  ANOP
+&A2      SETA  0
+.REGLP5  AIF   (&A2 GE 22).REGLP4
+&A2      SETA  &A2+1
+         AIF   ('&REGS(&CTR)' NE '&#REGNME(&A1)&RN(&A2)').REGLP5
+&#TESRET(&RETPTR) SETC '&RV(&A2)'
+         AGO   .REGLP3
+.REGND4  ANOP
+&A2      SETA  0
+.REGLP6  AIF   (&A2 GE 16).REGERR
+&A2      SETA  &A2+1
+         AIF   ('&REGS(&CTR)' NE '&RN(&A2)').REGLP6
+         AGO   .REGLP3
+.REGERR  ANOP
+&#TESERR SETA  16
+         AGO   .REGLP3
+.REGSEND ANOP
+.*
+.*
+.*
+.*                            THE "SIZE" FUNCTION
+.*   THIS FUNCTION WAS WRITTEN BECAUSE OF THE LIMITATION
+.* THAT MACRO CODE CANNOT ARITHMETICLY MANIPULATE OPERANDS
+.* CONSISTING OF EITHER EXPRESSIONS OR EQUATE SYMBOLS.
+.* BECAUSE OF THIS, IN SITUATIONS WHERE A PROGRAMMER WOULD
+.* NORMALLY WANT TO USE AN EXPRESSION, ETC., HE MAY INSTEAD
+.* BE FORCED TO USE A SELF DEFINING NUMERIC. THE PROBLEM IS
+.* THAT IF SUBSEQUENT MODIFICATIONS AFFECT THE VALUE OF SUCH
+.* AN EXPRESSION, THE PROGRAMMER MIGHT FORGET TO CHANGE THE
+.* SELF DEFINING NUMERIC ACCORDINGLY. THE SIZE FUNCTION CAN
+.* BE USED TO ALLEVIATE THIS PROBLEM.
+.*   THE INPUT IS COMMUNICATED VIA THE "SIZE=" OPERAND AND
+.* IT MUST CONSIST OF A THREE ELEMENT SUB-LIST. THE FIRST
+.* AND THIRD ELEMENTS MUST BE SUCH THAT THEY RESULTS IN
+.* NON-RELOCATABLE VALUES WHEN ASSEMBLED. THE SECOND OPERAND
+.* MUST BE ONE OF THE FOLLOWING RELATIONAL OPERATORS:
+.*       LT, LE, EQ, GE, GT, NE
+.* MEANING "LESS THAN", "LESS THAN OR EQUAL", "EQUAL",
+.* "GREATER THAN OR EQUAL", "GREATER THAN", AND "NOT EQUAL"
+.* RESPECTIVELY.
+.*   THE OUTPUT CONSISTS OF A GENERATED STATEMENT WHICH
+.* PRODUCES NO OBJECT CODE BUT WHICH CAUSES AN ERROR
+.* WHENEVER THE TWO GIVEN ELEMENTS VIOLATE THE INDICATED
+.* RELATION.
+.*
+.SIZE    AIF   (N'&SIZE EQ 0).SIZEEND
+         AIF   ('&SIZE(2)' EQ 'EQ' OR '&SIZE(2)' EQ 'GE' OR '&SIZE(2)' *
+               EQ 'LE' OR '&SIZE(2)' EQ 'GT' OR '&SIZE(2)' EQ 'LT' OR '*
+               &SIZE(2)' EQ 'NE').OPOK
+         MNOTE 8,'ERROR - "&SIZE(2)" NOT A VALID RELATIONAL OPERATOR'
+&#TESERR SETA  16
+         AGO   .SIZEEND
+.OPOK    AIF   ('&SIZE(2)' NE 'EQ').OPNTEQ
+         DC    0YL2(X'7FFF'-(&SIZE(1))+&SIZE(3),X'7FFF'-(&SIZE(3))+&SIZ*
+               E(1))
+         AGO   .SIZEEND
+.OPNTEQ  AIF   ('&SIZE(2)' NE 'NE').OPNTNE
+         DC    0YL2(X'8000'-(&SIZE(3)-(&SIZE(1)))/(&SIZE(3)-(&SIZE(1)))*
+               )
+         AGO   .SIZEEND
+.OPNTNE  ANOP
+&BASE    SETC  '7FFF'
+         AIF   ('&SIZE(2)'(2,1) EQ 'E').NOPLUS1
+&BASE    SETC  '8000'
+.NOPLUS1 AIF   ('&SIZE(2)'(1,1) EQ 'G').OPG
+         DC    0YL2(X'&BASE'-(&SIZE(3))+&SIZE(1))
+         AGO   .SIZEEND
+.OPG     ANOP
+         DC    0YL2(X'&BASE'-(&SIZE(1))+&SIZE(3))
+.SIZEEND ANOP
+.*
+.*
+.*
+.*                                 THE "GEN" FUNCTION
+.*    THIS FUNCTION CAN BE USED TO GENERATE VARIOUS SPECIFIC
+.* OBJECTS. CURRENTLY, THE SUPPORTED OBJECTS ARE:
+.*       EBCDIC - A GLOBAL TABLE CONTAINING THE ENTIRE
+.*                256-ENTRY EBCDIC CHARACTER SET SUCH THAT
+.*                THE VALUE OF THE ITH ENTRY IS I-1.
+.*
+.GEN     AIF   (N'&GEN EQ 0).GENEND
+&A1      SETA  0
+.GENLP   AIF   (&A1 EQ N'&GEN).GENEND
+&A1      SETA  &A1+1
+         AIF   ('&GEN(&A1)' EQ '').GENLP
+         AIF   ('&GEN(&A1)' NE 'EBCDIC').GNTEBCD
+         AIF   ('&#EBCDIC(194)' EQ 'A').GENLP
+         PUSH  PRINT                                          09/96 X32 44090000
+         PRINT OFF                 GENERATE #TESTX-- EQUATES  11/96 X32 44160000
+#TESTX00 EQU   000,,X'00'                                     10/97 X33 44230000
+#TESTX01 EQU   001,,X'01'                                     09/96 X32 44300000
+#TESTX02 EQU   002,,X'02'                                     09/96 X32 44380000
+#TESTX03 EQU   003,,X'03'                                     09/96 X32 44450000
+#TESTX04 EQU   004,,X'04'                                     09/96 X32 44520000
+#TESTX05 EQU   005,,X'05'                                     09/96 X32 44590000
+#TESTX06 EQU   006,,X'06'                                     09/96 X32 44660000
+#TESTX07 EQU   007,,X'07'                                     09/96 X32 44730000
+#TESTX08 EQU   008,,X'08'                                     09/96 X32 44810000
+#TESTX09 EQU   009,,X'09'                                     09/96 X32 44880000
+#TESTX0A EQU   010,,X'0A'                                     09/96 X32 44950000
+#TESTX0B EQU   011,,X'0B'                                     09/96 X32 45020000
+#TESTX0C EQU   012,,X'0C'                                     09/96 X32 45090000
+#TESTX0D EQU   013,,X'0D'                                     09/96 X32 45160000
+#TESTX0E EQU   014,,X'0E'                                     09/96 X32 45230000
+#TESTX0F EQU   015,,X'0F'                                     09/96 X32 45310000
+#TESTX10 EQU   016,,X'10'                                     09/96 X32 45380000
+#TESTX11 EQU   017,,X'11'                                     09/96 X32 45450000
+#TESTX12 EQU   018,,X'12'                                     09/96 X32 45520000
+#TESTX13 EQU   019,,X'13'                                     09/96 X32 45590000
+#TESTX14 EQU   020,,X'14'                                     09/96 X32 45660000
+#TESTX15 EQU   021,,X'15'                                     09/96 X32 45740000
+#TESTX16 EQU   022,,X'16'                                     09/96 X32 45810000
+#TESTX17 EQU   023,,X'17'                                     09/96 X32 45880000
+#TESTX18 EQU   024,,X'18'                                     09/96 X32 45950000
+#TESTX19 EQU   025,,X'19'                                     09/96 X32 46020000
+#TESTX1A EQU   026,,X'1A'                                     09/96 X32 46090000
+#TESTX1B EQU   027,,X'1B'                                     09/96 X32 46170000
+#TESTX1C EQU   028,,X'1C'                                     09/96 X32 46240000
+#TESTX1D EQU   029,,X'1D'                                     09/96 X32 46310000
+#TESTX1E EQU   030,,X'1E'                                     09/96 X32 46380000
+#TESTX1F EQU   031,,X'1F'                                     09/96 X32 46450000
+#TESTX20 EQU   032,,X'20'                                     09/96 X32 46520000
+#TESTX21 EQU   033,,X'21'                                     09/96 X32 46590000
+#TESTX22 EQU   034,,X'22'                                     09/96 X32 46670000
+#TESTX23 EQU   035,,X'23'                                     09/96 X32 46740000
+#TESTX24 EQU   036,,X'24'                                     09/96 X32 46810000
+#TESTX25 EQU   037,,X'25'                                     09/96 X32 46880000
+#TESTX26 EQU   038,,X'26'                                     09/96 X32 46950000
+#TESTX27 EQU   039,,X'27'                                     09/96 X32 47020000
+#TESTX28 EQU   040,,X'28'                                     09/96 X32 47100000
+#TESTX29 EQU   041,,X'29'                                     09/96 X32 47170000
+#TESTX2A EQU   042,,X'2A'                                     09/96 X32 47240000
+#TESTX2B EQU   043,,X'2B'                                     09/96 X32 47310000
+#TESTX2C EQU   044,,X'2C'                                     09/96 X32 47380000
+#TESTX2D EQU   045,,X'2D'                                     09/96 X32 47450000
+#TESTX2E EQU   046,,X'2E'                                     09/96 X32 47530000
+#TESTX2F EQU   047,,X'2F'                                     09/96 X32 47600000
+#TESTX30 EQU   048,,X'30'                                     09/96 X32 47670000
+#TESTX31 EQU   049,,X'31'                                     09/96 X32 47740000
+#TESTX32 EQU   050,,X'32'                                     09/96 X32 47810000
+#TESTX33 EQU   051,,X'33'                                     09/96 X32 47880000
+#TESTX34 EQU   052,,X'34'                                     09/96 X32 47950000
+#TESTX35 EQU   053,,X'35'                                     09/96 X32 48030000
+#TESTX36 EQU   054,,X'36'                                     09/96 X32 48100000
+#TESTX37 EQU   055,,X'37'                                     09/96 X32 48170000
+#TESTX38 EQU   056,,X'38'                                     09/96 X32 48240000
+#TESTX39 EQU   057,,X'39'                                     09/96 X32 48310000
+#TESTX3A EQU   058,,X'3A'                                     09/96 X32 48380000
+#TESTX3B EQU   059,,X'3B'                                     09/96 X32 48460000
+#TESTX3C EQU   060,,X'3C'                                     09/96 X32 48530000
+#TESTX3D EQU   061,,X'3D'                                     09/96 X32 48600000
+#TESTX3E EQU   062,,X'3E'                                     09/96 X32 48670000
+#TESTX3F EQU   063,,X'3F'                                     09/96 X32 48740000
+#TESTX40 EQU   064,,X'40'                                     09/96 X32 48810000
+#TESTX41 EQU   065,,X'41'                                     09/96 X32 48890000
+#TESTX42 EQU   066,,X'42'                                     09/96 X32 48960000
+#TESTX43 EQU   067,,X'43'                                     09/96 X32 49030000
+#TESTX44 EQU   068,,X'44'                                     09/96 X32 49100000
+#TESTX45 EQU   069,,X'45'                                     09/96 X32 49170000
+#TESTX46 EQU   070,,X'46'                                     09/96 X32 49240000
+#TESTX47 EQU   071,,X'47'                                     09/96 X32 49310000
+#TESTX48 EQU   072,,X'48'                                     09/96 X32 49390000
+#TESTX49 EQU   073,,X'49'                                     09/96 X32 49460000
+#TESTX4A EQU   074,,X'4A'                                     09/96 X32 49530000
+#TESTX4B EQU   075,,X'4B'                                     09/96 X32 49600000
+#TESTX4C EQU   076,,X'4C'                                     09/96 X32 49670000
+#TESTX4D EQU   077,,X'4D'                                     09/96 X32 49740000
+#TESTX4E EQU   078,,X'4E'                                     09/96 X32 49820000
+#TESTX4F EQU   079,,X'4F'                                     09/96 X32 49890000
+#TESTX50 EQU   080,,X'50'                                     09/96 X32 49960000
+#TESTX51 EQU   081,,X'51'                                     09/96 X32 50030000
+#TESTX52 EQU   082,,X'52'                                     09/96 X32 50100000
+#TESTX53 EQU   083,,X'53'                                     09/96 X32 50170000
+#TESTX54 EQU   084,,X'54'                                     09/96 X32 50250000
+#TESTX55 EQU   085,,X'55'                                     09/96 X32 50320000
+#TESTX56 EQU   086,,X'56'                                     09/96 X32 50390000
+#TESTX57 EQU   087,,X'57'                                     09/96 X32 50460000
+#TESTX58 EQU   088,,X'58'                                     09/96 X32 50530000
+#TESTX59 EQU   089,,X'59'                                     09/96 X32 50600000
+#TESTX5A EQU   090,,X'5A'                                     09/96 X32 50680000
+#TESTX5B EQU   091,,X'5B'                                     09/96 X32 50750000
+#TESTX5C EQU   092,,X'5C'                                     09/96 X32 50820000
+#TESTX5D EQU   093,,X'5D'                                     09/96 X32 50890000
+#TESTX5E EQU   094,,X'5E'                                     09/96 X32 50960000
+#TESTX5F EQU   095,,X'5F'                                     09/96 X32 51030000
+#TESTX60 EQU   096,,X'60'                                     09/96 X32 51100000
+#TESTX61 EQU   097,,X'61'                                     09/96 X32 51180000
+#TESTX62 EQU   098,,X'62'                                     09/96 X32 51250000
+#TESTX63 EQU   099,,X'63'                                     09/96 X32 51320000
+#TESTX64 EQU   100,,X'64'                                     09/96 X32 51390000
+#TESTX65 EQU   101,,X'65'                                     09/96 X32 51460000
+#TESTX66 EQU   102,,X'66'                                     09/96 X32 51530000
+#TESTX67 EQU   103,,X'67'                                     09/96 X32 51610000
+#TESTX68 EQU   104,,X'68'                                     09/96 X32 51680000
+#TESTX69 EQU   105,,X'69'                                     09/96 X32 51750000
+#TESTX6A EQU   106,,X'6A'                                     09/96 X32 51820000
+#TESTX6B EQU   107,,X'6B'                                     09/96 X32 51890000
+#TESTX6C EQU   108,,X'6C'                                     09/96 X32 51960000
+#TESTX6D EQU   109,,X'6D'                                     09/96 X32 52040000
+#TESTX6E EQU   110,,X'6E'                                     09/96 X32 52110000
+#TESTX6F EQU   111,,X'6F'                                     09/96 X32 52180000
+#TESTX70 EQU   112,,X'70'                                     09/96 X32 52250000
+#TESTX71 EQU   113,,X'71'                                     09/96 X32 52320000
+#TESTX72 EQU   114,,X'72'                                     09/96 X32 52390000
+#TESTX73 EQU   115,,X'73'                                     09/96 X32 52460000
+#TESTX74 EQU   116,,X'74'                                     09/96 X32 52540000
+#TESTX75 EQU   117,,X'75'                                     09/96 X32 52610000
+#TESTX76 EQU   118,,X'76'                                     09/96 X32 52680000
+#TESTX77 EQU   119,,X'77'                                     09/96 X32 52750000
+#TESTX78 EQU   120,,X'78'                                     09/96 X32 52820000
+#TESTX79 EQU   121,,X'79'                                     09/96 X32 52890000
+#TESTX7A EQU   122,,X'7A'                                     09/96 X32 52970000
+#TESTX7B EQU   123,,X'7B'                                     09/96 X32 53040000
+#TESTX7C EQU   124,,X'7C'                                     09/96 X32 53110000
+#TESTX7D EQU   125,,X'7D'                                     09/96 X32 53180000
+#TESTX7E EQU   126,,X'7E'                                     09/96 X32 53250000
+#TESTX7F EQU   127,,X'7F'                                     09/96 X32 53320000
+#TESTX80 EQU   128,,X'80'                                     09/96 X32 53400000
+#TESTX81 EQU   129,,X'81'                                     09/96 X32 53470000
+#TESTX82 EQU   130,,X'82'                                     09/96 X32 53540000
+#TESTX83 EQU   131,,X'83'                                     09/96 X32 53610000
+#TESTX84 EQU   132,,X'84'                                     09/96 X32 53680000
+#TESTX85 EQU   133,,X'85'                                     09/96 X32 53750000
+#TESTX86 EQU   134,,X'86'                                     09/96 X32 53820000
+#TESTX87 EQU   135,,X'87'                                     09/96 X32 53900000
+#TESTX88 EQU   136,,X'88'                                     09/96 X32 53970000
+#TESTX89 EQU   137,,X'89'                                     09/96 X32 54040000
+#TESTX8A EQU   138,,X'8A'                                     09/96 X32 54110000
+#TESTX8B EQU   139,,X'8B'                                     09/96 X32 54180000
+#TESTX8C EQU   140,,X'8C'                                     09/96 X32 54250000
+#TESTX8D EQU   141,,X'8D'                                     09/96 X32 54330000
+#TESTX8E EQU   142,,X'8E'                                     09/96 X32 54400000
+#TESTX8F EQU   143,,X'8F'                                     09/96 X32 54470000
+#TESTX90 EQU   144,,X'90'                                     09/96 X32 54540000
+#TESTX91 EQU   145,,X'91'                                     09/96 X32 54610000
+#TESTX92 EQU   146,,X'92'                                     09/96 X32 54680000
+#TESTX93 EQU   147,,X'93'                                     09/96 X32 54760000
+#TESTX94 EQU   148,,X'94'                                     09/96 X32 54830000
+#TESTX95 EQU   149,,X'95'                                     09/96 X32 54900000
+#TESTX96 EQU   150,,X'96'                                     09/96 X32 54970000
+#TESTX97 EQU   151,,X'97'                                     09/96 X32 55040000
+#TESTX98 EQU   152,,X'98'                                     09/96 X32 55110000
+#TESTX99 EQU   153,,X'99'                                     09/96 X32 55180000
+#TESTX9A EQU   154,,X'9A'                                     09/96 X32 55260000
+#TESTX9B EQU   155,,X'9B'                                     09/96 X32 55330000
+#TESTX9C EQU   156,,X'9C'                                     09/96 X32 55400000
+#TESTX9D EQU   157,,X'9D'                                     09/96 X32 55470000
+#TESTX9E EQU   158,,X'9E'                                     09/96 X32 55540000
+#TESTX9F EQU   159,,X'9F'                                     09/96 X32 55610000
+#TESTXA0 EQU   160,,X'A0'                                     09/96 X32 55690000
+#TESTXA1 EQU   161,,X'A1'                                     09/96 X32 55760000
+#TESTXA2 EQU   162,,X'A2'                                     09/96 X32 55830000
+#TESTXA3 EQU   163,,X'A3'                                     09/96 X32 55900000
+#TESTXA4 EQU   164,,X'A4'                                     09/96 X32 55970000
+#TESTXA5 EQU   165,,X'A5'                                     09/96 X32 56040000
+#TESTXA6 EQU   166,,X'A6'                                     09/96 X32 56120000
+#TESTXA7 EQU   167,,X'A7'                                     09/96 X32 56190000
+#TESTXA8 EQU   168,,X'A8'                                     09/96 X32 56260000
+#TESTXA9 EQU   169,,X'A9'                                     09/96 X32 56330000
+#TESTXAA EQU   170,,X'AA'                                     09/96 X32 56400000
+#TESTXAB EQU   171,,X'AB'                                     09/96 X32 56470000
+#TESTXAC EQU   172,,X'AC'                                     09/96 X32 56540000
+#TESTXAD EQU   173,,X'AD'                                     09/96 X32 56620000
+#TESTXAE EQU   174,,X'AE'                                     09/96 X32 56690000
+#TESTXAF EQU   175,,X'AF'                                     09/96 X32 56760000
+#TESTXB0 EQU   176,,X'B0'                                     09/96 X32 56830000
+#TESTXB1 EQU   177,,X'B1'                                     09/96 X32 56900000
+#TESTXB2 EQU   178,,X'B2'                                     09/96 X32 56970000
+#TESTXB3 EQU   179,,X'B3'                                     09/96 X32 57050000
+#TESTXB4 EQU   180,,X'B4'                                     09/96 X32 57120000
+#TESTXB5 EQU   181,,X'B5'                                     09/96 X32 57190000
+#TESTXB6 EQU   182,,X'B6'                                     09/96 X32 57260000
+#TESTXB7 EQU   183,,X'B7'                                     09/96 X32 57330000
+#TESTXB8 EQU   184,,X'B8'                                     09/96 X32 57400000
+#TESTXB9 EQU   185,,X'B9'                                     09/96 X32 57480000
+#TESTXBA EQU   186,,X'BA'                                     09/96 X32 57550000
+#TESTXBB EQU   187,,X'BB'                                     09/96 X32 57620000
+#TESTXBC EQU   188,,X'BC'                                     09/96 X32 57690000
+#TESTXBD EQU   189,,X'BD'                                     09/96 X32 57760000
+#TESTXBE EQU   190,,X'BE'                                     09/96 X32 57830000
+#TESTXBF EQU   191,,X'BF'                                     09/96 X32 57900000
+#TESTXC0 EQU   192,,X'C0'                                     09/96 X32 57980000
+#TESTXC1 EQU   193,,X'C1'                                     09/96 X32 58050000
+#TESTXC2 EQU   194,,X'C2'                                     09/96 X32 58120000
+#TESTXC3 EQU   195,,X'C3'                                     09/96 X32 58190000
+#TESTXC4 EQU   196,,X'C4'                                     09/96 X32 58260000
+#TESTXC5 EQU   197,,X'C5'                                     09/96 X32 58330000
+#TESTXC6 EQU   198,,X'C6'                                     09/96 X32 58410000
+#TESTXC7 EQU   199,,X'C7'                                     09/96 X32 58480000
+#TESTXC8 EQU   200,,X'C8'                                     09/96 X32 58550000
+#TESTXC9 EQU   201,,X'C9'                                     09/96 X32 58620000
+#TESTXCA EQU   202,,X'CA'                                     09/96 X32 58690000
+#TESTXCB EQU   203,,X'CB'                                     09/96 X32 58760000
+#TESTXCC EQU   204,,X'CC'                                     09/96 X32 58840000
+#TESTXCD EQU   205,,X'CD'                                     09/96 X32 58910000
+#TESTXCE EQU   206,,X'CE'                                     09/96 X32 58980000
+#TESTXCF EQU   207,,X'CF'                                     09/96 X32 59050000
+#TESTXD0 EQU   208,,X'D0'                                     09/96 X32 59120000
+#TESTXD1 EQU   209,,X'D1'                                     09/96 X32 59190000
+#TESTXD2 EQU   210,,X'D2'                                     09/96 X32 59260000
+#TESTXD3 EQU   211,,X'D3'                                     09/96 X32 59340000
+#TESTXD4 EQU   212,,X'D4'                                     09/96 X32 59410000
+#TESTXD5 EQU   213,,X'D5'                                     09/96 X32 59480000
+#TESTXD6 EQU   214,,X'D6'                                     09/96 X32 59550000
+#TESTXD7 EQU   215,,X'D7'                                     09/96 X32 59620000
+#TESTXD8 EQU   216,,X'D8'                                     09/96 X32 59690000
+#TESTXD9 EQU   217,,X'D9'                                     09/96 X32 59770000
+#TESTXDA EQU   218,,X'DA'                                     09/96 X32 59840000
+#TESTXDB EQU   219,,X'DB'                                     09/96 X32 59910000
+#TESTXDC EQU   220,,X'DC'                                     09/96 X32 59980000
+#TESTXDD EQU   221,,X'DD'                                     09/96 X32 60050000
+#TESTXDE EQU   222,,X'DE'                                     09/96 X32 60120000
+#TESTXDF EQU   223,,X'DF'                                     09/96 X32 60200000
+#TESTXE0 EQU   224,,X'E0'                                     09/96 X32 60270000
+#TESTXE1 EQU   225,,X'E1'                                     09/96 X32 60340000
+#TESTXE2 EQU   226,,X'E2'                                     09/96 X32 60410000
+#TESTXE3 EQU   227,,X'E3'                                     09/96 X32 60480000
+#TESTXE4 EQU   228,,X'E4'                                     09/96 X32 60550000
+#TESTXE5 EQU   229,,X'E5'                                     09/96 X32 60620000
+#TESTXE6 EQU   230,,X'E6'                                     09/96 X32 60700000
+#TESTXE7 EQU   231,,X'E7'                                     09/96 X32 60770000
+#TESTXE8 EQU   232,,X'E8'                                     09/96 X32 60840000
+#TESTXE9 EQU   233,,X'E9'                                     09/96 X32 60910000
+#TESTXEA EQU   234,,X'EA'                                     09/96 X32 60980000
+#TESTXEB EQU   235,,X'EB'                                     09/96 X32 61050000
+#TESTXEC EQU   236,,X'EC'                                     09/96 X32 61130000
+#TESTXED EQU   237,,X'ED'                                     09/96 X32 61200000
+#TESTXEE EQU   238,,X'EE'                                     09/96 X32 61270000
+#TESTXEF EQU   239,,X'EF'                                     09/96 X32 61340000
+#TESTXF0 EQU   240,,X'F0'                                     09/96 X32 61410000
+#TESTXF1 EQU   241,,X'F1'                                     09/96 X32 61480000
+#TESTXF2 EQU   242,,X'F2'                                     09/96 X32 61560000
+#TESTXF3 EQU   243,,X'F3'                                     09/96 X32 61630000
+#TESTXF4 EQU   244,,X'F4'                                     09/96 X32 61700000
+#TESTXF5 EQU   245,,X'F5'                                     09/96 X32 61770000
+#TESTXF6 EQU   246,,X'F6'                                     09/96 X32 61840000
+#TESTXF7 EQU   247,,X'F7'                                     09/96 X32 61910000
+#TESTXF8 EQU   248,,X'F8'                                     09/96 X32 61980000
+#TESTXF9 EQU   249,,X'F9'                                     09/96 X32 62060000
+#TESTXFA EQU   250,,X'FA'                                     09/96 X32 62130000
+#TESTXFB EQU   251,,X'FB'                                     09/96 X32 62200000
+#TESTXFC EQU   252,,X'FC'                                     09/96 X32 62270000
+#TESTXFD EQU   253,,X'FD'                                     09/96 X32 62340000
+#TESTXFE EQU   254,,X'FE'                                     09/96 X32 62410000
+#TESTXFF EQU   255,,X'FF'                                     09/96 X32 62490000
+         POP   PRINT                                          09/96 X32 62560000
+&#EBCDIC(001) SETC T'#TESTX00                                 10/97 X33 62630000
+&#EBCDIC(002) SETC T'#TESTX01                                 09/96 X32 62700000
+&#EBCDIC(003) SETC T'#TESTX02                                 09/96 X32 62770000
+&#EBCDIC(004) SETC T'#TESTX03                                 09/96 X32 62840000
+&#EBCDIC(005) SETC T'#TESTX04                                 09/96 X32 62920000
+&#EBCDIC(006) SETC T'#TESTX05                                 09/96 X32 62990000
+&#EBCDIC(007) SETC T'#TESTX06                                 09/96 X32 63060000
+&#EBCDIC(008) SETC T'#TESTX07                                 09/96 X32 63130000
+&#EBCDIC(009) SETC T'#TESTX08                                 09/96 X32 63200000
+&#EBCDIC(010) SETC T'#TESTX09                                 09/96 X32 63270000
+&#EBCDIC(011) SETC T'#TESTX0A                                 09/96 X32 63350000
+&#EBCDIC(012) SETC T'#TESTX0B                                 09/96 X32 63420000
+&#EBCDIC(013) SETC T'#TESTX0C                                 09/96 X32 63490000
+&#EBCDIC(014) SETC T'#TESTX0D                                 09/96 X32 63560000
+&#EBCDIC(015) SETC T'#TESTX0E                                 09/96 X32 63630000
+&#EBCDIC(016) SETC T'#TESTX0F                                 09/96 X32 63700000
+&#EBCDIC(017) SETC T'#TESTX10                                 09/96 X32 63770000
+&#EBCDIC(018) SETC T'#TESTX11                                 09/96 X32 63850000
+&#EBCDIC(019) SETC T'#TESTX12                                 09/96 X32 63920000
+&#EBCDIC(020) SETC T'#TESTX13                                 09/96 X32 63990000
+&#EBCDIC(021) SETC T'#TESTX14                                 09/96 X32 64060000
+&#EBCDIC(022) SETC T'#TESTX15                                 09/96 X32 64130000
+&#EBCDIC(023) SETC T'#TESTX16                                 09/96 X32 64200000
+&#EBCDIC(024) SETC T'#TESTX17                                 09/96 X32 64280000
+&#EBCDIC(025) SETC T'#TESTX18                                 09/96 X32 64350000
+&#EBCDIC(026) SETC T'#TESTX19                                 09/96 X32 64420000
+&#EBCDIC(027) SETC T'#TESTX1A                                 09/96 X32 64490000
+&#EBCDIC(028) SETC T'#TESTX1B                                 09/96 X32 64560000
+&#EBCDIC(029) SETC T'#TESTX1C                                 09/96 X32 64630000
+&#EBCDIC(030) SETC T'#TESTX1D                                 09/96 X32 64710000
+&#EBCDIC(031) SETC T'#TESTX1E                                 09/96 X32 64780000
+&#EBCDIC(032) SETC T'#TESTX1F                                 09/96 X32 64850000
+&#EBCDIC(033) SETC T'#TESTX20                                 09/96 X32 64920000
+&#EBCDIC(034) SETC T'#TESTX21                                 09/96 X32 64990000
+&#EBCDIC(035) SETC T'#TESTX22                                 09/96 X32 65060000
+&#EBCDIC(036) SETC T'#TESTX23                                 09/96 X32 65130000
+&#EBCDIC(037) SETC T'#TESTX24                                 09/96 X32 65210000
+&#EBCDIC(038) SETC T'#TESTX25                                 09/96 X32 65280000
+&#EBCDIC(039) SETC T'#TESTX26                                 09/96 X32 65350000
+&#EBCDIC(040) SETC T'#TESTX27                                 09/96 X32 65420000
+&#EBCDIC(041) SETC T'#TESTX28                                 09/96 X32 65490000
+&#EBCDIC(042) SETC T'#TESTX29                                 09/96 X32 65560000
+&#EBCDIC(043) SETC T'#TESTX2A                                 09/96 X32 65640000
+&#EBCDIC(044) SETC T'#TESTX2B                                 09/96 X32 65710000
+&#EBCDIC(045) SETC T'#TESTX2C                                 09/96 X32 65780000
+&#EBCDIC(046) SETC T'#TESTX2D                                 09/96 X32 65850000
+&#EBCDIC(047) SETC T'#TESTX2E                                 09/96 X32 65920000
+&#EBCDIC(048) SETC T'#TESTX2F                                 09/96 X32 65990000
+&#EBCDIC(049) SETC T'#TESTX30                                 09/96 X32 66070000
+&#EBCDIC(050) SETC T'#TESTX31                                 09/96 X32 66140000
+&#EBCDIC(051) SETC T'#TESTX32                                 09/96 X32 66210000
+&#EBCDIC(052) SETC T'#TESTX33                                 09/96 X32 66280000
+&#EBCDIC(053) SETC T'#TESTX34                                 09/96 X32 66350000
+&#EBCDIC(054) SETC T'#TESTX35                                 09/96 X32 66420000
+&#EBCDIC(055) SETC T'#TESTX36                                 09/96 X32 66490000
+&#EBCDIC(056) SETC T'#TESTX37                                 09/96 X32 66570000
+&#EBCDIC(057) SETC T'#TESTX38                                 09/96 X32 66640000
+&#EBCDIC(058) SETC T'#TESTX39                                 09/96 X32 66710000
+&#EBCDIC(059) SETC T'#TESTX3A                                 09/96 X32 66780000
+&#EBCDIC(060) SETC T'#TESTX3B                                 09/96 X32 66850000
+&#EBCDIC(061) SETC T'#TESTX3C                                 09/96 X32 66920000
+&#EBCDIC(062) SETC T'#TESTX3D                                 09/96 X32 67000000
+&#EBCDIC(063) SETC T'#TESTX3E                                 09/96 X32 67070000
+&#EBCDIC(064) SETC T'#TESTX3F                                 09/96 X32 67140000
+&#EBCDIC(065) SETC T'#TESTX40                                 09/96 X32 67210000
+&#EBCDIC(066) SETC T'#TESTX41                                 09/96 X32 67280000
+&#EBCDIC(067) SETC T'#TESTX42                                 09/96 X32 67350000
+&#EBCDIC(068) SETC T'#TESTX43                                 09/96 X32 67430000
+&#EBCDIC(069) SETC T'#TESTX44                                 09/96 X32 67500000
+&#EBCDIC(070) SETC T'#TESTX45                                 09/96 X32 67570000
+&#EBCDIC(071) SETC T'#TESTX46                                 09/96 X32 67640000
+&#EBCDIC(072) SETC T'#TESTX47                                 09/96 X32 67710000
+&#EBCDIC(073) SETC T'#TESTX48                                 09/96 X32 67780000
+&#EBCDIC(074) SETC T'#TESTX49                                 09/96 X32 67850000
+&#EBCDIC(075) SETC T'#TESTX4A                                 09/96 X32 67930000
+&#EBCDIC(076) SETC T'#TESTX4B                                 09/96 X32 68000000
+&#EBCDIC(077) SETC T'#TESTX4C                                 09/96 X32 68070000
+&#EBCDIC(078) SETC T'#TESTX4D                                 09/96 X32 68140000
+&#EBCDIC(079) SETC T'#TESTX4E                                 09/96 X32 68210000
+&#EBCDIC(080) SETC T'#TESTX4F                                 09/96 X32 68280000
+&#EBCDIC(081) SETC '&&'                                                 68360000
+&#EBCDIC(082) SETC T'#TESTX51                                 09/96 X32 68430000
+&#EBCDIC(083) SETC T'#TESTX52                                 09/96 X32 68500000
+&#EBCDIC(084) SETC T'#TESTX53                                 09/96 X32 68570000
+&#EBCDIC(085) SETC T'#TESTX54                                 09/96 X32 68640000
+&#EBCDIC(086) SETC T'#TESTX55                                 09/96 X32 68710000
+&#EBCDIC(087) SETC T'#TESTX56                                 09/96 X32 68790000
+&#EBCDIC(088) SETC T'#TESTX57                                 09/96 X32 68860000
+&#EBCDIC(089) SETC T'#TESTX58                                 09/96 X32 68930000
+&#EBCDIC(090) SETC T'#TESTX59                                 09/96 X32 69000000
+&#EBCDIC(091) SETC T'#TESTX5A                                 09/96 X32 69070000
+&#EBCDIC(092) SETC T'#TESTX5B                                 09/96 X32 69140000
+&#EBCDIC(093) SETC T'#TESTX5C                                 09/96 X32 69210000
+&#EBCDIC(094) SETC T'#TESTX5D                                 09/96 X32 69290000
+&#EBCDIC(095) SETC T'#TESTX5E                                 09/96 X32 69360000
+&#EBCDIC(096) SETC T'#TESTX5F                                 09/96 X32 69430000
+&#EBCDIC(097) SETC T'#TESTX60                                 09/96 X32 69500000
+&#EBCDIC(098) SETC T'#TESTX61                                 09/96 X32 69570000
+&#EBCDIC(099) SETC T'#TESTX62                                 09/96 X32 69640000
+&#EBCDIC(100) SETC T'#TESTX63                                 09/96 X32 69720000
+&#EBCDIC(101) SETC T'#TESTX64                                 09/96 X32 69790000
+&#EBCDIC(102) SETC T'#TESTX65                                 09/96 X32 69860000
+&#EBCDIC(103) SETC T'#TESTX66                                 09/96 X32 69930000
+&#EBCDIC(104) SETC T'#TESTX67                                 09/96 X32 70000000
+&#EBCDIC(105) SETC T'#TESTX68                                 09/96 X32 70070000
+&#EBCDIC(106) SETC T'#TESTX69                                 09/96 X32 70150000
+&#EBCDIC(107) SETC T'#TESTX6A                                 09/96 X32 70220000
+&#EBCDIC(108) SETC T'#TESTX6B                                 09/96 X32 70290000
+&#EBCDIC(109) SETC T'#TESTX6C                                 09/96 X32 70360000
+&#EBCDIC(110) SETC T'#TESTX6D                                 09/96 X32 70430000
+&#EBCDIC(111) SETC T'#TESTX6E                                 09/96 X32 70500000
+&#EBCDIC(112) SETC T'#TESTX6F                                 09/96 X32 70570000
+&#EBCDIC(113) SETC T'#TESTX70                                 09/96 X32 70650000
+&#EBCDIC(114) SETC T'#TESTX71                                 09/96 X32 70720000
+&#EBCDIC(115) SETC T'#TESTX72                                 09/96 X32 70790000
+&#EBCDIC(116) SETC T'#TESTX73                                 09/96 X32 70860000
+&#EBCDIC(117) SETC T'#TESTX74                                 09/96 X32 70930000
+&#EBCDIC(118) SETC T'#TESTX75                                 09/96 X32 71000000
+&#EBCDIC(119) SETC T'#TESTX76                                 09/96 X32 71080000
+&#EBCDIC(120) SETC T'#TESTX77                                 09/96 X32 71150000
+&#EBCDIC(121) SETC T'#TESTX78                                 09/96 X32 71220000
+&#EBCDIC(122) SETC T'#TESTX79                                 09/96 X32 71290000
+&#EBCDIC(123) SETC T'#TESTX7A                                 09/96 X32 71360000
+&#EBCDIC(124) SETC T'#TESTX7B                                 09/96 X32 71430000
+&#EBCDIC(125) SETC T'#TESTX7C                                 09/96 X32 71510000
+&#EBCDIC(126) SETC ''''''                                               71580000
+&#EBCDIC(127) SETC T'#TESTX7E                                 09/96 X32 71650000
+&#EBCDIC(128) SETC T'#TESTX7F                                 09/96 X32 71720000
+&#EBCDIC(129) SETC T'#TESTX80                                 09/96 X32 71790000
+&#EBCDIC(130) SETC T'#TESTX81                                 09/96 X32 71860000
+&#EBCDIC(131) SETC T'#TESTX82                                 09/96 X32 71930000
+&#EBCDIC(132) SETC T'#TESTX83                                 09/96 X32 72010000
+&#EBCDIC(133) SETC T'#TESTX84                                 09/96 X32 72080000
+&#EBCDIC(134) SETC T'#TESTX85                                 09/96 X32 72150000
+&#EBCDIC(135) SETC T'#TESTX86                                 09/96 X32 72220000
+&#EBCDIC(136) SETC T'#TESTX87                                 09/96 X32 72290000
+&#EBCDIC(137) SETC T'#TESTX88                                 09/96 X32 72360000
+&#EBCDIC(138) SETC T'#TESTX89                                 09/96 X32 72440000
+&#EBCDIC(139) SETC T'#TESTX8A                                 09/96 X32 72510000
+&#EBCDIC(140) SETC T'#TESTX8B                                 09/96 X32 72580000
+&#EBCDIC(141) SETC T'#TESTX8C                                 09/96 X32 72650000
+&#EBCDIC(142) SETC T'#TESTX8D                                 09/96 X32 72720000
+&#EBCDIC(143) SETC T'#TESTX8E                                 09/96 X32 72790000
+&#EBCDIC(144) SETC T'#TESTX8F                                 09/96 X32 72870000
+&#EBCDIC(145) SETC T'#TESTX90                                 09/96 X32 72940000
+&#EBCDIC(146) SETC T'#TESTX91                                 09/96 X32 73010000
+&#EBCDIC(147) SETC T'#TESTX92                                 09/96 X32 73080000
+&#EBCDIC(148) SETC T'#TESTX93                                 09/96 X32 73150000
+&#EBCDIC(149) SETC T'#TESTX94                                 09/96 X32 73220000
+&#EBCDIC(150) SETC T'#TESTX95                                 09/96 X32 73290000
+&#EBCDIC(151) SETC T'#TESTX96                                 09/96 X32 73370000
+&#EBCDIC(152) SETC T'#TESTX97                                 09/96 X32 73440000
+&#EBCDIC(153) SETC T'#TESTX98                                 09/96 X32 73510000
+&#EBCDIC(154) SETC T'#TESTX99                                 09/96 X32 73580000
+&#EBCDIC(155) SETC T'#TESTX9A                                 09/96 X32 73650000
+&#EBCDIC(156) SETC T'#TESTX9B                                 09/96 X32 73720000
+&#EBCDIC(157) SETC T'#TESTX9C                                 09/96 X32 73800000
+&#EBCDIC(158) SETC T'#TESTX9D                                 09/96 X32 73870000
+&#EBCDIC(159) SETC T'#TESTX9E                                 09/96 X32 73940000
+&#EBCDIC(160) SETC T'#TESTX9F                                 09/96 X32 74010000
+&#EBCDIC(161) SETC T'#TESTXA0                                 09/96 X32 74080000
+&#EBCDIC(162) SETC T'#TESTXA1                                 09/96 X32 74150000
+&#EBCDIC(163) SETC T'#TESTXA2                                 09/96 X32 74230000
+&#EBCDIC(164) SETC T'#TESTXA3                                 09/96 X32 74300000
+&#EBCDIC(165) SETC T'#TESTXA4                                 09/96 X32 74370000
+&#EBCDIC(166) SETC T'#TESTXA5                                 09/96 X32 74440000
+&#EBCDIC(167) SETC T'#TESTXA6                                 09/96 X32 74510000
+&#EBCDIC(168) SETC T'#TESTXA7                                 09/96 X32 74580000
+&#EBCDIC(169) SETC T'#TESTXA8                                 09/96 X32 74650000
+&#EBCDIC(170) SETC T'#TESTXA9                                 09/96 X32 74730000
+&#EBCDIC(171) SETC T'#TESTXAA                                 09/96 X32 74800000
+&#EBCDIC(172) SETC T'#TESTXAB                                 09/96 X32 74870000
+&#EBCDIC(173) SETC T'#TESTXAC                                 09/96 X32 74940000
+&#EBCDIC(174) SETC T'#TESTXAD                                 09/96 X32 75010000
+&#EBCDIC(175) SETC T'#TESTXAE                                 09/96 X32 75080000
+&#EBCDIC(176) SETC T'#TESTXAF                                 09/96 X32 75160000
+&#EBCDIC(177) SETC T'#TESTXB0                                 09/96 X32 75230000
+&#EBCDIC(178) SETC T'#TESTXB1                                 09/96 X32 75300000
+&#EBCDIC(179) SETC T'#TESTXB2                                 09/96 X32 75370000
+&#EBCDIC(180) SETC T'#TESTXB3                                 09/96 X32 75440000
+&#EBCDIC(181) SETC T'#TESTXB4                                 09/96 X32 75510000
+&#EBCDIC(182) SETC T'#TESTXB5                                 09/96 X32 75590000
+&#EBCDIC(183) SETC T'#TESTXB6                                 09/96 X32 75660000
+&#EBCDIC(184) SETC T'#TESTXB7                                 09/96 X32 75730000
+&#EBCDIC(185) SETC T'#TESTXB8                                 09/96 X32 75800000
+&#EBCDIC(186) SETC T'#TESTXB9                                 09/96 X32 75870000
+&#EBCDIC(187) SETC T'#TESTXBA                                 09/96 X32 75940000
+&#EBCDIC(188) SETC T'#TESTXBB                                 09/96 X32 76020000
+&#EBCDIC(189) SETC T'#TESTXBC                                 09/96 X32 76090000
+&#EBCDIC(190) SETC T'#TESTXBD                                 09/96 X32 76160000
+&#EBCDIC(191) SETC T'#TESTXBE                                 09/96 X32 76230000
+&#EBCDIC(192) SETC T'#TESTXBF                                 09/96 X32 76300000
+&#EBCDIC(193) SETC T'#TESTXC0                                 09/96 X32 76370000
+&#EBCDIC(194) SETC T'#TESTXC1                                 09/96 X32 76440000
+&#EBCDIC(195) SETC T'#TESTXC2                                 09/96 X32 76520000
+&#EBCDIC(196) SETC T'#TESTXC3                                 09/96 X32 76590000
+&#EBCDIC(197) SETC T'#TESTXC4                                 09/96 X32 76660000
+&#EBCDIC(198) SETC T'#TESTXC5                                 09/96 X32 76730000
+&#EBCDIC(199) SETC T'#TESTXC6                                 09/96 X32 76800000
+&#EBCDIC(200) SETC T'#TESTXC7                                 09/96 X32 76870000
+&#EBCDIC(201) SETC T'#TESTXC8                                 09/96 X32 76950000
+&#EBCDIC(202) SETC T'#TESTXC9                                 09/96 X32 77020000
+&#EBCDIC(203) SETC T'#TESTXCA                                 09/96 X32 77090000
+&#EBCDIC(204) SETC T'#TESTXCB                                 09/96 X32 77160000
+&#EBCDIC(205) SETC T'#TESTXCC                                 09/96 X32 77230000
+&#EBCDIC(206) SETC T'#TESTXCD                                 09/96 X32 77300000
+&#EBCDIC(207) SETC T'#TESTXCE                                 09/96 X32 77380000
+&#EBCDIC(208) SETC T'#TESTXCF                                 09/96 X32 77450000
+&#EBCDIC(209) SETC T'#TESTXD0                                 09/96 X32 77520000
+&#EBCDIC(210) SETC T'#TESTXD1                                 09/96 X32 77590000
+&#EBCDIC(211) SETC T'#TESTXD2                                 09/96 X32 77660000
+&#EBCDIC(212) SETC T'#TESTXD3                                 09/96 X32 77730000
+&#EBCDIC(213) SETC T'#TESTXD4                                 09/96 X32 77800000
+&#EBCDIC(214) SETC T'#TESTXD5                                 09/96 X32 77880000
+&#EBCDIC(215) SETC T'#TESTXD6                                 09/96 X32 77950000
+&#EBCDIC(216) SETC T'#TESTXD7                                 09/96 X32 78020000
+&#EBCDIC(217) SETC T'#TESTXD8                                 09/96 X32 78090000
+&#EBCDIC(218) SETC T'#TESTXD9                                 09/96 X32 78160000
+&#EBCDIC(219) SETC T'#TESTXDA                                 09/96 X32 78230000
+&#EBCDIC(220) SETC T'#TESTXDB                                 09/96 X32 78310000
+&#EBCDIC(221) SETC T'#TESTXDC                                 09/96 X32 78380000
+&#EBCDIC(222) SETC T'#TESTXDD                                 09/96 X32 78450000
+&#EBCDIC(223) SETC T'#TESTXDE                                 09/96 X32 78520000
+&#EBCDIC(224) SETC T'#TESTXDF                                 09/96 X32 78590000
+&#EBCDIC(225) SETC T'#TESTXE0                                 09/96 X32 78660000
+&#EBCDIC(226) SETC T'#TESTXE1                                 09/96 X32 78740000
+&#EBCDIC(227) SETC T'#TESTXE2                                 09/96 X32 78810000
+&#EBCDIC(228) SETC T'#TESTXE3                                 09/96 X32 78880000
+&#EBCDIC(229) SETC T'#TESTXE4                                 09/96 X32 78950000
+&#EBCDIC(230) SETC T'#TESTXE5                                 09/96 X32 79020000
+&#EBCDIC(231) SETC T'#TESTXE6                                 09/96 X32 79090000
+&#EBCDIC(232) SETC T'#TESTXE7                                 09/96 X32 79160000
+&#EBCDIC(233) SETC T'#TESTXE8                                 09/96 X32 79240000
+&#EBCDIC(234) SETC T'#TESTXE9                                 09/96 X32 79310000
+&#EBCDIC(235) SETC T'#TESTXEA                                 09/96 X32 79380000
+&#EBCDIC(236) SETC T'#TESTXEB                                 09/96 X32 79450000
+&#EBCDIC(237) SETC T'#TESTXEC                                 09/96 X32 79520000
+&#EBCDIC(238) SETC T'#TESTXED                                 09/96 X32 79590000
+&#EBCDIC(239) SETC T'#TESTXEE                                 09/96 X32 79670000
+&#EBCDIC(240) SETC T'#TESTXEF                                 09/96 X32 79740000
+&#EBCDIC(241) SETC T'#TESTXF0                                 09/96 X32 79810000
+&#EBCDIC(242) SETC T'#TESTXF1                                 09/96 X32 79880000
+&#EBCDIC(243) SETC T'#TESTXF2                                 09/96 X32 79950000
+&#EBCDIC(244) SETC T'#TESTXF3                                 09/96 X32 80020000
+&#EBCDIC(245) SETC T'#TESTXF4                                 09/96 X32 80100000
+&#EBCDIC(246) SETC T'#TESTXF5                                 09/96 X32 80170000
+&#EBCDIC(247) SETC T'#TESTXF6                                 09/96 X32 80240000
+&#EBCDIC(248) SETC T'#TESTXF7                                 09/96 X32 80310000
+&#EBCDIC(249) SETC T'#TESTXF8                                 09/96 X32 80380000
+&#EBCDIC(250) SETC T'#TESTXF9                                 09/96 X32 80450000
+&#EBCDIC(251) SETC T'#TESTXFA                                 09/96 X32 80520000
+&#EBCDIC(252) SETC T'#TESTXFB                                 09/96 X32 80600000
+&#EBCDIC(253) SETC T'#TESTXFC                                 09/96 X32 80670000
+&#EBCDIC(254) SETC T'#TESTXFD                                 09/96 X32 80740000
+&#EBCDIC(255) SETC T'#TESTXFE                                 09/96 X32 80810000
+&#EBCDIC(256) SETC T'#TESTXFF                                 09/96 X32 80880000
+         AGO   .GENLP
+.GNTEBCD MNOTE 8,'ERROR - &&GEN(&A1)=&GEN(&A1) IS UNRECOGNIZED'
+         AGO   .GENLP
+.GENEND  ANOP
+.*
+.*
+.*
+.END     MEND

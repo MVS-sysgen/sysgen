@@ -1,0 +1,840 @@
+         MACRO
+&N       #ENTER &NME,&ESDTYPE=DEFAULT,&BASES=1,&SAVTYPE=LOCAL,&PFIX=
+.*
+.*
+.*                                                            08/85 DBC
+.* LAST CHANGE DATE - AUGUST 12, 1985                         08/85 DBC
+.*                  - THIS MACRO NO LONGER ASSUMES THAT A     08/85 DBC
+.*                    SATISFIED UNCONDITIONAL GETMAIN         08/85 DBC
+.*                    REQUEST SETS R15 TO ZERO. ONE CUSTOMER  08/85 DBC
+.*                    ACTUALLY HAD A MODIFIED GETMAIN SVC     08/85 DBC
+.*                    ROUTINE THAT INSURED THAT R15 WAS       08/85 DBC
+.*                    UNCHANGED BY GETMAIN. THIS LED TO       08/85 DBC
+.*                    DISASTEROUS RESULTS WHEN HE ATTEMPTED   08/85 DBC
+.*                    TO USE THIS MACRO IN THAT               08/85 DBC
+.*                    ENVIRONMENT. NOW, CHANGING MY MACRO     08/85 DBC
+.*                    WAS A LOT SIMPLER THAN CHANGING HIS     08/85 DBC
+.*                    ENVIRONMENT, AND THERE WAS A LOT OF     08/85 DBC
+.*                    MONEY AT STAKE, SO ...                  08/85 DBC
+.*                                                            08/84 DBC
+.* LAST CHANGE DATE - AUGUST 8, 1984                          08/84 DBC
+.*                  - WHEN BASES=* IS SPECIFIED, #ENTER NOW   08/84 DBC
+.*                    DERIVES THE DESIRED BASE ADDRESS BY     08/84 DBC
+.*                    SUBTRACTING AN OFFSET FROM THE          08/84 DBC
+.*                    CURRENT ENTRY ADDRESS. PREVIOUSLY, IT   08/84 DBC
+.*                    WAS JUST LOADING AN ADCON FOR THE       08/84 DBC
+.*                    DESIRED BASE ADDRESS. THIS CAUSED       08/84 DBC
+.*                    PROBLEMS IF THE #ENTER MACRO WAS        08/84 DBC
+.*                    LOCATED WITHIN DYNAMICALLY RELOCATED    08/84 DBC
+.*                    CODE.                                   08/84 DBC
+.*                  - SIMILARLY, WHEN SAVTYPE=(REMOTE,NME%)   08/84 DBC
+.*                    IS SPECIFIED, THE DESIRED SAVE AREA     08/84 DBC
+.*                    IS LOCATED BY ADDING AN OFFSET (WHICH   08/84 DBC
+.*                    MAY BE NEGATIVE) TO THE CURRENT ENTRY   08/84 DBC
+.*                    ADDRESS.                                08/84 DBC
+.*                                                            06/84 DBC
+.* LAST CHANGE DATE - JUNE 11, 1984                           06/84 DBC
+.*                  - ADDED "SAVTYPE=NONE" SUPPORT.           06/84 DBC
+.*                  - WHEN A REMOTE SAVE AREA WAS USED,       06/84 DBC
+.*                    #ENTER USE TO GENERATE A "USING"        06/84 DBC
+.*                    STATEMENT DECLARING R13 AS A BASE FOR   06/84 DBC
+.*                    THAT SAVE AREA. THAT "USING" STATEMENT  06/84 DBC
+.*                    IS NO LONGER GENERATED.                 06/84 DBC
+.*
+.* LAST CHANGE DATE - OCTOBER 18, 1983
+.*                  - MAILING ADDRESS CHANGE
+.*
+.* LAST CHANGE DATE - APRIL 27, 1983
+.*                  - MAILING ADDRESS CHANGE.
+.*                  - USE OF IBM'S "SAVE" MACRO HAS BEEN
+.*                    REPLACED BY LOCAL CODE.
+.*                  - THE ASSEMBLY DATE AND TIME ARE NOW
+.*                    INCLUDED IN THE MODULE IDENTIFIER
+.*                    TEXT.
+.*
+.* LAST CHANGE DATE - APRIL 21, 1981
+.*                  - MACRO NAME CHANGED FROM $ENTER TO #ENTER.
+.*
+.* LAST CHANGE DATE - APRIL 15, 1981
+.*                  - ADDED ENTRY LINKAGE FOR A PLI ENVIRONMENT.
+.*                  - ADDED "#REGS GEN=NO" SUPPORT.
+.*
+.* LAST CHANGE DATE - JULY 18, 1980
+.*                  - BUG FIXED: THE PRECEEDING MODIFICATION INTRODUCED
+.*                    AN ERROR WHICH UNDER CERTAIN CIRCUMSTANCES
+.*                    GENERATED ASSEMBLY ERRORS.
+.*
+.* LAST CHANGE DATE - JULY 10, 1980
+.*                  - FOR GETMAINED REENTRANT SAVE AREAS, CODE HAS BEEN
+.*                    ADDED TO CLEAR THE ENTIRE GETMAINED AREA TO ZEROS
+.*                    BEFORE SETING THE CHAIN FIELD.
+.*                  - INDIRECT ADDRESSING TO A REMOTE SAVE AREA IS NOW
+.*                    SIGNALLED BY A TRAILING PERCENT SIGN RATHER THAN
+.*                    A LEADING PERCENT SIGN.
+.*
+.* LAST CHANGE DATE - OCTOBER 3, 1979
+.*                  - CODE HAS BEEN ALTERED SO THAT ADDRESSABILITY TO
+.*                    A REMOTE SAVE AREA DOES NOT HAVE TO BE BASED ON
+.*                    R15 (I.E., ON THE ENTRY ADDRESS).
+.*
+.* LAST CHANGE DATE - OCTOBER 3, 1978
+.*                  - THE GETMAIN FOR THE RENTRANT SAVE AREA HAS BEEN
+.*                    CHANGED SO THAT MORE THAN 4K BYTES CAN BE GOTTEN.
+.*
+.* LAST CHANGE DATE - FEBRUARY 28, 1978
+.*                  - BUG FIXED IN REMOTE SAVE AREA HANDLING
+.*
+.* LAST CHANGE DATE - JANUARY 29, 1978
+.*                  - IN MOST CASES IT IS LOGICALLY INCONSISTANT TO
+.*                    CODE 'BASES=*' WHEN ONE OF THE OLD BASES IS R13.
+.*                    THIS PROBLEM IS NOW RECOGNIZED AND FLAGGED.
+.*
+.*                  - A REMOTE SAVE AREA'S NAME CAN NOW BE GIVEN EITHER
+.*                    WITH OR WITHOUT A PRECEEDING PERCENT (%) SIGN TO
+.*                    INDICATE WHETHER THE NAMED ADDRESS MUST BE
+.*                    REACHED BY INDIRECT ADDRESSING.
+.*
+.* LAST CHANGE DATE - NOVEMBER 4, 1977
+.*                  - SUPPORT IS ADDED FOR DEFINING A LOCAL SAVE AREA
+.*                    WHOSE LENGTH IS OTHER THAN 72 BYTES.
+.*
+.* LAST CHANGE DATE - JANUARY 13, 1977
+.*                  - THE MF= AND SVID= OPERANDS ARE REPLACED BY THE
+.*                    SAVTYPE= OPERAND.
+.*                  - SUPPORT FOR THE HANDLING OF A REMOTELY ASSEMBLED
+.*                    SAVE AREA.
+.*                  - MAILING ADDRESS CHANGE.
+.*
+.* LAST CHANGE DATE - SEPTEMBER 14, 1976
+.*                  - IMPLEMENT SUPPORT FOR "BASES=*" WHICH IMPLIES
+.*                    THAT BOTH THE BASE ADDRESS AND BASE REGISTERS
+.*                    DEFINED BY THE PHYSICALLY PREVIOUS USE OF THE
+.*                    #ENTER MACRO ARE TO BE REUSED.
+.*
+.* LAST CHANGE DATE - AUGUST 23, 1976
+.*
+.* THIS MACRO WAS WRITTEN BY DAVID B. COLE.  ANY QUESTIONS CONCERNING
+.* IT MAY BE ADDRESSED TO:
+.*       RR#2 BOX 712
+.*       AFTON, VA. 22920
+.*
+.*
+.*
+.*   THIS MACRO GENERATES OS STANDARD ENTRY LINKAGE. IT WAS WRITTEN TO
+.* PROVIDE A SIMPLE, FLEXIBLE, AND COMPLETE METHOD OF GENERATING SUCH
+.* LINKAGE. IN ADDITION, FOR ALMOST ALL OPERAND COMBINATIONS, #ENTER
+.* WILL GENERATE THE ABSOLUTE MINIMUM AMOUNT OF CODE NECESSARY.
+.*
+.*   THE #ENTER MACRO WILL GENERATE THE FOLLOWING:
+.*     - A CSECT OR ENTRY CARD (IF DESIRED)
+.*     - A MODULE IDENTIFIER WHICH WILL INCLUDE THE ASSEMBLY
+.*       DATE AND TIME.
+.*     - CODE TO SAVE ALL REGISTERS IN THE HIGHER SAVE AREA
+.*     - CODE TO LOAD R13 WITH A POINTER TO A LOWER SAVE AREA
+.*     - CODE TO CROSS LINK THE LOWER SAVE AREA WITH THE HIGHER SAVE
+.*       AREA
+.*     - CODE TO LOAD ANY SET OF BASE REGISTERS
+.*     - A USING STATEMENT DECLARING THE SET OF BASE REGISTERS
+.*     - EITHER THE LOWER SAVE AREA ITSELF OR CODE TO GETMAIN A
+.*       REENTRANT SAVE AREA OF 72 OR MORE BYTES OR CODE TO LOAD THE
+.*       ADDRESS OF AN ASSEMBLED SAVE AREA THAT IS REMOTE FROM THE
+.*       MACRO EXPANSION.
+.*     - FOR A GETMAINED REENTRANT SAVE AREA, CODE TO CLEAR THE AREA TO
+.*       ZEROS.
+.*
+.* &N
+.*       THIS IS THE ONLY FIELD REQUIRED FOR THE MACRO CALL. IT MUST
+.*       SPECIFY THE DESIRED CONTROL SECTION OR ENTRY NAME.
+.*
+.* &NME
+.*       USE THIS FIELD TO SPECIFY OPTIONAL TEXT TO BE
+.*       INCLUDED INTO THE MODULE IDENTIFIER. ENCLOSING
+.*       QUOTES ARE OPTIONAL.
+.*
+.* &ESDTYPE=
+.*       THIS OPERAND CONTROLS THE TYPE OF EXTERNAL SYMBOL (IF ANY) TO
+.*       BE GENERATED USING &N. VALID VALUES FOR THIS OPERAND IMPLY THE
+.*       FOLLOWING:
+.*              -OMITTED-    ==> ESDTYPE=ENTRY IF SAVTYPE=PLI
+.*              -OMITTED-    ==> ESDTYPE=CSECT OTHERWISE
+.*             ESDTYPE=CSECT ==>
+.*                     &N       CSECT
+.*             ESDTYPE=START ==>
+.*                     &N       START
+.*             ESDTYPE=ENTRY ==>
+.*                              ENTRY &N
+.*                     &N       DS    0H
+.*             ESDTYPE=     <==>
+.*             ESDTYPE=NONE  ==>
+.*                     &N       DS    0H
+.*
+.* &BASES=
+.*       USE THIS OPERAND TO SPECIFY EITHER HOW MANY OR EXACTLY WHICH
+.*       BASE REGISTERS TO DECLARE AND LOAD. VALID VALUES FOR THIS
+.*       OPERAND ARE:
+.*             BASES= -A SINGLE SELF DEFINING NUMERIC-
+.*                   THIS REQUESTS THAT A SPECIFIC NUMBER OF BASES BE
+.*                   LOADED AND DECLARED. THE MACRO IS ALLOWED TO
+.*                   DETERMINE FOR ITSELF PRECISELY WHICH REGISERS TO
+.*                   DECLARE AS FOLLOWS. FOR SAVTYPE=LOCAL (SEE BELOW)
+.*                   THE FIRST BASE REGISTER WILL BE R13; OTHERWISE
+.*                   (I.E. FOR SAVTYPE=RENT OR SAVTYPE=REMOTE), THE
+.*                   FIRST BASE REGISTER WILL BE R12. IN EITHER CASE,
+.*                   ADDITIONAL BASES WILL BE SUCCESSIVELY LOWER
+.*                   NUMBERED REGISTERS. EXAMPLES:
+.*                   BASES=3,SAVTYPE=RENT  ==> R12, R11, AND R10.
+.*                   BASES=2,SAVTYPE=LOCAL ==> R13, AND R12.
+.*             BASES= -A SUBLIST OF ONE OR MORE REGISTER NAMES-
+.*                   THE LISTED REGISTERS ARE LOADED AND DECLARED AS
+.*                   BASES. THE LEFTMOST LISTED REGISTER IS LOADED WITH
+.*                   THE LOWEST ADDRESS. EXAMPLE:
+.*                   BASES=(R5,6,4) ==> R5, R6, AND R4 IN THAT ORDER.
+.*             BASES=*
+.*                   THE BASE ADDRESS AND BASE REGISTERS DEFINED BY THE
+.*                   PHYSICALLY PREVIOUS #ENTER MACRO ARE REUSED.
+.*          THE BASES= OPERAND MAY BE NULLIFIED BY SPECIFYING EITHER:
+.*             BASES=
+.*             BASES=0
+.*       IN THIS CASE, NO BASE REGISTERS ARE LOADED OR DECLARED.
+.*          IF THE BASES= OPERAND IS OMITTED, THEN A DEFAULT OF BASES=1
+.*       WILL BE USED.
+.*
+.* &SAVTYPE=
+.*       THIS OPERAND IDENTIFIES THE TYPE OR LOCATION OF THE SAVE AREA
+.*       TO BE GENERATED OR USED. VALID VALUES ARE:
+.*             -OMITTED-
+.*             SAVTYPE=
+.*             SAVTYPE=LOCAL
+.*             SAVTYPE=(,-SAVE AREA NAME-)
+.*             SAVTYPE=(LOCAL,-SAVE AREA NAME-)
+.*             SAVTYPE=(LOCAL,,-SAVE AREA LENGTH-)
+.*             SAVTYPE=(LOCAL,-SAVE AREA NAME-,-SAVE AREA LENGTH-)
+.*                     A STANDARD SAVE AREA IS GENERATED IN THE
+.*                     THE MACRO EXPANSION AND ITS ADDRESS IS LOADED
+.*                     INTO R13. NOTE, DEPENDING UPON THE BASES=
+.*                     OPERAND (SEE ABOVE) R13 MAY ALSO BE DECLARED AS
+.*                     A PROGRAM BASE.
+.*                        IF A -SAVE AREA NAME- IS GIVEN, THEN IT IS
+.*                     USED TO LABEL THE SAVE AREA; OTHERWISE, AN
+.*                     INTERNAL NAME IS GENERATED.
+.*                              IF -SAVE AREA LENGTH- IS GIVEN, THEN IT
+.*                              IS USED TO SET THE LENGTH OF THE SAVE
+.*                              AREA; OTHERWISE, THE DEFAULT LENGTH OF
+.*                              72 BYTES IS USED.
+.*             SAVTYPE=(REMOTE,-SAVE AREA ADDRESS-)
+.*                     THE ADDRESS OF THE REMOTE SAVE AREA IS
+.*                     LOADED INTO R13. NOTE, IN THIS CASE -SAVE AREA
+.*                     ADDRESS- IS A REQUIRED SUB-OPERAND. IT MAY BE
+.*                     EITHER AN ADDRESS LABEL OR A PARENTHESIZED
+.*                     REGISTER NAME OR AN ADDRESS LABEL FOLLOWED BY A
+.*                     PERCENT (%) SIGN. IF THE NAME IS JUST AN ADDRESS
+.*                     LABEL, THEN A 'LA' INSTRUCTION IS USED TO LOAD
+.*                     THE SAVE AREA'S ADDRESS. IF A PERCENT SIGN
+.*                     FOLLOWS THE NAME, THEN AN ADDRESS CONSTANT IS
+.*                     GENERATED AND A 'L' INSTRUCTION IS USED. IF A
+.*                     REGISTER NAME IS GIVEN, THEN A 'LR' INSTRUCTION
+.*                     IS USED UNLESS THE MACRO CAN DETERMINE THAT THE
+.*                     NAMED REGISTER IS ACTUALLY R13 IN WHICH CASE IT
+.*                     IS ASSUMED THAT THE LOWER SAVE AREA IS ALREADY
+.*                     PRESENT AND INITIALIZED, SO THE SAVING OF
+.*                     REGISTERS AND THE CROSS-CHAINING OF THE SAVE
+.*                     AREAS IS BYPASSED.
+.*             SAVTYPE=RENT
+.*             SAVTYPE=(RENT,(-LENGTH-,-SUBPOOL-),-ERROR ADDRESS-)
+.*             SAVTYPE=(RENT,(-LENGTH-,-SUBPOOL-),RETURN)
+.*                     THE MACRO EXPANSION IS TO BE REENTRANT. THE SAVE
+.*                     AREA IS TO BE GETMAINED. THE SUB-OPERANDS HAVE
+.*                     THE FOLLOWING AFFECT:
+.*                     -LENGTH- IS OPTIONAL. IF OMITTED, THEN A VALUE
+.*                              OF 72 IS USED. IF GIVEN, THEN IT
+.*                              INDICATES THE SIZE OF THE SAVE AREA TO
+.*                              BE GOTTEN. WARNING, THE VALUE OF
+.*                              -LENGTH- SHOULD NEVER BE LESS THAN 72.
+.*                     -SUBPOOL- IS OPTIONAL. IF OMITTED, THEN A VALUE
+.*                               OF 0 IS IMPLIED. IF GIVEN, THEN IT
+.*                               SPECIFIES THE SUBPOOL OUT OF WHICH THE
+.*                               SAVE AREA IS TO BE GOTTEN.
+.*                     -ERROR ADDRESS- IS OPTIONAL. IF OMITTED, THEN
+.*                                     THE SAVE AREA GETMAIN REQUEST IS
+.*                                     UNCONDITIONAL. IF GIVEN, THEN
+.*                                     THE GETMAIN IS CONDITIONAL, AND
+.*                                     IF IT FAILS, THEN CONTROL IS
+.*                                     PASSED TO THE INDICATED ADDRESS.
+.*                                     NOTE, -ERROR ADDRESS- MAY BE
+.*                                     EITHER A STATEMENT LABEL OR A
+.*                                     PARENTHESIZED REGISTER NAME.
+.*                                     WARNING, -ERROR ADDRESS- MAY BE
+.*                                     USED ONLY IN A MVS ENVIRONMENT.
+.*                                     IT IS NOT SUPPORTED UNDER MVT.
+.*                     RETURN IS A SPECIAL FORM OF -ERROR ADDRESS-
+.*                            WHICH, IF GIVEN, CAUSES CONTROL TO BE
+.*                            RETURNED IMMEDIATELY TO THE CALLER IN THE
+.*                            EVENT OF A GETMAIN FAILURE. ALL REGISTERS
+.*                            ARE RESTORED EXCEPT R15 WHICH CONTAINS
+.*                            THE RETURN CODE FROM GETMAIN.
+.*             SAVTYPE=PLI
+.*             SAVTYPE=NONE                                   06/84 DBC
+.*                     NO LOCAL LEVEL SAVEAREA IS DEFINED OR  06/84 DBC
+.*                     USED.                                  06/84 DBC
+.*             SAVTYPE=(PLI,-LENGTH-)
+.*                     THE MACRO IS TO EXPAND INTO THE FORMAT OF A PLI
+.*                     PROLOG. THE EXPANSION IS REENTRANT. THE SAVE
+.*                     AREA WILL BE A PLI DSA. IT WILL PROBABLY BE
+.*                     OBTAINED FROM PLI'S ISA. IF -LENGTH- IS GIVEN,
+.*                     THEN IT SPECIFIES THE DESIRED LENGTH OF THE DSA
+.*                     THAT THIS EXPANSION OBTAINS. WARNING, THE VALUE
+.*                     OF -LENGTH- MUST NEVER BE LESS THAN 88.
+.*
+.* &PFIX=
+.*       THE #ENTER MACRO ATTEMPTS TO USE REGISTER EQUATES IN ITS
+.*       EXPANSION WHEN REFERING TO REGISTERS. THIS IS SO THAT THE USE
+.*       OF THE REGISTERS IS INDICATED IN THE ASSEMBLER'S CROSS
+.*       REFERENCE LISTING. THE PFIX= OPERAND CAN BE USED TO CONTROL
+.*       THE SET OF EQUATES USED. FOR EXAMPLE, IF "PFIX=GPR" IS GIVEN,
+.*       THEN "GPR1" IS USED WHENEVER THE EXPANSION REFERS FO REGISTER
+.*       1.
+.*          IF THE PFIX= OPERAND IS OMITTED, THEN THE SET OF REGISTER
+.*       EQUATES DEFINED BY THE NEXT PRIOR #REGS MACRO IS USED. IF
+.*       THERE ARE NO PRIOR #REGS MACROS, THEN SELF-DEFINING NUMERICS
+.*       ARE USED.
+.*
+.* MISCELLANIOUS CONSIDERATIONS
+.*     - SINCE THE #ENTER MACRO EXPANSION USUALLY INCLUDES A CSECT
+.*       CARD, THE MACRO CALL SHOULD BE PLACED AT THE PHYSICAL
+.*       BEGINNING OF A CONTROL SECTION.
+.*     - FOR LOCAL SAVE AREAS IT IS BOTH POSSIBLE AND REASONABLE FOR
+.*       R13 TO SERVE AS BOTH THE SAVE AREA POINTER AND A PROGRAM BASE.
+.*       THERE ARE, HOWEVER, CERTAIN PRECAUTIONS THAT HAVE TO BE TAKEN
+.*       FOR VARIOUS SYSTEM EXIT ROUTINES IF THEY ARE INCLUDED IN THE
+.*       PROGRAM. HERE ARE SOME EXAMPLES:
+.*           - IOS APPENDAGE ROUTINES: NO BASE REGISTER FOR THE MAIN
+.*             PROGRAM, INCLUDING R13, IS AVAILABLE FROM WITHIN AN IOS
+.*             APPENDAGE.
+.*           - DCB OPEN EXITS: R13 REMAINS A VALID BASE REGISTER.
+.*           - EOD ROUTINES: R13 REMAINS A VALID BASE REGISTER.
+.*           - SYNAD EXITS: R13 REMAINS A VALID BASE REGISTER UNTIL A
+.*             SYNADAF MACRO IS ISSUED. AFTER A SUBSEQUENT SYNADRLS
+.*             MACRO, R13 IS AGAIN A VALID PROGRAM BASE.
+.*
+.*
+.*
+.* INNER MACROS USED - #USING, #TEST, SAVE, GETMAIN
+.*
+         GBLA  &#TESERR
+         GBLB  &#ENTRNT,&#ENTPLI,&#ENTNUN                     06/84 DBC
+         GBLC  &#TESRET(20),&#ENTSIZ,&#ENTSP,&#BS(14)
+         LCLA  &A1,&A2,&C1,&C2,&C3,&C4,&B(13),&RMTREGA
+         LCLB  &REDUN(13),&OLDBASE,&REMOTE(5),&ALIGND,&LOCAL,&LENGTH
+         LCLC  &LID,&@,&#,&N1,&N2,&W2,&W3,&R,&RMTREGC,&SAVLEN,&RMTNAME
+         LCLC  &SPOOL,&TB,&ESDT,&C                            06/84 DBC
+&#       SETC  '&SYSNDX'
+&#ENTRNT SETB  (0)
+&#ENTPLI SETB  (0)
+&#ENTNUN SETB  (0)
+&C1      SETA  11
+.*                                                            06/84 DBC
+         AIF   ('&SAVTYPE' NE 'NONE').TYPNNON                 06/84 DBC
+&#ENTNUN SETB  (1)                                            06/84 DBC
+         AGO   .PFXTST                                        06/84 DBC
+.TYPNNON ANOP                                                 06/84 DBC
+.*                                                            06/84 DBC
+         AIF   ('&SAVTYPE(1)' NE 'RENT').TYPNRNT
+&#ENTRNT SETB  (1)
+&#ENTSIZ SETC  '72'
+&#ENTSP  SETC  ''
+         #TEST DCODE=&SAVTYPE(2)
+&A1      SETA  &#TESRET(1)
+         AIF   (&A1 EQ 0).PFXTST
+         AIF   ('&#TESRET(2)' EQ '').DFLTLEN
+&#ENTSIZ SETC  '&#TESRET(2)'
+.DFLTLEN AIF   (&A1 EQ 1).PFXTST
+&#ENTSP  SETC  '&#TESRET(3)'
+         AGO   .PFXTST
+.TYPNRNT ANOP
+.*
+         AIF   ('&SAVTYPE(1)' NE 'REMOTE').TYPNRMT
+&REMOTE(1) SETB (1)
+         AIF   ('&SAVTYPE(2)' NE '').GOTRMT2
+         MNOTE 12,'ERROR - SAVTYPE(2) (REMOTE AREA''S NAME) OMITTED.'
+.GOTRMT2 AIF   ('&SAVTYPE(2)'(1,1) EQ '(').TYPLCL2
+&REMOTE(2) SETB (1)
+&RMTNAME SETC  '&SAVTYPE(2)'
+         AIF   ('&SAVTYPE(2)'(K'&SAVTYPE(2),1) NE '%').PFXTST
+&REMOTE(5) SETB (1)
+&RMTNAME SETC  '&SAVTYPE(2)'(1,K'&SAVTYPE(2)-1)
+         AGO   .PFXTST
+.TYPLCL2 #TEST DCODE=&SAVTYPE(2)
+&RMTREGC SETC  '&#TESRET(2)'
+         #TEST REGS=&RMTREGC
+         AIF   (&#TESERR NE 0).PFXTST
+&RMTREGA SETA  &#TESRET(1)
+         AIF   (&RMTREGA NE 13).PFXTST
+&REMOTE(3) SETB (1)
+         AGO   .PFXTST
+.TYPNRMT ANOP
+.*
+         AIF   ('&SAVTYPE(1)' NE 'PLI').TYPNPLI
+&#ENTPLI SETB  (1)
+&C1      SETA  10
+         AGO   .PFXTST
+.TYPNPLI ANOP
+.*
+         AIF   ('&SAVTYPE(1)' EQ '' OR '&SAVTYPE(1)' EQ 'LOCAL').TYPLCL
+         MNOTE 4,'SAVTYPE(1)=&SAVTYPE(1) IS INVALID.'
+         MNOTE 4,'SAVTYPE(1)=LOCAL ASSUMED.'
+.TYPLCL  ANOP
+&LOCAL   SETB  (1)
+&C1      SETA  12
+&LID     SETC  'E&#.SVA'
+         AIF   ('&SAVTYPE(2)' EQ '').GOTSLID
+&LID     SETC  '&SAVTYPE(2)'
+.GOTSLID ANOP
+&SAVLEN  SETC  '72'
+         AIF   ('&SAVTYPE(3)' EQ '').PFXTST
+&SAVLEN  SETC  '&SAVTYPE(3)'
+.*
+.PFXTST  ANOP
+&@       SETC  '&PFIX'
+         AIF   (K'&PFIX NE 0).GOTPFIX
+         #TEST PFIX=
+&@       SETC  '&#TESRET(1)'
+         AGO   .DONPFIX
+.GOTPFIX #REGS &PFIX,GEN=NO
+.DONPFIX ANOP
+.*                                                            06/84 DBC
+&A1      SETA  0
+         AIF   ('&BASES' NE '*').BSCLR
+.BSOLD   AIF   (&A1 EQ 13).BASEND
+&A1      SETA  &A1+1
+         AIF   ('&#BS(&A1)' EQ '').BSOLD
+         #TEST REGS=&#BS(&A1)
+&B(&A1)  SETA  16
+         AIF   (&#TESERR NE 0).BSOLD
+&B(&A1)  SETA  &#TESRET(1)
+         AIF   (&B(&A1) NE 13).BSOLD
+         AIF   (&A1 NE 13 OR '&#BS(14)' NE '&RMTNAME' OR &#ENTRNT OR &#*
+               ENTPLI).BSERROR
+&REMOTE(4) SETB (1)
+         AGO   .BSOLD
+.BSERROR ANOP
+         MNOTE 4,'THE OLD BASE REGISTER &B(&A1) CANNOT ALSO FUNCTION'
+         MNOTE 4,'AS A SAVE AREA POINTER IN THIS CONTEXT.'
+         MNOTE 4,'THE CODE GENERATED BELOW WILL NOT FUNCTION CORRECTLY.*
+               '
+         AGO   .BSOLD
+.BSCLR   AIF   (&A1 EQ 14).BSCLRD
+&A1      SETA  &A1+1
+&#BS(&A1) SETC ''
+         AGO   .BSCLR
+.BSCLRD  AIF   (K'&BASES EQ 0).BASEND
+         AIF   ('&BASES' NE '&BASES(1)').TSTNBSE
+         #TEST NUM=&BASES
+         AIF   (&#TESERR EQ 0).BSEOKX
+         MNOTE 4,'"BASES=&BASES" IS INVALID.'
+         MNOTE 4,'"BASES=1" ASSUMED.'
+&C3      SETA  1
+         AGO   .BSESET
+.BSEOKX  ANOP
+&C3      SETA  &BASES
+         AIF   (&C3 LE &C1).BSESET
+         MNOTE 4,'"BASES=&BASES" IS OUTSIDE THE RANGE OF 0...&C1..'
+         MNOTE 4,'THE CODE GENERATED BELOW WILL NOT FUNCTION CORRECTLY.*
+               '
+.BSESET  ANOP
+&C1      SETA  &C1+1
+&C3      SETA  &C1-&C3
+&C4      SETA  13
+.BOK     AIF   (&C1 LE &C3).BASEND
+&#BS(&C4) SETC '&@&C1'
+&B(&C4)  SETA  &C1
+&C1      SETA  &C1-1
+&C4      SETA  &C4-1
+         AGO   .BOK
+.TSTNBSE ANOP
+&C3      SETA  N'&BASES
+         AIF   (&C3 LE &C1).NBSOK
+         MNOTE 4,'"BASES=&BASES" SPECIFIES TOO MAY REGISTERS.'
+         MNOTE 4,'ONLY THE FIRST &C1 REGISTERS WILL BE USED.'
+&C3      SETA  &C1
+.NBSOK   ANOP
+&C1      SETA  &C1+1
+&C4      SETA  13
+&C2      SETA  0
+.GETBSE  AIF   (&C2 GE &C3).BASEND
+&C2      SETA  &C2+1
+         AIF   ('&BASES(&C2)' EQ '').IGNR
+         #TEST REGS=&BASES(&C2)
+&B(&C4)  SETA  16
+         AIF   (&#TESERR EQ 16).REGUNK
+         AIF   (&#TESRET(1) GE 2 AND &#TESRET(1) LE &C1).BSEOK2
+         MNOTE 4,'"BASES(&C2)=&BASES(&C2)" IS OUTSIDE THE RANGE OF 2...*
+               &C1..'
+         MNOTE 4,'THE CODE GENERATED BELOW WILL NOT FUNCTION CORRECTLY.*
+               '
+         AGO   .BSEOK2
+.IGNR    AIF   (&C3 GE N'&BASES).GETBSE
+&C3      SETA  &C3+1
+         AGO   .GETBSE
+.BSEOK2  AIF   (NOT &REDUN(&#TESRET(1))).BSEOK3
+         MNOTE 4,'"BASES(&C2)=&BASES(&C2) IS REDUNDANT.'
+         MNOTE 4,'THE CODE GENERATED BELOW WILL NOT FUNCTION CORRECTLY.*
+               '
+.BSEOK3  ANOP
+&REDUN(&#TESRET(1)) SETB (1)
+&B(&C4)  SETA &#TESRET(1)
+.REGUNK  ANOP
+&C1      SETA  12
+&#BS(&C4) SETC '&BASES(&C2)'
+&C4      SETA  &C4-1
+         AGO   .GETBSE
+.BASEND  ANOP
+.*
+&R       SETC  '&@.1'
+&C3      SETA  0
+.WRLP    AIF   (&C3 GE 13).GOTWRG
+&C3      SETA  &C3+1
+         AIF   ('&#BS(&C3)' EQ '').WRLP
+         AIF   (&B(&C3) EQ 13).GOTWRG
+&R       SETC  '&#BS(&C3)'
+.GOTWRG  ANOP
+.*
+&ESDT    SETC  '&ESDTYPE(1)'
+         AIF   (&#ENTPLI).PLIGEN
+.*
+         AIF   ('&ESDT' NE 'DEFAULT').GOTESD
+&ESDT    SETC  'CSECT'
+.GOTESD  ANOP
+&N2      SETC  '&N'
+         AIF   ('&ESDT' EQ 'NONE' OR '&ESDT' EQ '' OR '&ESDT' EQ 'ENTRY*
+               ').NCSCETC
+         AIF   ('&ESDT' NE 'CSECT').ESDNCSC
+&N       CSECT ,                   START CONTROL SECTION
+         AGO   .ESDDONE
+.ESDNCSC AIF   ('&ESDT' NE 'START').ESDNSTA
+&N       START ,                   START CONTOL SECTION
+         AGO   .ESDDONE
+.ESDNSTA ANOP
+&W2      SETC  '&ESDT'
+&N       &W2   0H'0'               START
+.ESDDONE ANOP
+&N2      SETC  ''
+.*
+.NCSCETC AIF   ('&ESDT' NE 'ENTRY').NENTRY
+         ENTRY &N                  MAKE NAME EXTERNALLY AVAILABLE
+.NENTRY  ANOP
+.*
+         AIF   (K'&NME EQ 0 AND '&ESDT' NE 'CSECT' AND '&ESDT' NE 'STAR*
+               T').NMODID
+&N2      B     E&#.ZID-&N.(,&@.15) SKIP AROUND THE MODULE ID
+&N2      SETC  'E&#.ZID'
+         DC    AL1(&N2-E&#.MID)    LENGTH OF TEXT
+E&#.MID  DC    C'&N '              ENTRY NAME
+&W2      SETC  '&SYSDATE       '(1,8).' '
+         DC    C'&W2'              ASSEMBLY DATE
+&W2      SETC  '&SYSTIME    '(1,5)
+         AIF   (K'&NME EQ 0).NMEZ1
+&W2      SETC  '&W2 - '
+.NMEZ1   DC    C'&W2'              ASSEMBLY TIME
+         AIF   (K'&NME EQ 0).NMEZ2
+         AIF   ('&NME'(1,1) EQ '''').QNME
+         DC    C'&NME'
+         AGO   .NMEZ2
+.QNME    DC    C&NME
+.NMEZ2   ANOP
+.NMODID  ANOP
+.*
+         AIF   (&REMOTE(3)).RNTRNT1
+&W2      SETC  '&@.14,&@.12,12(&@.13)'
+&N2      STM   &W2                 SAVE CALLER'S REGISTERS
+&N2      SETC  ''
+.*
+         AIF   (&#ENTRNT OR &#ENTNUN).RNTRNT1                 06/84 DBC
+         LR    &R,&@.13            POINT TO HIGHER SA
+         AIF   (&REMOTE(1)).LRMTSV1
+&C       SETC  '&@.13,&LID-&N.(,&@.15)'                       06/84 DBC
+         LA    &C                  POINT TO LOWER SA
+         AGO   .LRMTSV2
+.LRMTSV1 AIF   (&REMOTE(2)).LRMTSV3
+         #TEST REGS=&R
+         AIF   (&RMTREGA NE &#TESRET(1)).LRMTSV4
+&A1      SETA  20+&RMTREGA*4-&RMTREGA/13*44
+         L     &@.13,&A1.(,&@.13)  POINT TO LOWER SA
+         AGO   .LRMTSV2
+.LRMTSV4 LR    &@.13,&RMTREGC      POINT TO LOWER SA
+         AGO   .LRMTSV2
+.LRMTSV3 AIF   (&REMOTE(5)).LRMTSV5
+         PUSH  USING               SAVE USING ENVIRONMENT
+         USING &N,&@.15            DECLARE TEMP BASE
+         LA    &@.13,&RMTNAME      POINT TO LOWER SA
+         POP   USING               RESTORE USING ENVIRONMENT
+         AGO   .LRMTSV2                                       06/84 DBC
+.LRMTSV5 ANOP                                                 06/84 DBC
+         LR    &@.13,&@.15         POINT TO LOWER SA          08/84 DBC
+&C       SETC  '&@.13,E&#.SAP-&N.(,&@.15)'                    06/84 DBC
+         AH    &C                                             08/84 DBC
+.LRMTSV2 ST    &@.13,8(,&R)        FORWARD CHAIN THE SAVE AREAS
+         ST    &R,4(,&@.13)        BACK CHAIN THE SAVE AREAS
+         AIF   ('&R' NE '&@.1').RNTRNT1
+         L     &@.1,24(,&@.1)      RESTORE REGISTER 1
+.RNTRNT1 AIF   ('&#BS(13)' EQ '').SKIPUSE
+&C1      SETA  13
+         AIF   ('&BASES' NE '*').BSEADR
+         AIF   (&REMOTE(4)).EQUATE
+&OLDBASE SETB  (1)
+&N2      LR    &#BS(13),&@.15      LOAD 1ST BASE REGISTER     08/84 DBC
+&N2      SETC  ''                                             08/84 DBC
+&C       SETC  '&#BS(13),E&#.BSE-&N.(,&@.15)'                 06/84 DBC
+         SH    &C                                             08/84 DBC
+         AGO   .EQUATE
+.BSEADR  ANOP
+&C2      SETA  15
+&#BS(14) SETC  '&N'
+         AIF   (&#ENTRNT OR &REMOTE(1) OR &#ENTNUN).FLDTST    06/84 DBC
+&C2      SETA  13
+&#BS(14) SETC  '&LID'
+.FLDTST  AIF   (&B(13) EQ &C2).EQUATE
+&N2      LR    &#BS(13),&@&C2      LOAD FIRST BASE REGISTER
+&N2      SETC  ''
+.EQUATE  ANOP
+&W2      SETC  '&#BS(&C1)'
+         AIF   (&C1 EQ 2).ENDLA
+&C1      SETA  &C1-1
+         AIF   ('&#BS(&C1)' EQ '').ENDLA
+&N2      LA    &#BS(&C1),X'FFF'(,&W2) LOAD NEXT BASE
+&N2      SETC  ''
+         AGO   .EQUATE
+.ENDLA   #USING
+.SKIPUSE AIF   (NOT &#ENTRNT).DATACHK
+&W2      SETC  ''
+&TB      SETC  ''
+         AIF   ('&#BS(13)' NE '').GETM2
+&N2      LR    &@.14,&@.15         LOAD TEMPORARY BASE
+&N2      SETC  ''
+         PUSH  USING               SAVE BASES
+         DROP  ,                   CLEAR BASES
+         USING &N,&@.14            DECLARE TEMPORARY BASE
+&TB      SETC  '-&N.(,&@.14)'
+.GETM2   ANOP
+&N2      L     &@.0,E&#.LEN        LOAD LENGTH (MAYBE SUBPOOL TOO)
+&N2      SETC  ''
+         AIF   ('&#ENTSP' EQ '' OR '&SAVTYPE(3)' EQ '').GETM4
+&SPOOL   SETC  ''
+         MNOTE '         GETMAIN RC,LV=(0),SP=&#ENTSP'
+         GETMAIN RC,LV=(0),SP=&#ENTSP
+         AGO   .GETM5
+.GETM4   ANOP
+&SPOOL   SETC  '&#ENTSP'
+&W3      SETC  'R'
+         AIF   ('&SAVTYPE(3)' EQ '').GETM4A
+&W3      SETC  'RC'
+.GETM4A  MNOTE '         GETMAIN &W3,LV=(0)'
+         GETMAIN &W3,LV=(0)
+.GETM5   AIF   ('&#BS(13)' NE '').GETM5A
+         POP   USING               RESTURE BASES
+.GETM5A  AIF   ('&SAVTYPE(3)' EQ '').GETM7
+         LTR   &@.15,&@.15         GETMAIN OK?
+         AIF   ('&SAVTYPE(3)' EQ 'RETURN').GETM8
+         AIF   ('&SAVTYPE(3)'(1,1) EQ '(').GETM6
+         BNZ   &SAVTYPE(3)         NO, TAKE ERROR EXIT
+         AGO   .GETM7
+.GETM6   #TEST DCODE=&SAVTYPE(3)
+         BCR   7,&#TESRET(2)       NO, TAKE ERROR EXIT
+         AGO   .GETM7
+.GETM8   ANOP
+&W2      SETC  'E&#.GO'
+         BZ    &W2&TB              YES, PROCEED
+         L     &@.14,12(,&@.13)    NO, RESTORE REGISTER
+         LM    &@.0,&@.12,20(&@.13) RESTORE REGISTERS
+         MVI   12(&@.13),X'FF'     SET RETURNED SIGNEL
+         BR    &@.14               RETURN TO CALLER
+.GETM7   ANOP
+&W2      LR    &@.0,&@.1           POINT TO AREA TO CLEAR
+         L     &@.1,E&#.LEN&TB     GET LENGTH TO CLEAR
+         LR    &@.14,&@.0          SAVE AREA POINTER
+         SLR   &@.15,&@.15         CLEAR SRC LEN AND PAD CHAR 08/85 DBC
+         MVCL  &@.0,&@.14          CLEAR THE AREA (R15 SET BY GETMAIN)
+         ST    &@.14,8(,&@.13)     FORWARD CHAIN THE SAVE AREAS
+         ST    &@.13,4(,&@.14)     BACK CHAIN THE SAVE AREAS
+         LM    &@.13,&@.1,8(&@.13) RESTORE REGS AND POINT TO LOWER SA
+.DATACHK AIF   (NOT &OLDBASE AND NOT &#ENTRNT AND NOT &REMOTE(5) AND NO*
+               T &LOCAL).ENDCHK
+         AIF   ('&#BS(13)' EQ '').NOUSING
+&N2      B     E&#.END             SKIP AROUND DATA AREA
+&N2      SETC  ''
+         AGO   .DFNDATA
+.NOUSING ANOP
+&N2      B     E&#.END-&N.(,&@.15) SKIP AROUND DATA AREA
+&N2      SETC  ''
+.DFNDATA ANOP                                                 08/84 DBC
+.*                                                            08/84 DBC
+         AIF   (NOT &OLDBASE).NOLDBSE                         08/84 DBC
+E&#.BSE  DC    Y(&N-&#BS(14))       OLD BASE ADDRESS          08/84 DBC
+.NOLDBSE ANOP                                                 08/84 DBC
+.*                                                            08/84 DBC
+         AIF   (NOT &#ENTRNT).NLENGTH                         08/84 DBC
+         AIF   ('&SPOOL' EQ '').NSUBPOO
+         AIF   (&ALIGND).ALIGND1
+         DS    0F                  ALIGNMENT
+&ALIGND  SETB  (1)
+.ALIGND1 ANOP
+E&#.LEN  DC    AL1(&SPOOL),AL3(&#ENTSIZ) SAVE AREA SUBPOOL AND LENGTH
+         AGO   .NLENGTH
+.NSUBPOO ANOP
+E&#.LEN  DC    A(&#ENTSIZ)         SAVE AREA LENGTH
+&ALIGND  SETB  (1)
+.NLENGTH AIF   (&#ENTRNT OR &#ENTNUN).NSVAREA                 06/84 DBC
+         AIF   (&REMOTE(1)).RMTSVPT
+         AIF   (&ALIGND).ALIGND2
+         DS    0F                  ALIGNMENT
+&ALIGND  SETB  (1)
+.ALIGND2 ANOP
+&LID     DC    (&SAVLEN)X'00'      LOCAL SAVE AREA
+         AGO   .NSVAREA
+.RMTSVPT ANOP                                                 08/84 DBC
+.*                                                            08/84 DBC
+         AIF   (NOT &REMOTE(5)).NSVAREA                       08/84 DBC
+E&#.SAP  DC    Y(&RMTNAME-&N)       PTR TO REMOTE SA          08/84 DBC
+.NSVAREA ANOP                                                 08/84 DBC
+.*                                                            08/84 DBC
+         AGO   .END                                           08/84 DBC
+.*
+.PLIGEN  AIF   ('&ESDT' EQ 'DEFAULT').PESDSET
+         AIF   (K'&N GT 0 OR '&ESDT' NE 'ENTRY').PESDOK1
+         MNOTE 4,'"ESDTYPE=&ESDTYPE" IS INVALID WHEN THE NAME FIELD IS'
+         MNOTE 4,'OMITTED FROM THE MACRO CALL.'
+         MNOTE 4,'"ESDTYPE=NONE" WILL BE USED INSTEAD.'
+&ESDT    SETC  'NONE'
+.PESDOK1 ANOP
+         AIF   ('&ESDT' EQ 'ENTRY' OR '&ESDT' EQ 'NONE' OR '&ESDT' EQ '*
+               ').PESDOK
+         MNOTE 4,'"ESDTYPE=&ESDTYPE" IS INVALID WHEN "SAVTYPE=PLI".'
+.PESDSET ANOP
+&ESDT    SETC  'ENTRY'
+         AIF   (K'&N GT 0).PESDOK2
+&ESDT    SETC  'NONE'
+.PESDOK2 AIF   ('&ESDTYPE' EQ 'DEFAULT').PESDOK
+         MNOTE 4,'"ESDTYPE=&ESDT" WILL BE USED INSTEAD.'
+.PESDOK  ANOP
+         AIF   ('&ESDT' NE 'ENTRY').PNOTENT
+         ENTRY &N                  MAKE NAME EXTERNALLY AVAILABLE
+.PNOTENT ANOP
+.*
+&N2      SETC  '&N'
+&A1      SETA  K'&N
+         AIF   (K'&NME EQ 0).GOTN2
+&N2      SETC  '&NME'
+&A1      SETA  K'&NME
+.GOTN2   ANOP
+&N2      SETC  ' '(1,1-(&A1-&A1/2*2)).'&N2'
+         DS    0H                  ALIGNMENT
+         DC    C'&N2'              ENTRY NAME
+         DC    AL1(&A1)            LENGTH OF NAME
+.*
+&N1      SETC  '&N'
+         AIF   (K'&N GT 0).PGOTN1
+&N1      SETC  'E&#.ENT'
+.PGOTN1  ANOP
+         USING &N1,&@.15           DCL LOCAL BASE
+&N1      STM   &@.14,&@.12,12(&@.13) SAVE CALLER'S REGISTERS
+.*
+         #TEST DCODE=&SAVTYPE(2)
+&A1      SETA  &#TESRET(1)
+&A2      SETA  120
+         AIF   (&A1 EQ 0).DSALLA
+         AIF   ('&#TESRET(2)' NE '&SAVTYPE(2)').DSALREG
+         #TEST NUM=&#TESRET(2)
+         AIF   (&#TESERR NE 0).DSALL
+&A2      SETA  &#TESRET(2)
+         AIF   (&A2 GE 4096-7).DSALL
+         AIF   (&A2 GE 120-7).DSALLA
+         MNOTE 4,'"SAVTYPE(2)=&SAVTYPE(2)" IS TOO SHORT A LENGTH.'
+         MNOTE 4,'THE CODE GENERATED BELOW WILL NOT FUNCTION CORRECTLY.*
+               '
+.DSALLA  ANOP
+         LA    &@.0,(&A2+7)/8*8    GET DESIRED DSA LENGTH
+         AGO   .GOTDSAL
+.DSALREG #TEST REGS=&#TESRET(2)
+         AIF   (&#TESERR NE 0).DSALLR
+         AIF   (&#TESRET(1) EQ 0).GOTLLR
+.DSALLR  LR    &@.0,&#TESRET(2)    GET DESIRED DSA LENGTH
+.GOTLLR  LA    &@.14,7             ROUND UP -
+         AR    &@.0,&@.14           TO -
+         OR    &@.0,&@.14            DOUBLE WORD -
+         XR    &@.0,&@.14             LENGTH
+         AGO   .GOTDSAL
+.DSALL   ANOP
+&LENGTH  SETB  (1)
+         L     &@.0,E&#.LEN        GET DESIRED DSA LENGTH
+.GOTDSAL ANOP
+.*
+         L     &@.1,76(,&@.13)     GET NXT AVAILABLE BLOCK POINTER
+         ALR   &@.0,&@.1           --> PAST DESIRED AREA
+         CL    &@.0,12(,&@.12)     WOULD THE ISA OVERFLOW?
+         BNH   E&#.GOT             NO, PROCEED
+         L     &@.15,116(,&@.12)   YES, --> SPECIAL HANDLER
+         DROP  &@.15               RELEASE CLOBBERED BASE
+         BALR  &@.14,&@.15         GO OBTAIN DESIRED DSA FROM ELSEWHERE
+E&#.GOT  LR    &@.14,&@.1          SAVE PTR TO NEW DSA
+         LR    &@.15,&@.0          SAVE HI-BYTE OF NAB POINTER REG
+         SRL   &@.15,24            ISSOLATE IT
+         SLL   &@.15,24            RESTORE ITS POSITION. SET MVCL
+*                                  SOURCE LENGTH TO ZERO
+         SR    &@.0,&@.1           GET LENGTH OF NEW DSA
+         LR    &@.1,&@.0           COPY FOR MVCL SINK LENGTH
+         LR    &@.0,&@.14          GET MVCL SINK POINTER
+         MVCL  &@.0,&@.14          CLEAR THE NEW DSA
+         OR    &@.0,&@.15          RESTORE HI-BYTE TO NAB POINTER REG
+         LR    &@.1,&@.0           COPY NEXT AVAILABLE BLOCK POINTER
+         L     &@.15,72(,&@.13)    GET LIBRARY WORKSPACE POINTER
+         STM   &@.15,&@.1,72(&@.14) STORE INTO OUR NEW DSA
+         ST    &@.5,88(,&@.14)     STORE PASSED PARAMETERS POINTER
+         ST    &@.13,4(,&@.14)     BACK CHAIN THE DSA
+         L     &@.1,24(,&@.13)     RESTORE PLIST POINTER
+         LR    &@.13,&@.14         --> NEW DSA (R14 PURIFIED BY MVCL)
+         MVI   0(&@.13),X'80'      SET FOR -
+         MVI   1(&@.13),X'00'       PLI -
+         MVI   86(&@.13),X'91'       ERROR -
+         MVI   87(&@.13),X'C0'        HANDLING
+.*
+&N2      SETC  ''
+         AIF   ('&#BS(13)' EQ '').PSKPUSE
+&C1      SETA  13
+         AIF   ('&BASES' NE '*').PBSEADR
+&OLDBASE SETB  (1)
+         BALR  &#BS(13),0          LOAD TEMP LOCAL BASE
+         L     &#BS(13),E&#.BSE-*(,&#BS(13)) LOAD 1ST PROGRAM BASE
+         AGO   .PEQUATE
+.PBSEADR ANOP
+&N2      SETC  'E&#.BSE'
+&#BS(14) SETC  '&N2'
+         BALR  &#BS(13),0          LOAD 1ST PROGRAM BASE
+.PEQUATE ANOP
+&W2      SETC  '&#BS(&C1)'
+&C1      SETA  &C1-1
+         AIF   (&C1 EQ 1 OR '&#BS(&C1)' EQ '').PENDLA
+&N2      LA    &#BS(&C1),X'FFF'(,&W2) LOAD NEXT PROGRAM BASE
+&N2      SETC  ''
+         AGO   .PEQUATE
+.PENDLA  #USING ,
+.PSKPUSE ANOP
+.*
+         AIF   (NOT &LENGTH AND NOT &OLDBASE).ENDCHK
+         AIF   ('&#BS(13)' NE '').PGOTBAS
+&N2      BALR  &@.15,0             LOAD TEMP BASE
+&N2      SETC  ''
+         B     E&#.END-*(,&@.15)   SKIP DATA AREA
+         AGO   .PDFNDAT
+.PGOTBAS ANOP
+&N2      B     E&#.END             SKIP DATA AREA
+&N2      SETC  ''
+.PDFNDAT AIF   (NOT &LENGTH).PNOLEN
+E&#.LEN  DC    A((&SAVTYPE(2)+7)/8*8) DESIRED DSA LENGTH
+.PNOLEN  AIF   (NOT &OLDBASE).PNOOBAS
+E&#.BSE  DC    A(&#BS(14))         OLD BASE ADDRESS
+.PNOOBAS ANOP
+.*
+.END     ANOP
+E&#.END  DS    0H
+.ENDCHK  AIF   ('&N2' EQ '').MEND
+&N2      DS    0H
+.MEND    MEND

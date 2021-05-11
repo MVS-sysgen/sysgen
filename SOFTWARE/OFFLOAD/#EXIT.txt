@@ -1,0 +1,386 @@
+         MACRO
+&NME     #EXIT &R,&PFIX=,&RC=,&MODE=LEAVE                     DBC 04/85
+.*
+.*
+.*                                                            DBC 04/85
+.* LAST CHANGE DATE - APRIL 29, 1985                          DBC 04/85
+.*                  - ADDED SUPPORT FOR THE "MODE=" OPERAND.  DBC 04/85
+.*                                                            DBC 10/84
+.* LAST CHANGE DATE - OCTOBER 1, 1984                         DBC 10/84
+.*                  - DELETED CODE THAT SET A X'FF' "RETURN   DBC 10/84
+.*                    INDICATOR" IN THE HI-BYTE OF DSAR14.    DBC 10/84
+.*                    IT WAS NOT APPROPRIATE FOR MVS/XA.      DBC 10/84
+.*                                                            DBC 06/84
+.* LAST CHANGE DATE - JUNE 11, 1984                           DBC 06/84
+.*                  - ADDED SUPPORT FOR "SAVTYPE=NONE" ON THE DBC 06/84
+.*                    #ENTER MACRO.                           DBC 06/84
+.*                  - FOR REENTRANT EXIT LINKAGE, CHANGED     DBC 06/84
+.*                    THE FREEMAIN SO THAT IT WOULD NO        DBC 06/84
+.*                    LONGER GENERATE AN INLINE PLIST.        DBC 06/84
+.*
+.* LAST CHANGE DATE - OCTOBER 18, 1983
+.*                  - MAILING ADDRESS CHANGE
+.*
+.* LAST CHANGE DATE - APRIL 21, 1981
+.*                  - CHANGE THE MACRO NAME FROM $EXIT TO #EXIT
+.*
+.* LAST CHANGE DATE - APRIL 15, 1981
+.*                  - ADDED EXIT LINKAGE FOR A PLI ENVIRONMENT.
+.*                  - "#REGS GEN=NO" SUPPORT ADDED.
+.*
+.* LAST CHANGE DATE - OCTOBER 3, 1978
+.*                  - FOR REENTRANT SAVE AREAS, THE FREEMAIN HAS BEEN
+.*                    CHANGED SO THAT MORE THAN 4K CAN BE FREED.
+.*
+.* LAST CHANGE DATE - FEBRUARY 2, 1977
+.*                  - MAILING ADDRESS CHANGE.
+.*
+.* LAST CHANGE DATE - FEBRUARY 10, 1976
+.*
+.* THIS MACRO WAS WRITTEN BY DAVID B. COLE.  ANY QUESTIONS CONCERNING
+.* IT MAY BE ADDRESSED TO:
+.*       RR#2 BOX 712
+.*       AFTON, VA. 22920
+.*
+.*
+.*
+.*   THIS MACRO GENERATES EITHER OS STANDARD OR PLI STANDARD EXIT
+.* LINKAGE. IT WAS WRITTEN TO PROVIDE A SIMPLE, FLEXIBLE, AND COMPLETE
+.* METHOD FOR GENERATING SUCH LINKAGE. IN ADDITION, FOR ALL POSSIBLE
+.* OPERAND COMBINATIONS, #EXIT WILL GENERATE THE ABSOLUTE MINIMUM
+.* AMOUNT OF CODE NECESSARY.
+.*
+.*   THE #EXIT MACRO WILL GENERATE THE FOLLOWING:
+.* - CODE TO LOAD REGISTER 13 WITH A POINTER TO THE HIGHER OS SAVE AREA
+.*   OR PLI DATA STORAGE AREA
+.* - CODE TO RELEASE (VIA FREEMAIN) THE LOWER SAVE AREA IF THE
+.*   PRECEEDING #ENTER MACRO CALL GENERATED A REENTRANT EXPANSION
+.* - CODE TO RESTORE ANY PARTICULAR SET OF REGISTERS
+.* - CODE TO LOAD REGISTER 15 WITH A RETURN CODE THAT IS EITHER AN
+.*   ABSOLUTE VALUE OR A VALUE PRELOADED INTO ANY REGISTER
+.* - CODE TO RETURN TO THE CALLING PROGRAM VIA REGISTER 14
+.*
+.*   THE NAME FIELD
+.* USE THIS FIELD TO ASSIGN A STATEMENT LABEL TO THE FIRST MACHINE
+.* INSTRUCTION OF THE EXPANSION. IF THE NAME FIELD IS OMITTED, THEN NO
+.* STATEMENT LABEL IS ASSIGNED.
+.*
+.*   THE FIRST POSITIONAL OPERAND
+.* THIS OPERAND MUST CONSIST OF A SUB-LIST OF ANY NUMBER OF ENTRIES.
+.* EACH ENTRY MAY BE EITHER A SINGLE REGISTER NAME OR A PARENTHESIZED
+.* PAIR (SEPERATED BY A COMMA) OF REGISTER NAMES - E.G.
+.* " (1,11,(7,9),5) ". EACH SINGLE REGISTER NAME SPECIFIES A PARTICULAR
+.* REGISTER TO BE RESTORED FROM THE HIGHER SAVE AREA. EACH
+.* PARENTHESIZED PAIR OF REGISTER NAMES SPECIFIES A RANGE OF REGISTERS
+.* TO BE RESTORED. THUS, THE ABOVE EXAMPLE WOULD CAUSE REGISTERS 1, 5,
+.* 7, 8, 9, AND 11 TO BE RESTORED.
+.*   SOME NOTES AND WARNINGS:
+.* - A REQUEST TO RESTORE REGISTER 13 IS MEANINGLESS AND IS IGNORED.
+.* - IF REGISTER 14 IS TO BE LOADED WITH THE RETURN ADDRESS FOUND IN
+.*   THE HIGHER SAVE AREA, THEN YOU MUST SPECIFICALLY REQUEST THAT IT
+.*   (REGISTER 14) BE RESTORED; OTHERWISE, WHATEVER VALUE IS FOUND IN
+.*   REGISTER 14 PRIOR TO THE MACRO CALL WILL BE USED FOR THE RETURN
+.*   ADDRESS.
+.* - TO RESTORE ALL REGISTERS FROM 14 THROUGH 12, YOU MUST CODE
+.*   " ((14,12)) ". CODING " (14,12) " WILL CAUSE ONLY REGISTERS 14 AND
+.*   12 TO BE RESTORED.
+.* - THE NUMERIC VALUES OF ALL REGISTER NAMES USED IN THIS OPERAND MUST
+.*   BE DETERMINABLE AT MACRO PASS TIME. THUS, EACH REGISTER NAME USED
+.*   MUST BE EITHER A SELF-DEFINING NUMERIC OR A NAME DEFINED VIA THE
+.*   #REGS MACRO.
+.* - IF ONLY A SINGLE REGISTER IS TO BE RESTORED, THEN IT NEED NOT BE
+.*   ENCLOSED IN PARENTHESES.
+.* - IF THE FIRST POSITIONAL OPERAND IS OMITTED, THEN NO REGISTERS ARE
+.*   RESTORED.
+.*
+.*   THE RC= OPERAND
+.* THIS OPERAND MUST CONSIST OF A SINGLE VALUE EITHER WITHIN OR NOT
+.* WITHIN PARENTHESES. IF ENCLOSED WITHIN PARENTHESES, THEN THE VALUE
+.* IS TREATED AS THE NAME OF A REGISTER CONTAINING A RETURN CODE. IF
+.* NOT ENCLOSED WITHIN PARENTHESES, THEN THE VALUE IS TREATED AS BEING
+.* THE RETURN CODE ITSELF.
+.*   IF THE RC= OPERAND SPECIFIES A REGISTER NAME, THEN:
+.* - THE VALUE OF THAT NAME NEED NOT BE DETERMINABLE AT MACRO PASS
+.*   TIME;
+.* - THE REGISTER NAME MAY IDENTIFY ANY REGISTER WHATSOEVER REGUARDLESS
+.*   OF WHICH REGISTERS ARE TO BE RESTORED SINCE IN CASES OF POTENTIAL
+.*   CONFLICT, THE RETURN CODE IS COPIED INTO REGISTER 15 PRIOR TO
+.*   REGISTER RESTORATION;
+.* - IT IS ILLOGICAL FOR THE RC= OPERAND TO SPECIFY REGISTER 13.
+.* NOTE THAT IF THE RC= OPERAND IS SPECIFIED BUT THE FIRST POSITIONAL
+.* OPERAND INDICATES THAT REGISTER 15 IS ALSO TO BE RESTORED, THEN
+.* REGISTER 15 IS NOT RESTORED. INSTEAD, IT IS LOADED WITH THE RETURN
+.* CODE VALUE.
+.*   IF THE RC= OPERAND IS OMITTED, THEN NO CODE IS GENERATED TO LOAD
+.* REGISTER 15 WITH A RETURN CODE.
+.*                                                            DBC 04/85
+.*   THE MODE= OPERAND                                        DBC 04/85
+.* THIS FOR MVS/XA. IT CONTROLS WHETHER OR NOT THE #EXIT      DBC 04/85
+.* MACRO IS TO GENERATE CODE TO RESTORE THE CALLER'S          DBC 04/85
+.* ADDRESSING MODE. THE DEFAULT IS NOT TO DO SO.              DBC 04/85
+.*                                                            DBC 04/85
+.* - MODE=LEAVE                                               DBC 04/85
+.*   THIS IS THE DEFAULT. NO EXPLICIT ATTEMPT IS MADE TO      DBC 04/85
+.*   RESTORE THE CALLER'S ADDRESSING MODE.                    DBC 04/85
+.*                                                            DBC 04/85
+.* - MODE=RESTORE                                             DBC 04/85
+.*   THE #EXIT MACRO ATTEMPTS TO RESTORE THE CALLER'S         DBC 04/85
+.*   ADDRESSING MODE BASED ON THE HI-ORDER BIT OF THE         DBC 04/85
+.*   CALLER'S R14.                                            DBC 04/85
+.*
+.*   THE PFIX= OPERAND
+.* THE #EXIT MACRO ATTEMPTS TO USE REGISTER EQUATES IN ITS EXPANSION
+.* WHEN REFERING TO REGISTERS. THIS IS SO THAT THE USE OF THE REGISTERS
+.* WILL BE INDICATED IN THE CROSS REFERENCE LISTING. THE PFIX= OPERAND
+.* CAN BE USED TO CONTROL THE SET OF EQUATES USED. FOR EXAMPLE, IF
+.* "PFIX=GPR" IS SPECIFIED, THEN "GPR1" WILL BE USED WHENEVER THE
+.* EXPANSION REFERS TO REGISTER 1.
+.*   IF THE PFIX= OPERAND IS OMITTED, THEN THE SET OF EQUATES DEFINED
+.* BY THE FIRST PRIOR #REGS MACRO WILL BE USED. IF THERE IS NO PRIOR
+.* #REGS MACRO, THEN NO EQUATES WILL BE USED.
+.*
+.*   CONSIDERATIONS
+.* THE #EXIT MACRO WILL GENERATE AN EXPANSION THAT WILL ACCURATELY
+.* RESTORE ALL DESIRED REGISTERS AND SET THE RETURN CODE REGUARDLESS OF
+.* WHETHER OR NOT A FREEMAIN SVC IS ISSUED TO RELEASE THE LOWER SAVE
+.* AREA AND REGUARDLESS OF THE RELATIONSHIP BETWEEN THE RC= OPERAND AND
+.* THE SET OF REGISTERS RESTORED.
+.*
+.*
+.*
+.* INNER MACROS USED - #REGS #TEST AND FREEMAIN
+.*
+         GBLA  &#TESERR
+         GBLB  &#ENTRNT,&#ENTPLI,&#ENTNUN                     DBC 06/84
+         GBLC  &#TESRET(20),&#ENTSIZ,&#ENTSP
+         LCLA  &C1,&R1,&R2,&W1,&W2,&ERRCODE
+         LCLB  &RCLA,&RCST,&RSW(16)
+         LCLC  &LNME,&@,&RG(16),&REGNME,&RG2SAVE,&RG4SAVE,&RG5SAVE
+         LCLC  &C,&#                                          DBC 06/84
+&#       SETC  '&SYSNDX'                                      DBC 06/84
+&LNME    SETC  '&NME'
+.*
+&@       SETC  '&PFIX'
+         AIF   (K'&PFIX NE 0).GOTPFIX
+         #TEST PFIX=
+&@       SETC  '&#TESRET(1)'
+         AGO   .DONPFIX
+.GOTPFIX #REGS &PFIX,GEN=NO
+.DONPFIX ANOP
+.*
+&C1      SETA  0                                              DBC 06/84
+.RLP     AIF   (&C1 GE N'&R).RFIN
+&C1      SETA  &C1+1
+         #TEST DCODE=&R(&C1)
+         AIF   (&#TESERR NE 0).END
+&W1      SETA  &#TESRET(1)
+         AIF   (&W1 EQ 0).RLP
+&REGNME  SETC  '&#TESRET(2)'
+         #TEST REGS=&REGNME
+&ERRCODE SETA  1
+         AIF   (&#TESERR NE 0).REGERR
+.REGOK1  ANOP
+&R1      SETA  &#TESRET(1)
+&R2      SETA  &R1+3-&R1/14*16
+&RG(&R2) SETC  '&REGNME'
+&RSW(&R1+1) SETB (1)
+         AIF   (&W1 EQ 1).RLP
+         AIF   (&W1 EQ 2).TWOND
+         MNOTE 4,'"&R(&C1)" CONTAINS EXCESS INFORMATION.'
+.TWOND   ANOP
+&REGNME  SETC  '&#TESRET(3)'
+         #TEST REGS=&REGNME
+&ERRCODE SETA  2
+         AIF   (&#TESERR NE 0).REGERR
+.REGOK2  ANOP
+&W2      SETA  &#TESRET(1)
+&RSW(&W2+1) SETB (1)
+.ENTLP   AIF   (&R1 EQ &#TESRET(1)).ENTEND
+&R1      SETA  &R1+1
+&R2      SETA  &R2+1
+         AIF   (&R1 LE 15).R1OK
+&R1      SETA  0
+.R1OK    AIF   (&R2 LE 16).R2OK
+&R2      SETA  1
+.R2OK    ANOP
+&RG(&R2) SETC  '&@&R1'
+         AGO   .ENTLP
+.ENTEND  ANOP
+&RG(&R2) SETC  '&REGNME'
+         AGO   .RLP
+.REGERR  AIF   (&#TESRET(1) GE 0 OR &#TESRET(1) LT 0).REGVALU
+         MNOTE 0,'THE ABOVE ERROR IS NOT DUE TO A BUG IN THE MACRO.'
+         MNOTE 8,'THE VALUE OF "&REGNME" IS NOT DETERMINABLE.'
+         MEXIT
+.REGVALU AIF   (&#TESRET(1) GE 0 AND &#TESRET(1) LE 15).REGOK
+         MNOTE 8,'THE VALUE OF "&REGNME" IS OUTSIDE THE RANGE OF 0 ... *
+               15'
+         MEXIT
+.REGOK   AIF   (&ERRCODE EQ 1).REGOK1
+         AGO   .REGOK2
+.RFIN    AIF   (NOT &#ENTPLI).RGOK
+         AIF   (NOT &RSW(1)).RG0OK
+         MNOTE 4,'&RG(3) NEEDED BY THE EXIT LINKAGE - NOT RESTORED.'
+.RG0OK   AIF   (NOT &RSW(2)).RG1OK
+         MNOTE 4,'&RG(4) NEEDED BY THE EXIT LINKAGE - NOT RESTORED.'
+.RG1OK   ANOP
+&RG(3)   SETC  ''
+&RG(4)   SETC  ''
+.RGOK    ANOP
+.*
+&RG(16)  SETC  ''
+.*
+         AIF   (K'&RC EQ 0).NORC
+&RG2SAVE SETC  '&RG(2)'
+&RG(2)   SETC  ''
+         AIF   ('&RG2SAVE' NE '').RG2SOK
+&RG2SAVE SETC  '&@.15'
+.RG2SOK  ANOP
+.*
+         AIF   (NOT &RSW(16)).NOPRBLM
+         MNOTE 4,'&RG2SAVE SET TO THE RETURN CODE - NOT RESTORED.'
+.NOPRBLM ANOP
+.*
+         AIF   ('&RC' EQ '&RC(1)').RCNTRG
+         #TEST REGS=&RC(1)
+         AIF   (&#TESERR NE 0).LOADRC
+         AIF   ('&#TESRET(1)' NE '13').RCOK
+         MNOTE 4,'"RC=&RC" IS ILLOGICAL.'
+.RCOK    AIF   ('&#TESRET(1)' EQ '15').NORC
+.LOADRC  AIF   ('&RG(1)' EQ '' OR '&RG(3)' EQ '' OR &#ENTPLI).RCLR
+&RCST    SETB  (1)
+         AGO   .NORC
+.RCLR    ANOP
+&LNME    LR    &@.15,&RC(1)        LOAD THE RETURN CODE
+&LNME    SETC  ''
+         AGO   .NORC
+.RCNTRG  ANOP
+&RCLA    SETB  (1)
+         AIF   ('&RG(3)' EQ '' OR '&RG(1)' EQ '').NORC
+&RG(2)   SETC  '&RG2SAVE'
+.NORC    ANOP
+.*
+         AIF   (NOT &#ENTPLI).NOTPLI2
+&LNME    LR    &@.0,&@.13          COPY OUR DSA POINTER
+&LNME    SETC  ''
+.NOTPLI2 ANOP
+.*
+         AIF   (NOT &#ENTRNT OR '&RG(4)' EQ '').NOLRR1
+&LNME    LR    &@.1,&@.13          GET SAVE AREA ADDRESS FOR FREEMAIN
+&LNME    SETC  ''
+.NOLRR1  ANOP
+.*
+         AIF   (&#ENTNUN).NOLSA                               DBC 06/84
+&LNME    L     &@.13,4(,&@.13)     POINT TO THE HIGHER SAVE AREA
+&LNME    SETC  ''                                             DBC 06/84
+.NOLSA   ANOP                                                 DBC 06/84
+         AIF   (NOT &RCST).NORCST
+&LNME    ST    &RC(1),16(,&@.13)   STORE THE RC FOR LATER     DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+&RG(2)   SETC  '&RG2SAVE'
+.NORCST  ANOP
+.*
+         AIF   (NOT &#ENTRNT).NTRENT
+         AIF   (NOT &RCLA).RG2OK
+&RG(2)   SETC  'X'
+         AIF   ('&RG(1)&RG(3)' NE '').RG2OK
+&RG(2)   SETC  ''
+.RG2OK   ANOP
+&RG4SAVE SETC  '&RG(4)'
+&RG5SAVE SETC  '&RG(5)'
+&RG(5)   SETC  'X'
+&C1      SETA  0
+.STMLP   AIF   (&C1 GE 4).STMEND
+&C1      SETA  &C1+1
+         AIF   ('&RG(&C1)' NE '').STMLP
+&R1      SETA  &C1+13-(&C1+13)/16*16
+&R2      SETA  &R1-1
+&W1      SETA  &C1*4+8
+.STMLP2  ANOP
+&R2      SETA  &R2+1
+         AIF   (&R2 LE 15).STMR2OK
+&R2      SETA  0
+.STMR2OK ANOP
+&RG(&C1) SETC  '&@&R2'
+&C1      SETA  &C1+1
+         AIF   ('&RG(&C1)' EQ '').STMLP2
+         AIF   (&R1 EQ &R2).ST
+&C       SETC  '&@&R1,&@&R2,&W1.(&@.13)'                      DBC 06/84
+&LNME    STM   &C                  SAVE AGAINST FREEMAIN      DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+         AGO   .STMLP
+.ST      ANOP                                                 DBC 06/84
+&LNME    ST    &@&R1,&W1.(,&@.13)  SAVE AGAINST FREEMAIN      DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+         AGO   .STMLP
+.STMEND  ANOP
+&RG(5)   SETC  '&RG5SAVE'
+.GTR1M   AIF   ('&RG4SAVE' NE '').NOGTR1
+&LNME    L     &@.1,8(,&@.13)      GET RSA PTR FOR FREEMAIN   DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+.NOGTR1  ANOP                                                 DBC 06/84
+&LNME    L     &@.0,E&#.LEN        GET RSA LEN (AND SUBPOOL)  DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+         MNOTE '         FREEMAIN R,A=(1),LV=(0)'             DBC 06/84
+         FREEMAIN R,A=(1),LV=(0)                              DBC 06/84
+.NTRENT  ANOP
+.*
+&C1      SETA  0
+.LMLP    AIF   (&C1 GE 16).SETRCM
+&C1      SETA  &C1+1
+         AIF   ('&RG(&C1)' EQ '').LMLP
+&R1      SETA  &C1
+&W1      SETA  &C1*4+8
+.LMLP2   ANOP
+&C1      SETA  &C1+1
+         AIF   ('&RG(&C1)' NE '').LMLP2
+         AIF   (&R1 EQ &C1-1).L
+&C       SETC  '&RG(&R1),&RG(&C1-1),&W1.(&@.13)'              DBC 06/84
+&LNME    LM    &C                  RESTORE REGISTERS          DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+         AGO   .LMLP
+.L       ANOP                                                 DBC 06/84
+&C       SETC  '&RG(&R1),&W1.(,&@.13)'                        DBC 06/84
+&LNME    L     &C                  RESTORE THE REGISTER       DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+         AGO   .LMLP
+.SETRCM  ANOP
+.*
+         AIF   (NOT &RCLA).RETURN
+         AIF   ('&RC' EQ '0').SR
+&LNME    LA    &@.15,&RC           GET THE RETURN CODE        DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+         AGO   .RETURN
+.SR      ANOP                                                 DBC 06/84
+&LNME    SLR   &@.15,&@.15         ZERO THE RETURN CODE       DBC 06/84
+&LNME    SETC  ''                                             DBC 06/84
+.RETURN  ANOP
+.*
+         AIF   (NOT &#ENTPLI).NOTPLI3
+&LNME    BALR  &@.1,&@.14          RETURN TO CALLER           DBC 06/84
+         MEXIT
+.NOTPLI3 ANOP
+.*
+         AIF   ('&MODE '(1,1) EQ 'R').RETBSM                  DBC 04/85
+         AIF   ('&MODE '(1,1) EQ 'L').RETBR                   DBC 04/85
+         MNOTE 8,'"MODE=&MODE" NOT RECOGNIZED.'               DBC 04/85
+         MNOTE *,'"MODE=RESTORE" OR "MODE=LEAVE" WAS EXPECTED.' C 04/85
+.*                                                            DBC 04/85
+.RETBR   ANOP                                                 DBC 04/85
+&LNME    BR    &@.14               RETURN                     DBC 10/84
+&LNME    SETC  ''                                             DBC 04/85
+         AGO   .MODEZ                                         DBC 04/85
+.RETBSM  ANOP                                                 DBC 04/85
+&LNME    BSM   0,&@.14             RESTORE AMODE AND RETURN   DBC 04/85
+&LNME    SETC  ''                                             DBC 04/85
+.MODEZ   ANOP                                                 DBC 04/85
+.*                                                            DBC 06/84
+         AIF   (NOT &#ENTRNT).END                             DBC 06/84
+         AIF   ('&#ENTSP' EQ '').NOSPOOL                      DBC 06/84
+         DS    0F                  ALIGN                      DBC 06/84
+&C       SETC  'AL1(&#ENTSP),AL3(&#ENTSIZ)'                   DBC 06/84
+E&#.LEN  DC    &C                  RSA SUBPOOL AND LENGTH     DBC 06/84
+         MEXIT                                                DBC 06/84
+.NOSPOOL ANOP
+E&#.LEN  DC    A(&#ENTSIZ)         RSA LENGTH                 DBC 06/84
+.END     MEND

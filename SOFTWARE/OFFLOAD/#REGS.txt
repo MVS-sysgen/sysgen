@@ -1,0 +1,197 @@
+         MACRO
+         #REGS &GEN=YES
+.*
+.*
+.*                                                            09/84 DBC
+.* LAST CHANGE DATE - SEPTEMBER 11, 1984                      09/84 DBC
+.*                  - ADDED SUPPORT FOR PL/S STYLE REGISTER   09/84 DBC
+.*                    NAMES (@00, @01, ---, @15).             09/84 DBC
+.*                  - ATTEMPTS TO MULTIPLY DEFINE THE SAME    09/84 DBC
+.*                    NAME TO THE SAME VALUE WILL NOW BE      09/84 DBC
+.*                    SUPPRESSED WITHOUT ERROR.               09/84 DBC
+.*
+.* LAST CHANGE DATE - OCTOBER 18, 1983
+.*                  - MAILING ADDRESS CHANGE
+.*
+.* LAST CHANGE DATE - APRIL 21, 1981
+.*                  - MACRO NAME CHANGED FROM $REGS TO #REGS
+.*
+.* LAST CHANGE DATE - APRIL 20, 1981
+.*                  - SUPPORT FOR THE "GEN={YES|NO}" OPERAND IS ADDED.
+.*
+.* LAST CHANGE DATE - DECEMBER 5, 1977
+.*                  - SINGLE REGISTER EQUATES NOW LINE UP CORRECTLY IN
+.*                    THE LISTING.
+.*
+.* LAST CHANGE DATE - FEBRUARY 2, 1977
+.*                  - MAILING ADDRESS CHANGE.
+.*
+.* LAST CHANGE DATE - APRIL 1, 1975
+.*
+.* THIS MACRO WAS WRITTEN BY DAVID B. COLE.  ANY QUESTIONS CONCERNING
+.* IT MAY BE ADDRESSED TO:
+.*       RR#2 BOX 712
+.*       AFTON, VA. 22920
+.*
+.*
+.*
+.*   THE #REGS MACRO HAS TWO FUNCTIONS. ITS PRIMARY
+.* PURPOSE IS TO PROVIDE A SIMPLE MEANS OF DEFINING SETS
+.* OF REGISTER NAME EQUATES. ITS SECONDARY PURPOSE IS TO
+.* CREATE AN INTERNAL TABLE OF ALL REGISTER NAMES
+.* COUPLED WITH THEIR NUMERIC VALUES. THIS TABLE IS THEN
+.* MADE AVAILABLE TO CERTAIN OTHER MACROS (E.G. #ENTER
+.* AND #EXIT) SO THAT THEY CAN DETERMINE (IF NECESSARY)
+.* THE VALUES OF ANY REGISTER NAMES THAT MIGHT BE PASSED
+.* TO THEM AS OPERANDS AND SO THAT THEY CAN USE REGISTER
+.* NAME EQUATES INSTEAD OF REGISTER NUMBERS IN THE CODE
+.* THAT THEY GENERATE. THIS IS SO THAT ALL REFERENCES TO
+.* REGISTERS WILL BE INDICATED IN THE ASSEMBLER'S CROSS
+.* REFERENCE LISTING.
+.*                                                            09/84 DBC
+.*   THE #REGS MACRO CAN BE USED ANY NUMBER OF TIMES IN
+.* AN ASSEMBLY. EACH TIME THAT IT IS USED, IT CAN BE
+.* GIVEN ANY NUMBER OF POSITIONAL OPERANDS. EACH OPERAND      09/84 DBC
+.* CAN BE EITHER A SINGLE TERM OR A SUB-LIST OF TWO
+.* TERMS.
+.*                                                            09/84 DBC
+.*   IF AN OPERAND IS A SUB-LIST OF TWO TERMS, THEN THE
+.* #REGS MACRO TREATS IT AS A REQUEST TO DEFINE A SINGLE
+.* REGISTER NAME AND IT GENERATES A STATEMENT OF THE
+.* FORM: " TERM1 EQU TERM2 ". THE FIRST TERM MUST BE ANY
+.* VALID NAME NOT PREVIOUSLY DEFINED. THE SECOND TERM
+.* MUST BE ANY SELF-DEFINING TERM OR ANY REGISTER NAME
+.* THAT HAS BEEN PREVIOUSLY DEFINED BY THIS OR A
+.* PREVIOUS #REGS MACRO. IT SHOULD NOT BE AN EXPRESSION,
+.* AND IT SHOULD NOT BE ANY NAME NOT PREVIOUSLY DEFINED.
+.* THE VALUE OF THE SECOND TERM SHOULD FALL IN THE RANGE
+.* OF 0 THROUGH 15. IF THE SECOND TERM FITS THESE
+.* REQUIREMENTS, THEN THE REGISTER NAME IS SAVED IN AN
+.* INTERNAL TABLE FOR USE BY OTHER MACROS.
+.*                                                            09/84 DBC
+.*   IF AN OPERAND IS ONLY A SINGLE TERM, THEN THE MACRO
+.* TREATS IT AS A REQUEST TO DEFINE A FULL SET OF
+.* REGISTER NAME EQUATES WITH THE GIVEN TERM USED AS THE
+.* REGISTER NAME PREFIX. AS AN EXAMPLE, ASSUME THAT THE
+.* OPERAND IS "GPR". IN THIS CASE, THE #REGS MACRO WILL
+.* GENERATE EQUATES DEFINING GPR0, GPR1, ---, GPR15 AND
+.* GPRA, GPRB, ---, GPRF (EQUAVALENT TO GPR10, GPR11,
+.* ---, GPR15). IN ADDITION, THE GENERATED REGISTER
+.* NAMES ARE SAVED IN AN INTERNAL TABLE FOR USE BY OTHER
+.* MACROS.
+.*                                                            09/84 DBC
+.*   A SPECIAL CASE. IF THE SINGLE TERM IS AN "AT SIGN"       09/84 DBC
+.* (@), THEN THEN THE GENERATED NAMES WILL BE @00, @01,       09/84 DBC
+.* ---, @15. THIS CONFORMS TO PL/S CONVENTIONS.               09/84 DBC
+.*                                                            09/84 DBC
+.*   IF #REGS IS CALLED WITHOUT OPERANDS, THEN IT IS
+.* TREATED AS A REQUEST TO GENERATE A FULL SET OF
+.* EQUATES USING "R" AS THE PREFIX.
+.*
+.*
+.*
+.* GEN={YES|NO}    (DEFAULT IS GEN=YES)
+.*       THIS CONTROLS WHETHER OR NOT THIS MACRO ACTUALLY GENERATES THE
+.*       'EQU' STATEMENTS THAT CREATE THE DESIRED REGISTER NAMES. IF
+.*       "GEN=NO" IS GIVEN, THEN PRESUMEDLY THE DESIRED NAMES ARE
+.*       GENERATED ELSEWHERE. IN THIS CASE THE ONLY FUNCTION PERFORMED
+.*       BY THIS MACRO IS TO UPDATE INTERNAL TABLES.
+.*
+.*
+.*
+.* INNER MACROS USED - #TEST
+.*
+         GBLA  &#REGVAL(255)
+         GBLA  &#TESERR
+         GBLC  &#REGNME(255)
+         GBLC  &#TESRET(20)
+         LCLA  &ARG,&CTR,&NEXT,&A1
+         LCLB  &B1
+         LCLC  &LPFX,&C1
+&NEXT    SETA  0
+.LP1     AIF   (&NEXT GE 255).END1
+&NEXT    SETA  &NEXT+1
+         AIF   ('&#REGNME(&NEXT)' NE '').LP1
+&NEXT    SETA  &NEXT-1
+.END1    ANOP
+&ARG     SETA  0
+.LP2     AIF   (&ARG GE N'&SYSLIST).DONE
+&ARG     SETA  &ARG+1
+         AIF   (N'&SYSLIST(&ARG) EQ 0).LP2
+         AIF   (&NEXT LT 255).NOTFULL
+         MNOTE 4,'THE REGISTER NAME SAVE TABLE IS FULL.'
+         MNOTE 4,'THE MAXIMUM CAPACITY IS 255 ENTRIES.'
+.NOTFULL ANOP
+&C1      SETC  '&SYSLIST(&ARG,1)'
+         AIF   (N'&SYSLIST(&ARG) GE 2).ONEREG
+.NULL    ANOP
+&B1      SETB  (1)
+         #TEST PFIX=
+&LPFX    SETC  '&#TESRET(1)'
+.*                                                            09/84 DBC
+         AIF   ('&C1' NE '@').NOT@                            09/84 DBC
+&CTR     SETA  0-1                                            09/84 DBC
+.LP@     AIF   (&CTR EQ 15).END@                              09/84 DBC
+&CTR     SETA  &CTR+1                                         09/84 DBC
+&C1      SETC  '0&CTR'                                        09/84 DBC
+&C1      SETC  '&C1'(K'&C1-1,2)                               09/84 DBC
+         #REGS (@&C1,&LPFX&CTR)                               09/84 DBC
+         AGO   .LP@                                           09/84 DBC
+.END@    AIF   (&NEXT GE 255).LP2                             09/84 DBC
+&NEXT    SETA  &NEXT+1                                        09/84 DBC
+         AIF   ('&#REGNME(&NEXT)' NE '').END@                 09/84 DBC
+&NEXT    SETA  &NEXT-1                                        09/84 DBC
+         AGO   .LP2                                           09/84 DBC
+.NOT@    ANOP                                                 09/84 DBC
+.*                                                            09/84 DBC
+&CTR     SETA  0
+.LP2A    AIF   (&CTR GE &NEXT).PXSAVE
+&CTR     SETA  &CTR+1
+         AIF   (&#REGVAL(&CTR) LT 16 OR '&#REGNME(&CTR)' NE '&C1').LP2A
+         AGO   .LP2                                           09/84 DBC
+.PXSAVE  AIF   (&NEXT GE 255).NOSAVE1                         09/84 DBC
+&NEXT    SETA  &NEXT+1
+&#REGNME(&NEXT) SETC '&C1'
+&#REGVAL(&NEXT) SETA 16
+.NOSAVE1 AIF   ('&GEN(1)'(1,1) NE 'Y').LP2
+&CTR     SETA  0
+.LP3     AIF   (&CTR GT 15).HEX
+&C1&CTR  EQU   &LPFX&CTR
+&CTR     SETA  &CTR+1
+         AGO   .LP3
+.HEX     ANOP
+&C1.A    EQU   &C1.10
+&C1.B    EQU   &C1.11
+&C1.C    EQU   &C1.12
+&C1.D    EQU   &C1.13
+&C1.E    EQU   &C1.14
+&C1.F    EQU   &C1.15
+         AGO   .LP2
+.ONEREG  ANOP
+&B1      SETB  (1)
+         AIF   (N'&SYSLIST(&ARG) EQ 2).NOXCESS
+         MNOTE 4,'"&SYSLIST(&ARG)" CONTAINS EXCESS INFORMATION.'
+         MNOTE 4,'THE EXCESS WILL BE IGNORED.'
+.NOXCESS #TEST REGS=&SYSLIST(&ARG,2)
+         AIF   (&#TESERR EQ 0).REGOK
+         MNOTE 4,'THE VALUE OF "&SYSLIST(&ARG,2)" IS NOT DETERMINABLE.'
+         AGO   .REGEQU
+.REGOK   ANOP                                                 09/84 DBC
+&A1      SETA  &#TESRET(1)
+&CTR     SETA  0
+.LP3A    AIF   (&CTR GE &NEXT).RGSAVE
+&CTR     SETA  &CTR+1
+         AIF   (&#REGVAL(&CTR) NE &A1 OR '&#REGNME(&CTR)' NE '&C1').LP3*
+               A
+         AGO   .LP2                                           09/84 DBC
+.RGSAVE  AIF   (&NEXT GE 255).REGEQU                          09/84 DBC
+&NEXT    SETA  &NEXT+1
+&#REGNME(&NEXT) SETC '&C1'
+&#REGVAL(&NEXT) SETA &A1
+.REGEQU  AIF   ('&GEN(1)'(1,1) NE 'Y').LP2
+&C1      EQU   &SYSLIST(&ARG,2)
+         AGO   .LP2
+.DONE    ANOP
+&C1      SETC  'R'
+         AIF   (NOT &B1).NULL
+         MEND

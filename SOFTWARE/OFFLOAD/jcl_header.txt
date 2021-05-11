@@ -1,0 +1,24 @@
+//OFFLOAD$ JOB (SYS),'INSTALL OFFLOAD',CLASS=A,MSGCLASS=A,
+//             USER=HERC01,PASSWORD=CUL8TR
+//*
+//***********************************************************
+//*                                                         *
+//*      SAMPLE JCL TO ASSEMBLE AND LINKEDIT THE OFFLOAD    *
+//*      PROGRAM.                                           *
+//*                                                         *
+//***********************************************************
+//*
+//ASM     EXEC PGM=IFOX00,REGION=1024K,
+//             PARM=(TERM,LOAD,NODECK)
+//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
+//         DD  DSN=SYS1.AMODGEN,DISP=SHR
+//*
+//SYSUT1   DD  DSN=&&SYSUT1,UNIT=SYSSQ,SPACE=(CYL,(15,5)),
+//             DISP=(,PASS)
+//SYSUT2   DD  UNIT=SYSSQ,SPACE=(CYL,(15,5))
+//SYSUT3   DD  UNIT=SYSSQ,SPACE=(CYL,(15,5))
+//SYSTERM  DD  SYSOUT=*
+//SYSPRINT DD  SYSOUT=*,DCB=BLKSIZE=1089
+//SYSGO    DD  DSN=&&OBJSET,UNIT=SYSSQ,SPACE=(CYL,(1,1),RLSE),
+//             DISP=(MOD,PASS)
+//SYSIN    DD  *
