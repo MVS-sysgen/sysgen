@@ -5,6 +5,8 @@
 * Edited `create.dasd.sh`: removed read to ask for compression. Always compress now.
 * Edited `condcode.rexx`: returns non-zero if any jobs have a return code greater than 0004. Can now be used in scripts.
 * Edited `smp1.cnf`, `smp2.cnf`, and `sysgen.cnf` to change 3215 console to 3215-C for automation
+* Added `SYSGEN` alias to `UCPUB001` for software installs in `jcl/mvs01.jcl`
+* Modified `jcl/sysgen05.jcl` changing `,DYNAMNBR=20` to `,DYNAMNBR=64`
 
 ## Info
 
@@ -17,7 +19,6 @@ There are lots of files and folders. Each folder has a readme explaining from a 
 ## System Generation
 
 To build your own sysgen mvs 3.8j system launch: `sysgen.sh`
-
 
 ## System Setup Information:
 
