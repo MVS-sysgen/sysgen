@@ -1,0 +1,13 @@
+# RPF Install
+/$CA
+$HASP000 OK;sh ./submit.sh ../SOFTWARE/RPF/00_rpf_alias_profile.jcl
+/*02 IEC301A S JOB RPFPROF0 DSNAME SYS1.VSAM.MASTER.CATALOG;/r 02,sysprog
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 01c ../SOFTWARE/RPF/JCL.xmi ebcdic
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/RPF/01_rpf_install_jcl.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 01c ../SOFTWARE/RPF/HELP.xmi ebcdic
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/RPF/02_rpf_install_help.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;devinit 01c ../SOFTWARE/RPF/LOADLIB.xmi ebcdic
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/RPF/03_rpf_install_loadlib.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;sh ./submit.sh ../SOFTWARE/RPF/04_rpf_tso_help.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;sh ./submit.sh ../SOFTWARE/RPF/05_rpf_tso_cmdlib_parmlib.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;/$VS,'S ZTIMER'

@@ -1,0 +1,4 @@
+* Installing RPF
+sh bash ../SOFTWARE/RPF/install.sh
+* Launching Automation REXX script
+exec ../automate.rexx ../SOFTWARE/RPF/install.txt hercules.log -d &&
