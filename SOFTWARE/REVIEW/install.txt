@@ -1,0 +1,12 @@
+# RFE Install
+/$CA
+$HASP000 OK;devinit 01c ../SOFTWARE/REVIEW/revclist.xmi
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/REVIEW/01_review_receive_clist.jcl
+/ $HASP395 RFEXMIT1 ENDED;devinit 01c ../SOFTWARE/REVIEW/revhelp.xmi
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/REVIEW/02_review_recieve_help.jcl
+/ $HASP395 RFEXMIT2 ENDED;devinit 01c ../SOFTWARE/REVIEW/rev370ld.xmi
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/REVIEW/03_review_receive_load.jcl
+/ $HASP395 RFEXMIT3 ENDED;sh ./submit.sh ../SOFTWARE/REVIEW/05_review_install.jcl
+/ $HASP395 RFEINST5 ENDED;sh ./submit.sh ../SOFTWARE/REVIEW/06_SOC1_fix.jcl
+/ $HASP395 RFESC1F4 ENDED;/$VS,'S ZTIMER'
+# Install complete

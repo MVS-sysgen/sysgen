@@ -1,0 +1,4 @@
+* Installing REVIEW
+* Launching Automation REXX script
+sh bash ../SOFTWARE/REVIEW/update_review.sh
+exec ../automate.rexx ../SOFTWARE/REVIEW/install.txt hercules.log -d &&
