@@ -28,8 +28,8 @@ Included with this repo:
 
 In External Repos:
 
-- RAKF*
-- FTPD*
+- [RAKF](https://github.com/MVS-sysgen/RAKF)*
+- [FTPD](https://github.com/MVS-sysgen/FTPD)*
 
 
 To install any of these login and run `INSTALL THING` where *THING* is any of the folders in `SOFTWARE`.
