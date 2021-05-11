@@ -2,6 +2,8 @@
 
 Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments. Currently only Debian/Ubuntu based systems are supported. If your system requires a password for sudo commands you may get prompted for your password to install needed software.
 
+:warning: depending on your system this could take upward of two hours.
+
 Running sysgen will:
 
 - Compile the newest version of SDL Hercules and install it
@@ -14,7 +16,6 @@ Running sysgen will:
 - Install BREXX
 
 `sysgen.sh` can take multiple arguments:
-
 
 - `-h`/`--help` Display this help message.
 - `-n`/`--no-install` This setting will prevent this script from installing any software other than RAKF/MDDIAG8.
