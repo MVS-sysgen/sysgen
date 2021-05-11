@@ -1,0 +1,9 @@
+# Installing BREXX
+/$CA
+$HASP000 OK;devinit 01c ../SOFTWARE/BREXX/BREXX.INSTALL.XMI
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/BREXX/01_receive_install.jcl
+/*02 IEC301A S JOB BREXXRCV DSNAME SYS1.VSAM.MASTER.CATALOG;/r 02,sysprog
+/ $HASP395 BREXXRCV ENDED;sh ./submit.sh ../SOFTWARE/BREXX/02_brexx_unpack.jcl
+/ $HASP395 BREXXUNP ENDED;sh ./submit.sh ../SOFTWARE/BREXX/03_brexx_install.jcl
+/ $HASP395 BREXXINS ENDED;/$VS,'S ZTIMER'
+# BREXX install complete
