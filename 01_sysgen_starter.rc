@@ -7,37 +7,5 @@ ostailor default
 panopt msgcolor=dark
 shcmdopt enable
 pantitle "Build System Starter"
+exec ../automate.rexx ../01_sysgen_starter.txt hercules.log -d &&
 ipl 280
-psw
-pause 5
-/
-* Initialize MVS started system res volume
-/input=1442,00c
-pause 10
-psw
-stop
-ipl 280
-psw
-/
-* Restore MVS starter system res volume
-/input=1442,00d
-pause 10
-stop
-psw
-ipl 281
-pause 5
-/
-* Initialize MVS starter system spool volume
-/input=1442,00e
-pause 10
-stop
-psw
-ipl 281
-pause 5
-/
-* Restore MVS starter system spool volume
-/input=1442,00f
-pause 20
-psw
-* Done Starter System
-quit

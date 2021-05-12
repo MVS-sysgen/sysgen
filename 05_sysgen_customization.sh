@@ -14,7 +14,7 @@ echo_step "Untarring $prev_dasd"
 tar -xvf $prev_dasd
 echo_step "Downloading SYSCPK"
 ret=0
-wget http://www.jaymoseley.com/hercules/downloads/archives/SYSCPK.tar.gz || ret=$?
+wget -t 1 http://www.jaymoseley.com/hercules/downloads/archives/SYSCPK.tar.gz || ret=$?
 
 if [ $ret -ne 0 ]; then
     echo_step "Download of http://www.jaymoseley.com/hercules/downloads/archives/SYSCPK.tar.gz failed"

@@ -1,0 +1,19 @@
+/
+HHC00010A Enter input for console 0:0009;/input=1442,00c
+/IBC163A  END OF JOB.;stop
+ipl 280
+psw
+psw
+/
+HHC00010A Enter input for console 0:0009;/input=1442,00d
+/IBC163A  END OF JOB.;stop
+ipl 281
+psw
+/
+HHC00010A Enter input for console 0:0009;/input=1442,00e
+/IBC163A  END OF JOB.;stop
+ipl 281
+psw
+/
+HHC00010A Enter input for console 0:0009;/input=1442,00f
+/IBC163A  END OF JOB.;quit
