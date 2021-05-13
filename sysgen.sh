@@ -5,7 +5,7 @@ trap 'check_return' 0
 
 # Sysgen automated installer
 
-
+cwd=$(pwd)
 
 NOINSTALL=0
 NORAKF=0
@@ -89,14 +89,14 @@ if [ $NORAKF -eq 1 ]; then
 else
     echo_step "Installing RAKF"
     cd SOFTWARE
-    git clone https://github.com/MVS-sysgen/RAKF.git
+    git clone https://github.com/MVS-sysgen/RAKF.git || true
     cd RAKF
     bash ./install_rakf.sh
 
     if [ $NOINSTALL -eq 1 ]; then
         echo_warn "No software installed"
     else
-        cd $(dirname $0)
+        cd ../../
         echo_step 'Installing MDDIAG8, REVIEW, BREXX, IND$FILE, and FTPD'
         bash 06_sysgen_software_install.sh
     fi
@@ -105,7 +105,7 @@ fi
 
 ## TODO add software install
 
-cd $(dirname $0)
+cd $cwd
 
 echo "cd sysgen" > start_mvs.sh
 echo "hercules -f conf/local.cnf -r autostart.rc > hercules.log" >> start_mvs.sh
