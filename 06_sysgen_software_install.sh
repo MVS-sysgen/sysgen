@@ -1,8 +1,7 @@
 # Installs SYSGEN Software
 # For use with Jay Moseley sysgen MVS only
-cd $(dirname $0)
 
-source ../../00_sysgen_functions.sh
+source 00_sysgen_functions.sh
 
 cd SOFTWARE
 echo_step "Downloading FTPD"

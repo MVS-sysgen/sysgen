@@ -105,8 +105,6 @@ fi
 
 ## TODO add software install
 
-cd $cwd
-
 echo "cd sysgen" > start_mvs.sh
 echo "hercules -f conf/local.cnf -r autostart.rc > hercules.log" >> start_mvs.sh
 chmod +x start_mvs.sh
