@@ -2,7 +2,9 @@
 
 Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments. Currently only Debian/Ubuntu based systems are supported. If your system requires a password for sudo commands you may get prompted for your password to install needed software.
 
-:warning: depending on your system this could take upward of two hours.
+:warning: **DO NOT** run this script as root, there is a bug in hercules which will cause it to eat up all your machine resources :warning:
+
+*depending on your system this could take upward of two hours.*
 
 Running sysgen will:
 
