@@ -20,7 +20,7 @@ Running sysgen will:
 `sysgen.sh` can take multiple arguments:
 
 - `-h`/`--help` Display this help message.
-- `-n`/`--no-install` This setting will prevent this script from installing any software other than RAKF/MDDIAG8.
+- `-n`/`--no-install` This setting will prevent this script from installing any software other than RAKF.
 - `-r`/`--no-rakf` Do not install any software after the customization step
 
 The remaining arguments will skip the previous steps and start the system generation process from the next step. It will remove the current `dasd` folder and extract the most recent backed up dasd folder from the previous step. For example, if you made changes to any of the `jcl/sysgen*.jcl` files you don't have to rebuild the whole environment, just use `./sysgen.sh --skip-distrib` and it will start rebuilding from the sysgen process onward.
