@@ -34,30 +34,3 @@
 //SYSIN    DD  *
   COPY INDD=((SYSUT1,R)),OUTDD=SYSUT2
   COPY INDD=((SYSUT2,R)),OUTDD=SYSUT2
-//*
-//* From Jay Moseley SYSGEN
-//* ***************************************************************** *
-//* As installed, the REVINIT CLIST is lacking a VOLUME parameter     *
-//* which, if present, will allocate the profile dataset on the same  *
-//* DASD volume as the other user's datasets.  This step simply       *
-//* modifies the REVINIT member of SYS1.CMDPROC to add a VOLUME       *
-//* parameter when the profile dataset is initially created. This     *
-//* change does not take affect until the TSO user logs on the first  *
-//* time after this job is executed.                                  *
-//* ***************************************************************** *
-//*
-//STEP4TSO EXEC PGM=IKJEFT01,REGION=1024K,DYNAMNBR=50
-//SYSPRINT DD  SYSOUT=*
-//SYSTSPRT DD  SYSOUT=*
-//SYSTERM  DD  SYSOUT=*
-//SYSTSIN  DD  DATA
-EDIT 'SYS1.CMDPROC(REVINIT)' CNTL NONUM
-LIST
-TOP
-F =ALLOC F(REVPROF) DA('&PROFDSN') NEW USING=
-C * =TR  =TR +=
-INSERT       VOLUME(PUB000)
-LIST
-END SAVE
-/*
-//
