@@ -85,7 +85,7 @@ else
 fi
 
 if [ $NORAKF -eq 1 ]; then
-    echo_warn
+    echo_warn "Skipping RAKF"
 else
     echo_step "Installing RAKF"
     cd SOFTWARE
@@ -93,10 +93,18 @@ else
     cd RAKF
     bash ./install_rakf.sh
 
-    echo_step "Installing MDDIAG8"
+    if [ $NOINSTALL -eq 1 ]; then
+        echo_warn "No software installed"
+    else
+        echo_step 'Installing MDDIAG8, REVIEW, BREXX, IND$FILE, and FTPD'
+        bash 06_sysgen_software_install.sh
+    fi
+
 fi
 
 ## TODO add software install
+
+cd $(dirname $0)
 
 echo "cd sysgen" > start_mvs.sh
 echo "hercules -f conf/local.cnf -r autostart.rc > hercules.log" >> start_mvs.sh
