@@ -96,6 +96,7 @@ else
     if [ $NOINSTALL -eq 1 ]; then
         echo_warn "No software installed"
     else
+        cd $(dirname $0)
         echo_step 'Installing MDDIAG8, REVIEW, BREXX, IND$FILE, and FTPD'
         bash 06_sysgen_software_install.sh
     fi
