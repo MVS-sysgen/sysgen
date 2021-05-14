@@ -1,6 +1,8 @@
-# Automated MVS3.8 Sysgen
+# Automated MVS3.8j Sysgen
 
-Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments. Currently only Debian/Ubuntu based systems are supported. If your system requires a password for sudo commands you may get prompted for your password to install needed software.
+Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments.
+
+Currently only Debian/Ubuntu based systems are supported. If your system requires a password for sudo commands you may get prompted for your password to install needed software.
 
 :warning: **DO NOT** run this script as root, there is a bug in hercules which will cause it to eat up all your machine resources :warning:
 
@@ -11,6 +13,7 @@ Running sysgen will:
 - Compile the newest version of SDL Hercules and install it
 - Build the Jay Moseley sysgen MVS 3.8J automatically
 - Install RAKF
+- Install MDDIAG8
 - Install `INSTALL`, a clist that uses MDDIAG8 to install software contained in the [SOFTWARE](SOFTWARE) folder.
 - Install Review Front End
 - Install IND$FILE v205
