@@ -88,7 +88,14 @@ if [ $NORAKF -eq 1 ]; then
     echo_warn "Skipping RAKF"
 else
     echo_step "Installing RAKF"
-    cd SOFTWARE
+
+    cd sysgen
+    rm -rf dasd
+    prev_dasd=$(ls -Art dasd.04.customization.*.tar | tail -n 1)
+    echo_step "Untarring $prev_dasd"
+    tar -xvf $prev_dasd
+
+    cd ../SOFTWARE
     git clone https://github.com/MVS-sysgen/RAKF.git || true
     cd RAKF
     bash ./install_rakf.sh
