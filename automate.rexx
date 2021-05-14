@@ -1,7 +1,7 @@
 /* REXX */
 /*
    Sysgen Automation REXX script
-   By: Philip Young (Soldier of FORTAN)
+   By: Philip Young (Soldier of FORTRAN)
 
    WARNING: This will only work when called from hercules
 
