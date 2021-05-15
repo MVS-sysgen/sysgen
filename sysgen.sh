@@ -129,9 +129,9 @@ if [ $NORAKF -eq 1 ]; then
 else
     echo_step "Installing RAKF"
 
-    if [ $USERNAME -ne 0 ]; then
+    if [ $USERNAME != "0" ]; then
 
-        if [ $PASSWORD -eq 0 ]; then
+        if [ $PASSWORD != "0" ]; then
             PASSWORD=$(cat /dev/urandom 2>/dev/null| tr -dc 'A-Z0-9$@#' 2>/dev/null | head -c 8 )
         fi
         echo_step "Adding username/password:" $USERNAME $PASSWORD
@@ -173,8 +173,9 @@ echo "hercules -f conf/local.cnf -r autostart.rc > hercules.log" >> start_mvs.sh
 chmod +x start_mvs.sh
 
 echo_step "System Generation complete"
-if [ $USERNAME -ne 0 ]; then
-    echo_warn "Username/Password Added: $USERNAME/$PASSWORD"
+if [ $USERNAME != "0" ]; then
+    echo_warn "HMVS01/CUL8TR replaced with: $USERNAME/$PASSWORD"
+fi
 echo_step "To launch MVS 3.8j use: ./start_mvs.sh"
 
 
