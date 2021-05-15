@@ -37,6 +37,8 @@ while [[ "$#" -gt 0 ]]; do
                     echo "    ./sysgen.sh -h/--help       Display this help message."
                     echo "    ./sysgen.sh -n/--no-install Install RAKF and MDDIAG8 but no other software."
                     echo "    ./sysgen.sh -r/--no-rakf    Do not install any software including RAKF/MDDIAG8."
+                    echo "    ./sysgen.sh --username      Add this username to RAKF"
+                    echo "    ./sysgen.sh --password      Use this password for new user (optional, if skipped a random one will be generated)"
                     echo "    ./sysgen.sh --skip-hercules Skip building hercules"
                     echo "    ./sysgen.sh --skip-starter  Skip building hercules and building starter"
                     echo "    ./sysgen.sh --skip-distrib  Skip building hercules, starter and distribution"
@@ -128,6 +130,10 @@ else
     echo_step "Installing RAKF"
 
     if [ $USERNAME -ne 0 ]; then
+
+        if [ $PASSWORD -eq 0 ]; then
+            PASSWORD=$(cat /dev/urandom 2>/dev/null| tr -dc 'A-Z0-9$@#' 2>/dev/null | head -c 8 )
+        fi
         echo_step "Adding username/password:" $USERNAME $PASSWORD
     fi
     cd sysgen
@@ -139,7 +145,7 @@ else
     cd ../SOFTWARE
     git clone https://github.com/MVS-sysgen/RAKF.git || true
     cd RAKF
-    bash ./install_rakf.sh
+    bash ./install_rakf.sh $USERNAME $PASSWORD
     ret=$?
     if [ $ret -eq 1 ]; then
         echo_step "RAKF install failed retrying"
@@ -167,6 +173,8 @@ echo "hercules -f conf/local.cnf -r autostart.rc > hercules.log" >> start_mvs.sh
 chmod +x start_mvs.sh
 
 echo_step "System Generation complete"
+if [ $USERNAME -ne 0 ]; then
+    echo_warn "Username/Password Added: $USERNAME/$PASSWORD"
 echo_step "To launch MVS 3.8j use: ./start_mvs.sh"
 
 
