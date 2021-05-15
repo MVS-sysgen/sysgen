@@ -131,10 +131,10 @@ else
 
     if [ $USERNAME != "0" ]; then
 
-        if [ $PASSWORD != "0" ]; then
+        if [ $PASSWORD = "0" ]; then
             PASSWORD=$(cat /dev/urandom 2>/dev/null| tr -dc 'A-Z0-9$@#' 2>/dev/null | head -c 8 )
         fi
-        echo_step "Adding username/password:" $USERNAME $PASSWORD
+        #echo_step "Using username/password:" $USERNAME $PASSWORD
     fi
     cd sysgen
     rm -rf dasd
@@ -143,6 +143,7 @@ else
     tar -xvf $prev_dasd
 
     cd ../SOFTWARE
+    rm -rf RAKF
     git clone https://github.com/MVS-sysgen/RAKF.git || true
     cd RAKF
     bash ./install_rakf.sh $USERNAME $PASSWORD
