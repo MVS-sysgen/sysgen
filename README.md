@@ -25,7 +25,8 @@ Running sysgen will:
 - `-h`/`--help` Display this help message.
 - `-n`/`--no-install` This setting will prevent this script from installing any software other than RAKF.
 - `-r`/`--no-rakf` Do not install any software after the customization step
-
+- `--user <username>` This adds a user to RAKF
+- `--password <password>`
 The remaining arguments will skip the previous steps and start the system generation process from the next step. It will remove the current `dasd` folder and extract the most recent backed up dasd folder from the previous step. For example, if you made changes to any of the `jcl/sysgen*.jcl` files you don't have to rebuild the whole environment, just use `./sysgen.sh --skip-distrib` and it will start rebuilding from the sysgen process onward.
 
 - `--skip-hercules` Skip building hercules, remove any dasd and start automated sysgen

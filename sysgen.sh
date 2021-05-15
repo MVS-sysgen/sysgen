@@ -61,12 +61,24 @@ else
     bash 02_sysgen_build_starter.sh
 fi
 
+trap : 0
+set +e
+
 if [ $NODISTRIB -eq 1 ] \
     || [ $NOSYSGEN -eq 1 ] || [ $NOCUSTOM -eq 1 ]; then
     echo_warn "Skipping Distribution Libraries"
 else
     echo_step "Building Distribution Libraries"
     bash 03_sysgen_build_distribution_libraries.sh
+    ret=$?
+    if [ $ret -eq 1 ]; then
+        echo_step "Build failed retrying"
+        bash 03_sysgen_build_distribution_libraries.sh
+        ret=$?
+        if [ $ret -eq 1 ]; then
+            check_return
+        fi
+    fi
 fi
 
 if [ $NOSYSGEN -eq 1 ] || [ $NOCUSTOM -eq 1 ]; then
@@ -74,6 +86,15 @@ if [ $NOSYSGEN -eq 1 ] || [ $NOCUSTOM -eq 1 ]; then
 else
     echo_step "System Generation"
     bash 04_sysgen_system_generation.sh
+    ret=$?
+    if [ $ret -eq 1 ]; then
+        echo_step "System Generation failed retrying"
+        bash 04_sysgen_system_generation.sh
+        ret=$?
+        if [ $ret -eq 1 ]; then
+            check_return
+        fi
+    fi
 fi
 
 
@@ -82,6 +103,15 @@ if [ $NOCUSTOM -eq 1 ]; then
 else
     echo_step "Installing Customizations"
     bash 05_sysgen_customization.sh
+    ret=$?
+    if [ $ret -eq 1 ]; then
+        echo_step "Customizations failed retrying"
+        bash 05_sysgen_customization.sh
+        ret=$?
+        if [ $ret -eq 1 ]; then
+            check_return
+        fi
+    fi
 fi
 
 if [ $NORAKF -eq 1 ]; then
@@ -99,6 +129,15 @@ else
     git clone https://github.com/MVS-sysgen/RAKF.git || true
     cd RAKF
     bash ./install_rakf.sh
+    ret=$?
+    if [ $ret -eq 1 ]; then
+        echo_step "RAKF install failed retrying"
+        bash ./install_rakf.sh
+        ret=$?
+        if [ $ret -eq 1 ]; then
+            check_return
+        fi
+    fi
 
     if [ $NOINSTALL -eq 1 ]; then
         echo_warn "No software installed"
@@ -120,4 +159,3 @@ echo_step "System Generation complete"
 echo_step "To launch MVS 3.8j use: ./start_mvs.sh"
 
 
-trap : 0
