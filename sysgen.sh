@@ -14,6 +14,8 @@ NOSTARTER=0
 NODISTRIB=0
 NOSYSGEN=0
 NOCUSTOM=0
+USERNAME=0
+PASSWORD=0
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -24,6 +26,12 @@ while [[ "$#" -gt 0 ]]; do
         --skip-distrib) NODISTRIB=1 ;;
         --skip-sysgen) NOSYSGEN=1 ;;
         --skip-custom) NOCUSTOM=1 ;;
+        --username)
+            shift
+            USERNAME=$1 ;;
+        --password)
+            shift
+            PASSWORD=$1 ;;
         -h|--help)  echo "SYSGEN automated installer"
                     echo "Usage:"
                     echo "    ./sysgen.sh -h/--help       Display this help message."
@@ -119,6 +127,9 @@ if [ $NORAKF -eq 1 ]; then
 else
     echo_step "Installing RAKF"
 
+    if [ $USERNAME -ne 0 ]; then
+        echo_step "Adding username/password:" $USERNAME $PASSWORD
+    fi
     cd sysgen
     rm -rf dasd
     prev_dasd=$(ls -Art dasd.04.customization.*.tar | tail -n 1)
