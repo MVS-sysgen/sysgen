@@ -146,7 +146,11 @@ else
     rm -rf RAKF
     git clone https://github.com/MVS-sysgen/RAKF.git || true
     cd RAKF
-    bash ./install_rakf.sh $USERNAME $PASSWORD
+    if [ $USERNAME != "0" ]; then
+        bash ./install_rakf.sh $USERNAME $PASSWORD
+    else
+        bash ./install_rakf.sh
+    fi
     ret=$?
     if [ $ret -eq 1 ]; then
         echo_step "RAKF install failed retrying"
