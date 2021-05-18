@@ -1,6 +1,12 @@
 # Automated MVS3.8j Sysgen
 
-Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j run `./sysgen.sh` without any arguments.
+Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j first install the required packages:
+
+**Ubuntu**:
+
+Run: `sudo apt-get install m4 make autoconf automake cmake flex build-essential regina-rexx libbz2-dev libregina3-dev zlib1g-dev unzip c3270 ncat`
+
+Then run `./sysgen.sh`.
 
 Currently only Debian/Ubuntu based systems are supported. If your system requires a password for sudo commands you may get prompted for your password to install needed software.
 

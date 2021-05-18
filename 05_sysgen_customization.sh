@@ -5,8 +5,6 @@ trap 'check_return' 0
 set -e
 
 cd sysgen
-echo_step "Installing ncat"
-sudo apt install -y ncat
 
 rm -rf dasd
 prev_dasd=$(ls -Art dasd.03.sysgen.*.tar | tail -n 1)
