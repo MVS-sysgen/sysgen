@@ -19,13 +19,13 @@ mv hercules.log hercules_log.dlib_1.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_dlib_backup_1.$date_time.txt"
 cp prt00e.txt prt00e_dlib_backup_1.$date_time.txt
 echo_step "Checking Job Return Codes"
-if [[ -z "${TERM}" ]]; then
+if [[ ! -z "${TERM}" ]]; then
     tput bold
     tput setaf 2
 fi
 chmod +x ./condcode.rexx
 ./condcode.rexx prt00e.txt smp4p44
-if [[ -z "${TERM}" ]]; then
+if [[ ! -z "${TERM}" ]]; then
     tput sgr0
 fi
 
@@ -38,7 +38,7 @@ mv hercules.log hercules_log.dlib_2.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_dlib_backup_2.$date_time.txt"
 cp prt00e.txt prt00e_dlib_backup_2.$date_time.txt
 echo_step "Checking Job Return Codes"
-if [[ -z "${TERM}" ]]; then
+if [[ ! -z "${TERM}" ]]; then
     tput bold
     tput setaf 2
 fi
@@ -51,7 +51,7 @@ fi
 ./condcode.rexx prt00e.txt smpjob05
 ./condcode.rexx prt00e.txt smpjob06
 ./condcode.rexx prt00e.txt smpjob07
-if [[ -z "${TERM}" ]]; then
+if [[ ! -z "${TERM}" ]]; then
     tput sgr0
 fi
 echo_step "backing up DASD folder to dasd.dlib.$date_time.tar"
