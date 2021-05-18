@@ -5,7 +5,7 @@ HHC00010A Enter input for console 0:0009;/r 0,clpa
 /*03 $HASP436 REPLY Y OR N TO CONFIRM CHECKPOINT RECORD CHANGE;/r 3,y
 # Initialize and Mount New DASD Volumes
 / $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;script conf/mvs.script
-HHC02264I Script 2: file conf/mvs.script processing ended;sh ./submit.sh jcl/mvs00.jcl
+file conf/mvs.script processing ended;sh ./submit.sh jcl/mvs00.jcl
 /*04 ICK003D REPLY U TO ALTER VOLUME 0180 CONTENTS, ELSE T;/r 4,u
 /*05 ICK003D REPLY U TO ALTER VOLUME 0190 CONTENTS, ELSE T;/r 5,u
 /*06 ICK003D REPLY U TO ALTER VOLUME 0220 CONTENTS, ELSE T;/r 6,u
