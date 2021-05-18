@@ -3,21 +3,39 @@
 
 function check_return {
 
-    echo >&2 "$(tput bold)$(tput setaf 1)
-    ***************
-    *** ABORTED ***
-    ***************
-    "
-    echo "[!] Error encoutered exiting.$(tput sgr0)" >&2
-    exit 1
+
+    if [[ -z "${TERM}" ]]; then
+        echo >&2 "
+        ***************
+        *** ABORTED ***
+        ***************
+        "
+        echo "[!] Error encoutered exiting." >&2
+    else
+        echo >&2 "$(tput bold)$(tput setaf 1)
+        ***************
+        *** ABORTED ***
+        ***************
+        "
+        echo "[!] Error encoutered exiting.$(tput sgr0)" >&2
+    fi
+        exit 1
 }
 
 function echo_step {
-    echo "$(tput bold)$(tput setaf 4)[+] $1$(tput sgr0)"
+    if [[ -z "${TERM}" ]]; then
+        echo "[+] $1"
+    else
+        echo "$(tput bold)$(tput setaf 4)[+] $1$(tput sgr0)"
+    fi
 }
 
 function echo_warn {
-    echo "$(tput bold)$(tput setaf 3)[+] $1$(tput sgr0)"
+    if [[ -z "${TERM}" ]]; then
+        echo "[+] $1"
+    else
+        echo "$(tput bold)$(tput setaf 3)[+] $1$(tput sgr0)"
+    fi
 }
 
 
