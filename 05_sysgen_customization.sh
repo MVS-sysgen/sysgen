@@ -32,7 +32,7 @@ bash ./create.dasd.sh user
 
 chmod +x submit.sh
 echo_step "Starting Hercules: hercules -f conf/mvs.cnf -r ../05_sysgen_system_customization.rc"
-hercules -f conf/mvs.cnf -r ../05_sysgen_system_customization.rc > hercules.log
+hercules -f conf/mvs.cnf -r ../05_sysgen_system_customization.rc -d > hercules.log
 
 echo_step "Backing up hercules.log to hercules_log.customization.$date_time.log"
 mv hercules.log hercules_log.customization.$date_time.log

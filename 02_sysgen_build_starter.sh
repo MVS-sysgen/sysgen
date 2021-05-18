@@ -10,7 +10,7 @@ echo_step "Creating DASD"
 bash create.dasd.sh starter
 echo_step "Starting Hercules: hercules -f conf/ibcdmprs.cnf -r ../01_sysgen_starter.rc -d"
 echo_step "Log file: sysgen.build_starter.$date_time.log"
-hercules -f conf/ibcdmprs.cnf -r ../01_sysgen_starter.rc > hercules.log
+hercules -f conf/ibcdmprs.cnf -r ../01_sysgen_starter.rc -d > hercules.log
 echo_step "Creating dasd.build_starter.$date_time.tar"
 tar cvf dasd.01.build_starter.$date_time.tar ./dasd
 cd ..
