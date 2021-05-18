@@ -23,11 +23,11 @@ done
 echo_step "Building Hercules Hyperion SDL"
 git clone https://github.com/SDL-Hercules-390/hyperion.git
 cd hyperion
-./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-regina-rexx --enable-extpkgs=$(realpath ../hercpkgs)
+./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-regina-rexx --enable-extpkgs=$(realpath ../hercpkgs) --enable-optimization="-O3 -march=native"
 echo_step "Compiling Hercules"
 # thanks Mike Grossman for the CPU/o3
 export NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
-make -j$NUMCPUS -o3 --load-average=$NUMCPUS
+make -j$NUMCPUS --load-average=$NUMCPUS
 echo_step "Installing Hercules"
 sudo make install
 cd ..
