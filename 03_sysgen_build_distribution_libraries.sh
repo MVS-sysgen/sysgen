@@ -19,11 +19,15 @@ mv hercules.log hercules_log.dlib_1.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_dlib_backup_1.$date_time.txt"
 cp prt00e.txt prt00e_dlib_backup_1.$date_time.txt
 echo_step "Checking Job Return Codes"
-tput bold
-tput setaf 2
+if [[ -z "${TERM}" ]]; then
+    tput bold
+    tput setaf 2
+fi
 chmod +x ./condcode.rexx
 ./condcode.rexx prt00e.txt smp4p44
-tput sgr0
+if [[ -z "${TERM}" ]]; then
+    tput sgr0
+fi
 
 #######
 echo_step "Receive the MVS Product Elements"
@@ -34,8 +38,10 @@ mv hercules.log hercules_log.dlib_2.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_dlib_backup_2.$date_time.txt"
 cp prt00e.txt prt00e_dlib_backup_2.$date_time.txt
 echo_step "Checking Job Return Codes"
-tput bold
-tput setaf 2
+if [[ -z "${TERM}" ]]; then
+    tput bold
+    tput setaf 2
+fi
 ./condcode.rexx prt00e.txt mount
 #./condcode.rexx prt00e.txt smpjob00
 ./condcode.rexx prt00e.txt smpjob01
@@ -45,7 +51,9 @@ tput setaf 2
 ./condcode.rexx prt00e.txt smpjob05
 ./condcode.rexx prt00e.txt smpjob06
 ./condcode.rexx prt00e.txt smpjob07
-tput sgr0
+if [[ -z "${TERM}" ]]; then
+    tput sgr0
+fi
 echo_step "backing up DASD folder to dasd.dlib.$date_time.tar"
 tar cvf dasd.02.dlib.$date_time.tar ./dasd
 cd ..

@@ -18,8 +18,10 @@ mv hercules.log hercules_log.sysgen.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_sysgen.$date_time.txt"
 cp prt00e.txt prt00e_sysgen.$date_time.txt
 echo_step "Checking Job Return Codes"
-tput bold
-tput setaf 2
+if [[ -z "${TERM}" ]]; then
+    tput bold
+    tput setaf 2
+fi
 chmod +x ./condcode.rexx
 # ./condcode.rexx prt00e.txt sysgen00
 ./condcode.rexx prt00e.txt mount
@@ -42,7 +44,9 @@ chmod +x ./condcode.rexx
 ./condcode.rexx prt00e.txt usermods5
 ./condcode.rexx prt00e.txt usermods6
 ./condcode.rexx prt00e.txt fdz1d02
-tput sgr0
+if [[ -z "${TERM}" ]]; then
+    tput sgr0
+fi
 echo_step "backing up DASD folder to dasd.sysgen.$date_time.tar"
 tar cvf dasd.03.sysgen.$date_time.tar ./dasd
 cd ..

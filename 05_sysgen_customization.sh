@@ -41,13 +41,17 @@ mv hercules.log hercules_log.customization.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_customization.$date_time.txt"
 cp prt00e.txt prt00e_customization.$date_time.txt
 echo_step "Checking Job Return Codes"
-tput bold
-tput setaf 2
+if [[ -z "${TERM}" ]]; then
+    tput bold
+    tput setaf 2
+fi
 chmod +x ./condcode.rexx
 ./condcode.rexx prt00e.txt mvs00
 ./condcode.rexx prt00e.txt mvs01
 ./condcode.rexx prt00e.txt mvs02
-
+if [[ -z "${TERM}" ]]; then
+    tput sgr0
+fi
 echo_step "backing up DASD folder to dasd.customization.$date_time.tar"
 tar cvf dasd.04.customization.$date_time.tar ./dasd
 cd ..
