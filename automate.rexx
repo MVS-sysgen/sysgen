@@ -22,6 +22,7 @@ END;
 
 /* creating a little lock file */
 address 'hercules' 'sh touch failure'
+not_failed = 1
 
 
 say "Commands file: "||STREAM(commands,'C','QUERY EXISTS')
@@ -91,9 +92,9 @@ do while lines(commands) \= 0
         if left(readline,2) = "/*" then do
           /* We don't know the reply number, get it and use it here */
           parse var readline reply .
-          say "Reply Number: " reply
+          call pd  "Reply Number: " reply
           reply = right(reply,length(reply)-2)
-          say "Reply Number: " reply
+          call pd  "Reply Number: " reply
           if left(response,2) = "/r" then do
               parse var response s split
               parse var split . ',' reply_string
@@ -106,12 +107,15 @@ do while lines(commands) \= 0
 
         if upper(response) = "QUIT" THEN do
           address 'hercules' 'sh rm failure'
+          failed = 0
         end
 
         Address "HERCULES" response
         leave
       end
     end
+    /* in some cases the text is read before we read the response */
+
   end
 end
 
@@ -122,7 +126,7 @@ EXIT 0
 
 pd: /* Prints if debug is enabled */
   parse arg s
-  if debug then say s
+  if debug then say "[AUTOMATE DEBUG]" s
  return
 
 sleep: /* While regina has a sleep function it doesnt work in herc */
