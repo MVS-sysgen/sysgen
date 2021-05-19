@@ -18,7 +18,7 @@ echo_step "Untarring $prev_dasd"
 tar -xvf $prev_dasd
 
 echo_step "Starting Hercules: hercules -f conf/local.cnf -r ../06_sysgen_software_install.rc"
-hercules -f conf/local.cnf -r ../06_sysgen_software_install.rc -d > hercules.log
+hercules -f conf/local.cnf -r ../06_sysgen_software_install.rc > hercules.log
 
 echo_step "Backing up hercules.log to hercules_log.software.$date_time.log"
 mv hercules.log hercules_log.software.$date_time.log

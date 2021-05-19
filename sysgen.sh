@@ -151,15 +151,6 @@ else
     else
         bash ./install_rakf.sh
     fi
-    ret=$?
-    if [ $ret -eq 1 ]; then
-        echo_step "RAKF install failed retrying"
-        bash ./install_rakf.sh
-        ret=$?
-        if [ $ret -eq 1 ]; then
-            check_return
-        fi
-    fi
 
     if [ $NOINSTALL -eq 1 ]; then
         echo_warn "No software installed"

@@ -12,7 +12,7 @@ Currently only Debian/Ubuntu based systems are supported. If your system require
 
 :warning: **DO NOT** run this script as root, there is a bug in hercules which will cause it to eat up all your machine resources :warning:
 
-*depending on your system this could take upward of two hours.*
+*depending on your system this could take upward of two hours.* If you want to follow along you can use `tail -F ./sysgen/hercules.log`.
 
 Running sysgen will:
 
