@@ -13,7 +13,7 @@ tar -xvf $prev_dasd
 echo_step "Creating DASD"
 bash create.dasd.sh dlibs
 echo_step "Starting Hercules: hercules -f conf/smp1.cnf -r ../02_sysgen_build_dist.rc"
-hercules -f conf/smp1.cnf -r ../02_sysgen_build_dist.rc > hercules.log
+$HERCULES -f conf/smp1.cnf -r ../02_sysgen_build_dist.rc > hercules.log
 echo_step "Backing up hercules.log to hercules_log.dlib_1.$date_time.log"
 mv hercules.log hercules_log.dlib_1.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_dlib_backup_1.$date_time.txt"
@@ -32,7 +32,7 @@ fi
 #######
 echo_step "Receive the MVS Product Elements"
 echo_step "Starting Hercules: hercules -f conf/smp2.cnf -r ../03_sysgen_build_dist_2.rc"
-hercules -f conf/smp2.cnf -r ../03_sysgen_build_dist_2.rc > hercules.log
+$HERCULES -f conf/smp2.cnf -r ../03_sysgen_build_dist_2.rc > hercules.log
 echo_step "Backing up hercules.log to hercules_log.dlib_2.$date_time.log"
 mv hercules.log hercules_log.dlib_2.$date_time.log
 echo_step "Backing up prt00e.txt to prt00e_dlib_backup_2.$date_time.txt"

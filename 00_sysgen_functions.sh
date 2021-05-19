@@ -80,4 +80,9 @@ function clean_up {
 
 date_time=$(date +"%Y-%m-%d-%H%M%S")
 
-
+if [[ -f /usr/local/bin/hercules ]]
+then
+    HERCULES=/usr/local/bin/hercules
+else
+    HERCULES=hercules
+fi
