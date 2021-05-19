@@ -22,7 +22,7 @@ END;
 
 /* creating a little lock file */
 address 'hercules' 'sh touch failure'
-not_failed = 1
+failed = 1
 
 
 say "Commands file: "||STREAM(commands,'C','QUERY EXISTS')
@@ -92,9 +92,9 @@ do while lines(commands) \= 0
         if left(readline,2) = "/*" then do
           /* We don't know the reply number, get it and use it here */
           parse var readline reply .
-          call pd  "Reply Number: " reply
+          call pd "Reply Number: " reply
           reply = right(reply,length(reply)-2)
-          call pd  "Reply Number: " reply
+          call pd "Reply Number: " reply
           if left(response,2) = "/r" then do
               parse var response s split
               parse var split . ',' reply_string
@@ -106,7 +106,7 @@ do while lines(commands) \= 0
         call sleep 1 /* Without this it was too fast */
 
         if upper(response) = "QUIT" THEN do
-          address 'hercules' 'sh rm failure'
+          address 'hercules' 'sh rm -f failure'
           failed = 0
         end
 
@@ -115,13 +115,13 @@ do while lines(commands) \= 0
       end
     end
     /* in some cases the text is read before we read the response */
-
+    call sleep 1
   end
 end
 
 
 /* removing the lock file */
-address 'hercules' 'sh rm failure'
+if failed then address 'hercules' 'sh rm -f failure'
 EXIT 0
 
 pd: /* Prints if debug is enabled */
