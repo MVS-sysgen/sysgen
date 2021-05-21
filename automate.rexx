@@ -131,12 +131,7 @@ pd: /* Prints if debug is enabled */
 
 sleep: /* While regina has a sleep function it doesnt work in herc */
 Parse Arg secs .
-If Datatype(secs) <> 'NUM' Then secs = 60
-rc = Time(R)
-Do Forever
-  n = Time(E)
-  If n >= secs Then Leave
-End
+ADDRESS SYSTEM "sleep " || secs
 return
 
 
