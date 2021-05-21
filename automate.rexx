@@ -124,7 +124,7 @@ do while lines(commands) \= 0
       leave
 
       /* in some cases the text is read before we read the response */
-      /* call slowdown 1 */
+      call slowdown 0.25
     end
   end
 end
