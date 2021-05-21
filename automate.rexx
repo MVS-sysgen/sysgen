@@ -38,6 +38,7 @@ END
 CALL pd 'Debug enabled'
 
 /* read all the lines first */
+/* we do this in case we're called after sysgen is ipld */
 do while lines(logfile) \= 0
       readline = linein(logfile)
 end
@@ -58,7 +59,7 @@ do while lines(commands) \= 0
   the seccond command after the first on a new line. Since it has
   no ; it will be executed */
     call pd 'Command on its own: '||t
-    call sleep 1
+    call slowdown 1
     Address "HERCULES" t
     iterate
   end
@@ -70,52 +71,53 @@ do while lines(commands) \= 0
     parse var expect . expect
   end
 
-  call pd 'Waiting for  : ' ||left(expect,length(expect) - 5)||"..."
-  call pd 'Reply will be: ' ||response
+  call pd 'Waiting for: ' ||left(expect,length(expect) - 5)||"..."
+  call pd 'Response: ' ||response
+
   do forever
     /* Read the hercules log file */
     if lines(logfile) \= 0 then do
       /* If there's new lines, read them */
       readline = linein(logfile)
-
-
-      if wordpos(expect, readline) \= 0 then do
-        /*
-           If we have a challenge, issue it then leave this while loop
-           to get the next challenge response. If there are none we're
-           done
-        */
-
-        /* remove the date/time column */
-        parse var readline . readline
-
-        if left(readline,2) = "/*" then do
-          /* We don't know the reply number, get it and use it here */
-          parse var readline reply .
-          call pd "Reply Number: " reply
-          reply = right(reply,length(reply)-2)
-          call pd "Reply Number: " reply
-          if left(response,2) = "/r" then do
-              parse var response s split
-              parse var split . ',' reply_string
-              response = s||" "reply||","||reply_string
-          end
-        end
-
-        call pd 'Found challenge, replying with: ' ||response
-        call sleep 1 /* Without this it was too fast */
-
-        if upper(response) = "QUIT" THEN do
-          address 'hercules' 'sh rm -f failure'
-          failed = 0
-        end
-
-        Address "HERCULES" response
-        leave
-      end
     end
-    /* in some cases the text is read before we read the response */
-    call sleep 1
+
+    if wordpos(expect, readline) \= 0 then do
+      /*
+          If we have a challenge, issue it then leave this while loop
+          to get the next challenge response. If there are none we're
+          done
+      */
+
+      /* remove the date/time column */
+      parse var readline . readline
+
+      if left(readline,2) = "/*" then do
+        /* We don't know the reply number, get it and use it here */
+        parse var readline reply .
+        /* call pd "Reply Number: " reply */
+        reply = right(reply,length(reply)-2)
+        /* call pd "Reply Number: " reply */
+        if left(response,2) = "/r" then do
+            parse var response s split
+            parse var split . ',' reply_string
+            response = s||" "reply||","||reply_string
+        end
+      end
+
+      call pd 'Found challenge, replying with: ' ||response
+      call slowdown 1 /* Without this it was too fast */
+
+      if upper(response) = "QUIT" THEN do
+        address 'hercules' 'sh rm -f failure'
+        failed = 0
+      end
+
+      Address "HERCULES" response
+      leave
+
+      /* in some cases the text is read before we read the response */
+      /* call sleep 1 */
+    end
   end
 end
 
@@ -129,9 +131,10 @@ pd: /* Prints if debug is enabled */
   if debug then say "[AUTOMATE DEBUG]" s
  return
 
-sleep: /* While regina has a sleep function it doesnt work in herc */
+slowdown: /* While regina has a sleep function it doesnt work in herc */
 Parse Arg secs .
-ADDRESS SYSTEM "sleep " || secs
+/* ADDRESS SYSTEM "sleep " || secs */
+x = sleep(secs)
 return
 
 
