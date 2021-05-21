@@ -11,7 +11,15 @@
 
    License: GPL v2
 */
-parse arg commands logfile debug
+parse arg commands logfile .
+
+/* **********************************
+   Set to 1 to enable  debug messages
+   Set to 0 to disable debug messages
+   **********************************/
+DEBUG=1
+/* **********************************
+   **********************************/
 
 IF LENGTH(commands)=0 | LENGTH(logfile)=0 THEN DO
   SAY 'Hercules REXX Automation Script'
@@ -28,12 +36,12 @@ failed = 1
 say "Commands file: "||STREAM(commands,'C','QUERY EXISTS')
 say "Log file: "||STREAM(logfile,'C','QUERY EXISTS')
 
-IF LENGTH(debug)\=0 THEN DO
+/* IF LENGTH(debug)\=0 THEN DO
   debug = 1
 END
 ELSE DO
   debug = 0
-END
+END */
 
 CALL pd 'Debug enabled'
 
@@ -116,7 +124,7 @@ do while lines(commands) \= 0
       leave
 
       /* in some cases the text is read before we read the response */
-      /* call sleep 1 */
+      /* call slowdown 1 */
     end
   end
 end
