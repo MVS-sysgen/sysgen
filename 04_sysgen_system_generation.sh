@@ -23,15 +23,15 @@ if [[ ! -z "${TERM}" ]]; then
     tput setaf 2
 fi
 chmod +x ./condcode.rexx
-# ./condcode.rexx prt00e.txt sysgen00
+./condcode.rexx prt00e.txt sysgen00 8
 ./condcode.rexx prt00e.txt mount
-# ./condcode.rexx prt00e.txt sysgen01
+./condcode.rexx prt00e.txt sysgen01 8
 ./condcode.rexx prt00e.txt sysgen1
 ./condcode.rexx prt00e.txt sysgen2
 ./condcode.rexx prt00e.txt sysgen3
 ./condcode.rexx prt00e.txt sysgen4
 ./condcode.rexx prt00e.txt sysgen5
-#./condcode.rexx prt00e.txt sysgen6
+./condcode.rexx prt00e.txt sysgen6 8
 ./condcode.rexx prt00e.txt sysgen02
 ./condcode.rexx prt00e.txt sysgen03
 ./condcode.rexx prt00e.txt sysgen04

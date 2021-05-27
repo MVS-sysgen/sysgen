@@ -43,7 +43,7 @@ if [[ ! -z "${TERM}" ]]; then
     tput setaf 2
 fi
 ./condcode.rexx prt00e.txt mount
-#./condcode.rexx prt00e.txt smpjob00
+./condcode.rexx prt00e.txt smpjob00 8
 ./condcode.rexx prt00e.txt smpjob01
 ./condcode.rexx prt00e.txt smpjob02
 ./condcode.rexx prt00e.txt smpjob03
