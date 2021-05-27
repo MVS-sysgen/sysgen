@@ -9,9 +9,8 @@
    containing 'IEF142I', the message identifier for step condition code information,
    is processed.
 
-   The first argument to the script specifies the name of the host Operating System 
+   The first argument to the script specifies the name of the host Operating System
    file containing the SYSOUT content to process.
-
 
    The second argument to the script specifies the name of the job to process. Two
    values trigger special circumstances:
@@ -23,9 +22,15 @@
        to the application of MVS User Modifications during System Generation. The
        single specified meta job name will be interpreted to match the names of
        all jobs expected for the meta job name specified.
+
+   The third argument specifies the max condition code to mark as a failure.
+   The default is 4.
+
+   Returns 1 if any jobs are greater than the max condition code or if the job
+   wasn't found, otherwise returns 0.
 */
 
-PARSE ARG printFile jobName;    /* retrieve the two arguments */
+PARSE ARG printFile jobName max;    /* retrieve the two arguments */
 
 /* verify that a print file name has been specified and exists: */
 
@@ -44,6 +49,11 @@ IF LENGTH(jobName)=0 THEN DO
   SAY 'Second argument must be MVS job name to scan printer file for (or ALL)';
   EXIT 2;   /* exit script */
 END;
+
+IF LENGTH(max)=0 THEN
+  max = '0004'
+ELSE
+  max = right(max,4,'0')
 
 /* initialize the array below to match USERMODn meta jobs */
 
@@ -131,6 +141,7 @@ ccKey='COND CODE '; /* text preceeding condition code in message line */
 /* process all lines in the text file: */
 
 failed=0
+count=0
 DO WHILE LINES(printFile)\=0    /* while there are lines remaining to be processed */
 
   inpLine=LINEIN(printFile);    /* read a line from the file */
@@ -142,6 +153,7 @@ DO WHILE LINES(printFile)\=0    /* while there are lines remaining to be process
     CALL jobMatch thisJob, jobName; /* subroutine will determine whether to print this line */
 
     IF printFLag=='y' THEN DO
+      count = count + 1
       stepName=WORD(inpLine,3);             /* extract step name from message line */
       procName=WORD(inpLine,4);             /* extract proc name from message line */
       IF procName=='-' THEN procName=' ';   /* don't print - when proc name omitted */
@@ -150,10 +162,10 @@ DO WHILE LINES(printFile)\=0    /* while there are lines remaining to be process
 
       IF condCode\='0000' THEN DO           /* make non-zero condition codes stand out */
         ccFlag=' <--';
-	if condCode\='0004' THEN
-	  failed=1
+	      if condCode > max THEN
+	        failed=1
       end
-      ELSE
+    ELSE
         ccFlag='';
 
       rcRecap.steps = rcRecap.steps + 1;    /* count this step in total steps */
@@ -183,10 +195,13 @@ DO ix=0 BY 1 TO 65535
     SAY RIGHT(rcRecap.thisCC,3,' ') 'steps received completion code =' thisCC
 END;
 
+/* The job should've run */
+IF COUNT = 0 THEN failed = 1
+
 EXIT failed; /* exit script */
 
 /* The subroutine below will test job name from current message line against
-   the job name submitted as an argument to the script. 
+   the job name submitted as an argument to the script.
 
    Special 'meta' names of ALL and USERMODSn will be expanded to match
    all jobs for which messages are found or specific jobs that are expected
@@ -200,7 +215,7 @@ PARSE UPPER ARG thisJob, selectJob;     /* retrieve arguments to subroutine and 
 printFlag='n';                          /* initialize printFlag to 'n' */
 
 SELECT
-  WHEN selectJob=='ALL'                
+  WHEN selectJob=='ALL'
     THEN printFlag='y';
 
   WHEN LEFT(selectJob,8)=='USERMODS' THEN
