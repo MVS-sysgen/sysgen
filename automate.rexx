@@ -122,10 +122,9 @@ do while lines(commands) \= 0
 
       Address "HERCULES" response
       leave
-
-      /* in some cases the text is read before we read the response */
-      call slowdown 0.5
     end
+    /* in some cases the text is read before we read the response */
+    call slowdown 0.5
   end
 end
 
