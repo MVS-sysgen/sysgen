@@ -1,0 +1,3 @@
+* Installing Greg Price IMON
+* Launching Automation REXX script
+exec ../automate.rexx ../SOFTWARE/IMON370/install.txt hercules.log -d &&

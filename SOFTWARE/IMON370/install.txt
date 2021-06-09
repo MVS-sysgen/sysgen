@@ -1,0 +1,6 @@
+# RFE Install
+/$CA
+$HASP000 OK;devinit 01c ../SOFTWARE/IMON370/i370load.xmi
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/IMON370/01_imon_receive_load.jcl
+/ $HASP395 RFEINST5 ENDED;/$VS,'S ZTIMER'
+# Install complete
