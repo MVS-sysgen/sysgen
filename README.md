@@ -98,6 +98,7 @@ In the [SOFTWARE](SOFTWARE) folder is software that comes with this SYSGEN. Othe
 * Edited `sysgen01.jcl`, `smp1.cnf`, `smp2.cnf`, and `sysgen.cnf` to change 3215 console to 3215-C for automation
 * Added `SYSGEN` alias to `UCPUB001` for software installs in `jcl/mvs01.jcl`
 * Modified `jcl/sysgen05.jcl` changing `,DYNAMNBR=20` to `,DYNAMNBR=64`
+* Added `SYS2.PARMLIB` for 3rd party configurations (NJE38, FTPD, etc)
 
 ## Info
 
