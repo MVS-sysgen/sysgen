@@ -20,6 +20,8 @@ done
 
 for j in $folders; do
     cp ../sysgen/conf/local.cnf ./$j/sysgen/conf
+    mkdir ./$j/sysgen/jcl
+    echo "//" > ./$j/sysgen/jcl/null.jcl
     for i in autostart.rc autostart.txt submit.sh; do
         cp ../sysgen/$i ./$j/sysgen/
     done
