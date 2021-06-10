@@ -1,0 +1,25 @@
+         MACRO
+&LABEL   MSGX  &NUM,&VAR
+.* REENTERABLE FORM OF MSG MACRO
+         LCLA  &TOFF,&TVARS
+         LCLC  &COFF
+&LABEL   MVC   MSGXNUM,=AL2(&NUM)
+         AIF   (N'&SYSLIST(2) EQ 0).NOVAR
+&TOFF    SETA  N'&SYSLIST(2)
+&COFF    SETC  '&TOFF'
+.NOVAR   ANOP
+         AIF   (N'&SYSLIST(2) EQ 0).NOVAR1
+&TOFF    SETA  0
+&TVARS   SETA  1
+.MLOP    ANOP
+&COFF    SETC  '&TOFF'
+         MVC   MSGXVAL+&COFF.(8),&SYSLIST(2,&TVARS)
+&TOFF    SETA  &TOFF+8
+&TVARS   SETA  &TVARS+1
+         AIF   (&TVARS LE N'&SYSLIST(2)).MLOP
+.NOVAR1  ANOP
+         LA    1,MSGXNUM
+         LA    0,&TOFF+4
+         BAL   14,MSG
+         SPACE 1
+         MEND

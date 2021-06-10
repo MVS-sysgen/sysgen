@@ -1,0 +1,25 @@
+         MACRO
+&LABEL   ROUTE &PARM1,&PARM2,                                          X
+               &TYPE=ENTRY
+         GBLA  &RTETOT
+         AIF   ('&TYPE' EQ 'FINAL').FINAL
+         LCLC  &DEST,&NEXT
+&RTETOT  SETA  &RTETOT+1
+         AIF   (&RTETOT NE 1).NOT1
+ROUTES   DS    0D
+.NOT1    ANOP
+&DEST    SETC  ' '
+&NEXT    SETC  ' '
+         AIF   (T'&PARM1 EQ 'O').NOID
+&DEST    SETC  '&PARM1'
+         AIF   (T'&PARM2 EQ 'O').NOID
+&NEXT    SETC  '&PARM2'
+.NOID    ANOP
+&LABEL   DC    CL8'&DEST',CL8'&NEXT' DESTINATION, NEXT LINK
+         MEXIT
+.FINAL   ANOP
+NUMRTES  EQU   &RTETOT
+         AIF   (&RTETOT NE 0).MEND
+ROUTES   DS    0D
+.MEND    ANOP
+         MEND

@@ -1,0 +1,1127 @@
+*
+*
+*-- NJE38 - Configuration scan and create
+*
+*
+*   Called by NJEINIT (on start up)
+*   Called by NJECMX (for commands entered by users and operators)
+*
+*
+* Change log:
+*
+* 04 Dec 20 - Expanded internal trace table support                v212
+* 29 Nov 20 - Initial creation                                     v211
+*
+*
+*
+* notes for doc:
+*
+* -keywords must start in col 1
+* -keywords and values 1-8 bytes only
+* -last keyword or value on line must have a trailing blank (e.g,
+*    column 80 must be blank)
+* -CUU must be 3-digit
+* -ROUTE names are not validated for existence, or character makeup
+*
+*
+*
+         GBLC  &VERS
+         REGEQU
+NJESCN   CSECT                                                          NJE00020
+         NJEVER
+         STM   R14,R12,12(R13)         Save Regs                        NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         LA    R11,2048
+         LA    R11,2048(R11,R12)       2nd Base
+         USING NJESCN,R12,R11                                           NJE00070
+         LR    R7,R0                   Save input code
+         LR    R8,R1                   Save input parm list addr
+         LR    R9,R2                   Save input parm list addr
+*
+         LA    R0,NJEWKSZ              Size of work area
+         GETMAIN RU,                   Get local stg area              X
+               LV=(0),                                                 X
+               BNDRY=PAGE
+         LR    R10,R1
+         LR    R1,R0                   Copy length
+         LR    R2,R0                   Copy length
+         LR    R0,R10                  -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the stg
+*
+         USING NJEWK,R10
+         ST    R13,NJESA+4             SAVE prv S.A. ADDR               NJE00080
+         LA    R1,NJESA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         MVC   NJEEYE,=CL4'NJES'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area in area
+         STM   R8,R9,INITPLST          Save entry parm list addrs
+         MVC   INITPARM,0(R8)          Copy passed parameters
+*
+INIT000  EQU   *
+         B     INIT010(R7)             Branch into request table
+*
+INIT010  EQU   *
+         B     SCN000               00 Scan and create configuration
+         B     CMD000               04 Scan a configuration command
+*
+SCN000   EQU   *
+         MVC   CONFIG,DMYDCB           Set up DCB
+         LA    R1,JFCBL                -> JFCB area
+         ST    R1,EXLST                Plug into exit list
+         MVI   EXLST,X'87'             Set up for JFCB retrieve
+         LA    R4,CONFIG               -> DCB
+         USING IHADCB,R4
+         LA    R1,EXLST                -> exit list
+         STCM  R1,7,DCBEXLST+1         Plug it into DCB
+*
+         MVC   MACLIST(RDJFCBL),RDJFCB Move macro model
+         RDJFCB CONFIG,MF=(E,MACLIST)
+*
+         MVC   MACLIST(OPENL),OPEN     Move macro model
+         OPEN  (CONFIG,INPUT),         Open dataset                    x
+               MF=(E,MACLIST)
+         TM    DCBOFLGS,DCBOFOPN       Did DCB open ok?
+         BZ    EXIT08                  No
+         DROP  R4                      IHADCB
+         OI    NJFL1,F1OPEN            Indicate DCB is open
+*
+         LA    R3,JFCBL
+         USING JFCB,R3
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE049I),NJE049I  Using configuration DSN
+         MVC   WTOTXT+28(44),JFCBDSNM  Move DSN
+         TM    JFCBIND1,JFCPDS         Using PDS member?
+         BZ    SCN030                  No
+         TRT   WTOTXT+28(45),BLANK     Look for end of DSN
+         MVI   0(R1),C'('
+         MVC   1(8,R1),JFCBELNM        Move member name
+         TRT   0(10,R1),BLANK          Look for end of member name
+         MVI   0(R1),C')'
+         DROP  R3                      JFCB
+*
+SCN030   EQU   *
+         WTO   ,MF=(E,WTOMSG)          Write the using config msg
+         SR    R9,R9                   Init record counter
+*
+SCN040   EQU   *
+         GET   CONFIG,REC              Get a record from CONFIG DD
+         LA    R1,REC                  -> RECORD
+         LA    R9,1(,R9)               Bump record count
+         CLI   0(R1),C'*'              Comment line?
+         BE    SCN040                  Yes, skip it
+         CLI   0(R1),C' '              Blank leading off the line?
+         BE    ERR073                  Yes, this is invalid
+*
+         OC    REC,BLANKS              Upper case the record
+         LA    R15,80                  Scan length of input line
+         B     CTK000                  Join common code
+*
+SCN100   EQU   *                       End of scan of one record
+         B     SCN040                  Scan next
+*
+*
+*
+CMD000   EQU   *
+         L     R2,ACMDBLOK             -> CMDBLOK
+         USING CMDBLOK,R2
+         MVC   REC,BLANKS              Init receiving field
+         IC    R1,CMDBLEN              Len of command text
+         EX    R1,OCCMD                Move and uppercase cmd image
+         DROP  R2                      CMDBLOK
+         LA    R15,120                 Max len of command image
+         LA    R1,REC                  -> Command image
+*
+CTK000   EQU   *
+         BAL   R14,TKN000              Parse and tokenize the cmd
+         LA    R15,TOKENS-L'TOKENS     -> 0th length/token in list
+         BAL   R14,GETTKN              Get 1st token
+*
+         CLC   =CL8'LOCAL',1(R15)      Local?
+         BE    LCL000                  Yes
+         CLC   =CL8'LINK',1(R15)       Link?
+         BE    LNK000                  Yes
+         CLC   =CL8'ROUTE',1(R15)      Route?
+         BE    RTE000                  Yes
+         CLC   =CL8'AUTH',1(R15)       Auth?
+         BE    AUTH000                 Yes
+         B     ERR076                  Unknown configuration statement
+*
+OCCMD    OC    REC(0),CMDTEXT-CMDBLOK(R2)  Executed instr
+*
+RETURN   EQU   *                       R7 branch table index
+         B     SCN040               00 Read another config record
+         B     EXIT00               04 End of command processing
+*
+*-- LOCAL
+*
+LCL000   EQU   *
+         L     R1,ALINKS               -> LINKS anchor word
+         NC    0(4,R1),0(R1)           Was LOCAL processed?
+         BNZ   ERR052                  Y, only one LOCAL allowed
+         LA    R0,LINKLEN              Length of LINKTABL entry
+         BAL   R14,GETSTG              Get stg for entry
+         LR    R8,R1
+         XC    0(LINKLEN,R8),0(R8)     Initialize entry
+         USING LINKTABL,R8
+*
+         BAL   R14,GETTKN              Get next token
+         BZ    ERR075                  No local name
+         MVC   LINKID,1(R15)           Local node name to entry
+         TRT   LINKID,VALDNAME         Valid node name?
+         BNZ   ERR043                  No
+*
+         MVC   LDEFUSER,DEFUSER        Set default userid
+         BAL   R14,GETTKN              Get next tkn (should be DEFUSER)
+         BZ    LCL090                  No other tokens
+         CLC   =CL8'DEFUSER',1(R15)    Was this the DEFUSER keyword?
+         BNE   ERR055                  No, error
+         BAL   R14,GETTKN              Get next tkn (should be userid)
+         BZ    ERR075                  Missing userid
+         MVC   LDEFUSER,1(R15)         Set default userid of choice
+         DROP  R8                      LINKTABL
+*
+LCL090   EQU   *
+         L     R15,ALINKS              -> LINKS anchor word
+         ST    R8,0(,R15)              Start LINKS chain
+         B     RETURN(R7)              Resume scan
+*
+*
+*-- LINK
+*
+LNK000   EQU   *
+         L     R1,ALINKS               -> LINKS anchor word
+         NC    0(4,R1),0(R1)           Was LOCAL processed?
+         BZ    ERR053                  No; it is required
+         LA    R8,BLDBUF               Temp area to build entry
+         XC    0(LINKLEN,R8),0(R8)     Initialize entry
+         USING LINKTABL,R8
+         MVC   LBUFF,=H'1012'          Set default buffer size
+*
+         BAL   R14,GETTKN              Get next token
+         BZ    ERR075                  No link name
+         MVC   LINKID,1(R15)           Link node name to entry
+         TRT   LINKID,VALDNAME         Valid node name?
+         BNZ   ERR043                  No
+*
+LNK010   EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    LNK050                  None
+*
+         CLC   =CL8'LINE',1(R15)       Was it a LINE keyword?
+         BE    LNE000                  Yes
+         CLC   =CL8'BUFF',1(R15)       Was it a BUFF keyword?
+         BE    BUF000                  Yes
+         CLC   =CL8'AUTO',1(R15)       Was it a AUTO keyword?
+         BE    ATO000                  Yes
+         CLC   =CL8'OFF',1(R15)        Was it the OFF keyword?
+         BE    LOFF000                 Yes
+         B     ERR055                  Unrecognized keyword
+*
+LNK050   EQU   *
+         TM    NJFL2,F2LINE            Was line CUU found?
+         BZ    ERR077                  No, its required
+*
+*-- LINK successfully scanned.  Now add the LINKTABL entry to chain.
+*
+         L     R2,ALINKS               -> LINKS anchor word (0th entry)
+         L     R2,0(,R2)               -> First LINKTABL e.g. LOCAL
+*
+LNK060   EQU   *
+         ICM   R3,15,LNEXT-LINKTABL(R2) -> next LINKTABL entry
+         BZ    LNK080                  Found the end
+         CLC   LINKID,LINKID-LINKTABL(R3)   Match on link name?
+         BE    LNK120                  Yes, trying to add duplicate
+*
+LNK070   EQU   *
+         LR    R2,R3                   Copy next entry ptr
+         B     LNK060                  Keep scanning for end
+*
+LNK080   EQU   *
+         LA    R0,LINKLEN              Size of LINKTABL entry
+         BAL   R14,GETSTG              Get an actual entry
+         MVC   0(LINKLEN,R1),0(R8)     Make build entry a permanent one
+         ST    R1,LNEXT-LINKTABL(,R2)  Add R1 LINKTABL to chain end
+*
+LNK090   EQU   *
+         LTR   R7,R7                   Doing CONFIG scan?
+         BZ    SCN100                  Yes, Resume scan
+*
+*--Issue LINK cmd success msg
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE066I),NJE066I
+         MVC   WTOTXT+13(8),LINKID     Move link name to msg
+         TRT   WTOTXT+13(9),BLANK      Look for end
+         MVC   1(7,R1),=CL7'defined'
+         LA    R0,22(,R1)              -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     SUCCMSG                 Issue success msg and exit
+*
+LNK120   EQU   *                    ** Here for duplicate entry
+*--Issue LINK cmd duplicate msg
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE048E),NJE048E
+         MVC   WTOTXT+13(8),LINKID     Move link name to msg
+         TRT   WTOTXT+13(9),BLANK      Look for end
+         MVC   1(20,R1),=CL20'duplicate definition'
+         LTR   R7,R7                   Doing CONFIG scan?
+         BZ    LNK130                  Yes, issue duplicate msg
+         MVC   1(20,R1),=CL20'is already defined'
+*
+LNK130   EQU   *
+         LA    R0,34(,R1)              -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     ERRTYPE(R7)             Issue dup msg
+*
+LNE000   EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    ERR075                  Missing CUU
+         CLI   0(R15),X'02'            Check keyword length
+         BNE   ERR078                  Not valid CUU
+         LR    R3,R1                   Save R1 across TRT
+         TRT   1(3,R15),INVALHEX       Valid hex chars?
+         BNZ   ERR078                  Not valid cuu
+*
+         LR    R1,R3                   Restore R1
+         MVC   TWRK(3),1(R15)          Move the character CUU
+         TR    TWRK(3),TRANHEX-192     Make all A-F chars = xFA-XFF
+*
+         PACK  DBLE(3),TWRK(4)         Strip the zones
+         MVC   LDEFLINE,DBLE           Move to LINKTABL entry
+         OI    NJFL2,F2LINE            Indicate valid LINE CUU found
+         B     LNK010                  Continue LINK token eval
+*
+BUF000   EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    ERR075                  Missing buffersize
+         SR    R3,R3                   Clear for IC
+         IC    R3,0(,R15)              Length of value characters
+         EX    R3,BFMVC                Make a copy of value
+         EX    R3,BFOC                 Force copy to be numeric
+         EX    R3,BFCLC                Was original numeric?
+         BNE   ERR054                  Invalid BUFF value
+         EX    R3,BFPACK               Pack the value
+         CVB   R0,DBLE                 Get binary value
+         CH    R0,=H'300'              Too small?
+         BL    ERR054                  Yes
+         CH    R0,=H'4020'             Too large?
+         BH    ERR054                  Yes
+         STH   R0,LBUFF                Else set specified BUFF size
+         B     LNK010                  Continue LINK token eval
+*
+BFMVC    MVC   DBLE(0),1(R15)          executed instr
+BFOC     OC    DBLE(0),=8C'0'          executed instr
+BFCLC    CLC   DBLE(0),1(R15)          executed instr
+BFPACK   PACK  DBLE(8),1(0,R15)        executed instr
+*
+ATO000   EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    ERR075                  Missing YES/NO
+         CLC   =CL8'YES',1(R15)        Was it yes?
+         BE    ATO020
+         CLC   =CL8'NO',1(R15)         Was it no?
+         BE    LNK010                  Line will not be autostartable
+         B     ERR078                  Unrecognized value
+*
+ATO020   EQU   *
+         OI    LFLAG,LAUTO             Set line auto-startable
+         B     LNK010                  Continue LINK token eval
+*
+LOFF000  EQU   *
+         LTR   R7,R7                   Doing config scan?
+         BZ    ERR055                  OFF not recognized in CONFIG
+         L     R2,ALINKS               -> LINKS anchor word
+         L     R2,0(,R2)               -> 1st entry (LOCAL entry)
+*
+LOFF010  EQU   *
+         ICM   R3,15,LNEXT-LINKTABL(R2) -> next link entry
+         BZ    LOFF050                 Found the end, linkid not fnd
+         CLC   LINKID,LINKID-LINKTABL(R3) Match on name?
+         BNE   LOFF020                 No, next
+*
+         TM    LFLAG-LINKTABL(R3),LCONNECT+LACTIVE+LDRAIN  Link busy?
+         BNZ   ERR046                  Yes, can't remove it
+         CLC   LTCBA-LINKTABL(,R3),=A(0)  Task active on link?
+         BNE   ERR046                  Nonzero, can't remove it
+*
+* Remove the matching entry from the LINKTABL chain:
+         MVC   LNEXT-LINKTABL(,R2),LNEXT-LINKTABL(R3)
+*
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE046I),NJE046I
+         MVC   WTOTXT+13(8),LINKID-LINKTABL(R3) Move link name to msg
+         TRT   WTOTXT+13(9),BLANK      Look for end
+         MVC   1(7,R1),=CL7'deleted'
+         LA    R2,13+8(,R1)            -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R2,R1                   Compute length to display
+         FREEMAIN RU,                  Free entry that was removed v211x
+               LV=LINKLEN,                                         v211x
+               A=(3),                                              v211x
+               SP=1                                                v211
+*
+***      LA    R3,LTRMECB-LINKTABL(,R3) -> task termination ECB
+***      POST  (3),255                 Signal NJEINIT to delete link
+*
+         LR    R0,R2                   Msg length to R0
+         B     SUCCMSG                 Issue success msg
+*
+LOFF020  EQU   *
+         LR    R2,R3                   Copy next entry
+         B     LOFF010                 Keep scanning for end
+*
+LOFF050  EQU   *
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE045I),NJE045I
+         MVC   WTOTXT+13(8),LINKID     Move name to msg
+         TRT   WTOTXT+13(9),BLANK       Look for end
+         MVC   1(14,R1),=CL14'is not defined'
+         LA    R0,13+15(,R1)           -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     SUCCMSG                 Issue success msg
+         DROP  R8                      LINKTABL
+*
+*-- ROUTE
+*
+RTE000   EQU   *
+         L     R1,ALINKS               -> LINKS anchor word
+         NC    0(4,R1),0(R1)           Was LOCAL processed?
+         BZ    ERR053                  No; it is required
+         LA    R8,BLDBUF               Temp area to build entry
+         XC    0(ROUTSIZE,R8),0(R8)    Initialize entry
+         USING RTE,R8
+         MVC   ROUTALT1,BLANKS         Init
+         MVC   ROUTALT2,BLANKS         Init
+         MVC   ROUTALT3,BLANKS         Init
+*
+         BAL   R14,GETTKN              Get next token
+         BZ    ERR075                  No link name
+         MVC   ROUTNAME,1(R15)         Route node name destination
+         TRT   ROUTNAME,VALDNAME       Valid node name?
+         BZ    RTE010                  Yes
+         CLM   R2,1,=C'*'              Was wildcard in use?
+         BNE   ERR043                  No. The name contains inv char
+*
+RTE010   EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    RTE050                  None
+*
+         CLC   =CL8'TO',1(R15)         Was it the TO keyword?
+         BE    TO000                   Yes
+         CLC   =CL8'ALT',1(R15)        Was it a ALT keyword?
+         BE    ALT000                  Yes
+         CLC   =CL8'OFF',1(R15)        Was it the OFF keyword?
+         BE    ROFF000                 Yes
+         B     ERR055                  Unrecognized keyword
+*
+RTE050   EQU   *
+         TM    NJFL2,F2RTO             Was ROUTE TO processed?
+         BZ    ERR051                  No, its required
+*
+*-- ROUTE successfully scanned.
+*
+*  1. first check for existing name; if so, update existing.
+*  2. else add new route in collating sequence, except that the
+*     wildcard character (if present) is treated as a X'FF' character
+*     in order to force wildcard routes after all explicity named
+*     routes.
+*
+         L     R2,AROUTES              -> ROUTES anchor word (0th RTE)
+*
+RTE060   EQU   *
+         ICM   R3,15,ROUTPTR-RTE(R2)   -> next RTE entry
+         BZ    RTE080                  Found the end
+         CLC   ROUTNAME,ROUTNAME-RTE(R3)   Match on name?
+         BE    RTE070                  Yes, update duplicate
+         LR    R2,R3                   Copy next entry
+         B     RTE060                  Keep scanning for end
+*
+*-- Update existing route
+RTE070   EQU   *
+         L     R0,ROUTPTR-RTE(,R3)     Save RTE next ptr
+         MVC   0(ROUTSIZE,R3),0(R8)    Update&replace existing route
+         ST    R0,ROUTPTR-RTE(,R3)     Restore the next ptr
+         B     RTE200                  Issue success msg
+*
+*-- Add new route to chain in collating seq based on route name
+RTE080   EQU   *
+         L     R2,AROUTES              -> ROUTES anchor word (0th RTE)
+         MVC   DBLE,ROUTNAME           Copy name we want to add
+         TR    DBLE,ASTER              Set any * char high
+*
+RTE090   EQU   *
+         ICM   R3,15,ROUTPTR-RTE(R2)   -> next RTE entry
+         BZ    RTE100                  Found the end; add to end
+         MVC   TWRK,ROUTNAME-RTE(R3)   Copy name in chained RTE
+         TR    TWRK,ASTER              Set any * char high
+         CLC   DBLE,TWRK               Locate place to insert RTE
+         BL    RTE100
+         LR    R2,R3                   Copy next entry
+         B     RTE090                  Keep scanning for end
+*
+RTE100   EQU   *
+         LA    R0,ROUTSIZE             Length of RTE entry
+         BAL   R14,GETSTG              Get stg for entry
+         MVC   0(ROUTSIZE,R1),0(R8)    Make build entry a permanent one
+         ST    R1,ROUTPTR-RTE(,R2)     Insert R1 RTE into chain
+         ST    R3,ROUTPTR-RTE(,R1)     R1 RTE now points to next RTE
+*
+RTE200   EQU   *
+         LTR   R7,R7                   Doing CONFIG scan?
+         BZ    SCN100                  Yes, Resume scan
+*
+*--Issue ROUTE cmd success msg
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE065I),NJE065I
+         MVC   WTOTXT+13(8),ROUTNAME   Move route name to msg
+         TRT   WTOTXT+13(9),BLANK      Look for end
+         MVC   1(19,R1),=CL19'routed through link'
+         MVC   21(8,R1),ROUTNEXT       Move link name to msg
+         LA    R0,21+8(,R1)            -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     SUCCMSG                 Issue success msg and exit
+*
+TO000    EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    ERR075                  Missing node id
+         MVC   ROUTNEXT,1(R15)         Move the route-to link id
+         TRT   ROUTNEXT,VALDNAME       Valid node name?
+         BNZ   ERR043                  Invalid node name if not
+         OI    NJFL2,F2RTO             Indicate ROUTE TO processed
+         B     RTE010                  Continue route scan
+*
+ALT000   EQU   *
+         LA    R3,ROUTALT1             -> first alternate node id slot
+         LA    R4,3                    Max number of alternates
+*
+ALT010   EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    RTE050                  Done with route scan
+         MVC   0(8,R3),1(R15)          Move the route alternate id
+         LA    R3,8(,R3)               -> next alternate slot
+         BCT   R4,ALT010               Continue route scan
+         B     RTE050                  Done with route scan
+*
+ROFF000  EQU   *
+         LTR   R7,R7                   Doing config scan?
+         BZ    ERR055                  OFF not recognized in CONFIG
+         L     R2,AROUTES              -> ROUTES anchor  (0th entry)
+*
+ROFF010  EQU   *
+         ICM   R3,15,ROUTPTR-RTE(R2)   -> next RTE entry
+         BZ    ROFF050                 Found the end, user/node not fnd
+         CLC   ROUTNAME,ROUTNAME-RTE(R3)   Match on name?
+         BNE   ROFF020                 No, next
+*
+* Remove the matching entry from the RTE chain:
+         MVC   ROUTPTR-RTE(,R2),ROUTPTR-RTE(R3)
+*
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE064I),NJE064I
+         MVC   WTOTXT+23(8),ROUTNAME-RTE(R3) Move route name to msg
+         TRT   WTOTXT+23(9),BLANK      Look for end
+         MVC   1(7,R1),=CL7'deleted'
+         LA    R2,23+8(,R1)            -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R2,R1                   Compute length to display
+         FREEMAIN RU,                  Free entry that was removed     x
+               LV=ROUTSIZE,                                            x
+               A=(3),                                                  x
+               SP=1
+         LR    R0,R2                   Msg length to R0
+         B     SUCCMSG                 Issue success msg
+*
+ROFF020  EQU   *
+         LR    R2,R3                   Copy next entry
+         B     ROFF010                 Keep scanning for end
+*
+ROFF050  EQU   *
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE063I),NJE063I
+         MVC   WTOTXT+13(8),ROUTNAME   Move name to msg
+         TRT   WTOTXT+13(9),BLANK       Look for end
+         MVC   1(13,R1),=CL13'is not routed'
+         LA    R0,13+14(,R1)           -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     SUCCMSG                 Issue success msg
+         DROP  R8                      RTE
+*
+*-- AUTH
+*
+AUTH000  EQU   *
+         L     R1,ALINKS               -> LINKS anchor word
+         NC    0(4,R1),0(R1)           Was LOCAL processed?
+         BZ    ERR053                  No; it is required
+         LA    R8,BLDBUF               Temp area to build entry
+         XC    0(AUTHSIZE,R8),0(R8)    Initialize entry
+         USING AUTHLIST,R8
+*
+         BAL   R14,GETTKN              Get next token
+         BZ    ERR075                  No userid
+         MVC   AUTHUSER,1(R15)         Authorized userid
+*
+AUTH010  EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    AUTH050                 None
+*
+         CLC   =CL8'AT',1(R15)         Was it the AT keyword?
+         BE    AT000                   Yes
+         CLC   =CL8'OFF',1(R15)        Was it the OFF keyword?
+         BE    AOFF000                 Yes
+         B     ERR055                  Unrecognized keyword
+*
+AUTH050  EQU   *
+         TM    NJFL2,F2AAT             Was AUTH AT processed?
+         BZ    ERR050                  No, its required
+*
+*-- AUTH successfully scanned.  Now add the AUTH entry to chain.
+*
+         L     R2,AAUTHS               -> AUTHS anchor word (0th entry)
+*
+AUTH060  EQU   *
+         ICM   R3,15,AUTHPTR-AUTHLIST(R2) -> next AUTHLIST entry
+         BZ    AUTH080                 Found the end
+         CLC   AUTHUSER,AUTHUSER-AUTHLIST(R3)   Match on userid?
+         BNE   AUTH070                 No, next
+         CLC   AUTHNODE,AUTHNODE-AUTHLIST(R3)   Match on node?
+         BE    AUTH120                 Yes, trying to add duplicate
+*
+AUTH070  EQU   *
+         LR    R2,R3                   Copy next entry ptr
+         B     AUTH060                 Keep scanning for end
+*
+AUTH080  EQU   *
+         LA    R0,AUTHSIZE             Size of AUTHLIST entry
+         BAL   R14,GETSTG              Get an actual entry
+         MVC   0(AUTHSIZE,R1),0(R8)    Make build entry a permanent one
+         ST    R1,AUTHPTR-AUTHLIST(,R2) Add R1 AUTHLIST to chain end
+*
+AUTH090  EQU   *
+         LTR   R7,R7                   Doing CONFIG scan?
+         BZ    SCN100                  Yes, Resume scan
+*
+*--Issue AUTH cmd success msg
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE068I),NJE068I
+         MVC   WTOTXT+13(8),AUTHUSER   Move auth name to msg
+         TRT   WTOTXT+13(9),BLANK      Look for end
+         MVC   1(2,R1),=CL2'at'
+         MVC   4(8,R1),AUTHNODE        Move link name to msg
+         TRT   4(9,R1),BLANK           Look for end
+         MVC   1(17,R1),=CL17'is now authorized'
+         LA    R0,18(,R1)              -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     SUCCMSG                 Issue success msg and exit
+*
+AUTH120  EQU   *                    ** Here for duplicate entry
+         LTR   R7,R7                   Doing CONFIG scan?
+         BZ    SCN100                  Yes, skip duplicate msg
+*--Issue AUTH cmd duplicate msg
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE067I),NJE067I
+         MVC   WTOTXT+13(8),AUTHUSER   Move auth name to msg
+         TRT   WTOTXT+13(9),BLANK      Look for end
+         MVC   1(2,R1),=CL2'at'
+         MVC   4(8,R1),AUTHNODE        Move link name to msg
+         TRT   4(9,R1),BLANK           Look for end
+         MVC   1(21,R1),=CL21'is already authorized'
+         LA    R0,22(,R1)              -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     ERRMSG                  Issue dup msg to cmd issuer
+*
+AT000    EQU   *
+         BAL   R14,GETTKN              Get next tkn
+         BZ    ERR075                  Missing node id
+         MVC   AUTHNODE,1(R15)         Move the auth node id to list
+         TRT   AUTHNODE,VALDNAME       Valid node name?
+         BNZ   ERR043                  No
+         OI    NJFL2,F2AAT             Indicate AUTH AT processed
+         B     AUTH010                 Continue AUTH scan
+*
+AOFF000  EQU   *
+         LTR   R7,R7                   Doing config scan?
+         BZ    ERR055                  OFF not recognized in CONFIG
+         L     R2,AAUTHS               -> AUTHS anchor word (0th entry)
+*
+AOFF010  EQU   *
+         ICM   R3,15,AUTHPTR-AUTHLIST(R2) -> next AUTHLIST entry
+         BZ    AOFF050                 Found the end, user/node not fnd
+         CLC   AUTHUSER,AUTHUSER-AUTHLIST(R3)   Match on userid?
+         BNE   AOFF020                 No, next
+         CLC   AUTHNODE,AUTHNODE-AUTHLIST(R3)   Match on node?
+         BNE   AOFF020                 No, next
+*
+* Remove the matching entry from the AUTHLIST chain:
+         MVC   AUTHPTR-AUTHLIST(,R2),AUTHPTR-AUTHLIST(R3)
+*
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE070I),NJE070I
+         MVC   WTOTXT+13(8),AUTHUSER-AUTHLIST(R3) Move auth name to msg
+         TRT   WTOTXT+13(9),BLANK      Look for end
+         MVC   1(2,R1),=CL2'at'
+         MVC   4(8,R1),AUTHNODE-AUTHLIST(R3) Move node name to msg
+         TRT   4(9,R1),BLANK           Look for end
+         MVC   1(23,R1),=CL23'is no longer authorized'
+         LA    R2,24(,R1)              -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R2,R1                   Compute length to display
+         FREEMAIN RU,                  Free entry that was removed     x
+               LV=AUTHSIZE,                                            x
+               A=(3),                                                  x
+               SP=1
+         LR    R0,R2                   Msg length to R0
+         B     SUCCMSG                 Issue success msg
+*
+AOFF020  EQU   *
+         LR    R2,R3                   Copy next entry
+         B     AOFF010                 Keep scanning for end
+*
+AOFF050  EQU   *
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE069I),NJE069I
+         MVC   WTOTXT+13(8),AUTHUSER   Move auth name to msg
+         TRT   WTOTXT+13(9),BLANK       Look for end
+         MVC   1(2,R1),=CL2'at'
+         MVC   4(8,R1),AUTHNODE        Move link name to msg
+         TRT   4(9,R1),BLANK           Look for end
+         MVC   1(36,R1),=CL36'was not found in authorization table'
+         LA    R0,37(,R1)              -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         DROP  R8                      AUTHLIST
+         B     SUCCMSG                 Issue success msg
+*
+*
+*-- Get next tokenized length/value pair
+*   Entry:  R15 -> Current pair
+*   Exit:  CC  =0, R15 unchanged, no more tokens
+*          CC ¬=0, R15 -> next pair
+*
+GETTKN   EQU   *
+         LA    R15,L'TOKENS(,R15)      -> next length/token pair
+         CLI   0(R15),X'FF'            No length available?
+         BNER  R14                     Exit with pair -> R15
+         S     R15,=A(L'TOKENS)        Back to previous token
+         CLI   *+1,0                   Set CC=0
+         BR    R14                     Exit with tkn ptr not changed
+*
+*-- Get a storage area
+*   Entry:  R0 =  length to obtain
+*   Exit:   R1 -> new stg area
+*
+GETSTG   EQU   *
+         STM   R14,R15,SV14GT          Save regs
+         GETMAIN RU,                   Get requested stg for block     x
+               LV=(0),                                                 x
+               SP=1                    All configuration elements SP=1
+         LM    R14,R15,SV14GT          Reload regs
+         BR    R14                     Return with stg addr in R1
+*
+TKN000   EQU   *
+         MVI   NJFL2,0                 Clear tokenization ctl flags
+         LR    R5,R1                   Save start of parse position
+         LR    R3,R1                   Start position to R3
+         BCTR  R15,0                   Make scan length IBM length
+         MVC   TOKENS(12*8),TKNINIT    Init receiving fields
+         LA    R6,TOKENS               -> token area
+*
+TKN040   EQU   *
+         EX    R15,SCANBL              Look for blank at end of token
+*SCANBL  TRT   0(0,R3),BLANK
+         BZ    ERR074                  Syntax error
+         SR    R1,R3                   Compute token length
+         C     R1,=F'8'                Max length of token is 8
+         BH    ERR074                  Syntax error
+         BCTR  R1,0
+         EX    R1,MVTKN                Save the token
+*MVTKN   MVC   1(0,R6),0(R3)
+         STC   R1,0(,R6)               Save its length
+         LA    R6,9(,R6)               -> next token area
+         LA    R1,1(,R1)               Restore length relative to 1
+         AR    R3,R1                   -> next byte in line
+         SR    R15,R1                  Reduce remaining length
+         BNPR  R14                     Done with line
+*
+         EX    R15,SCANNBL             Look for next token
+*SCANNBL TRT   0(0,R3),NONBLANK
+         BZR   R14                     Nothing else on line
+         SR    R1,R3                   Compute length to that token
+         AR    R3,R1                   -> next byte in line
+         SR    R15,R1                  Reduce remaining length
+         BNPR  R14                     Done with line
+*
+TKN090   EQU   *
+         B     TKN040                  Continue scanning
+*
+SCANBL   TRT   0(0,R3),BLANK           executed instr
+SCANNBL  TRT   0(0,R3),NONBLANK        executed instr
+MVTKN    MVC   1(0,R6),0(R3)           executed instr
+*
+EOD000   EQU   *
+         B     EXIT00
+*
+*
+ERR043   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE042E),NJE042E  Node name invalid chars
+         LA    R0,L'NJE042E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR046   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE044E),NJE044E  LINK is not inactive
+         MVC   WTOTXT+13(8),LINKID-LINKTABL(R8)  LINK name
+         TRT   WTOTXT+13(9),BLANK       Look for end
+         MVC   1(15,R1),=CL15'is still active'
+         LA    R0,13+16(,R1)           -> end of msg
+         LA    R1,WTOTXT               -> start of msg
+         SR    R0,R1                   Compute length to display
+         B     ERRTYPE(R7)
+*
+ERR050   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE050E),NJE050E  AUTH AT required
+         LA    R0,L'NJE050E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR051   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE051E),NJE051E  ROUTE TO required
+         LA    R0,L'NJE051E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR052   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE052E),NJE052E  More than one LOCAL stmt
+         LA    R0,L'NJE052E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR053   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE053E),NJE053E  No LOCAL stmt
+         LA    R0,L'NJE053E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR054   EQU   *
+         S     R15,=A(L'TOKENS)        Back to previous token
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE054E),NJE054E  invalid BUFF value
+         LA    R0,L'NJE054E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR055   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE055E),NJE055E  invalid value after keywd
+         MVC   WTOTXT+29(8),0(R3)      Show failed keyword
+         LA    R0,L'NJE055E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR073   EQU   *
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE073E),NJE073E  keywd not in col 1
+         LA    R0,L'NJE073E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR074   EQU   *
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE074E),NJE074E  syntax error
+         SR    R3,R5                   Compute column number
+         LA    R3,1(,R3)               Make rel to 1
+         CVD   R3,DBLE
+         UNPK  WTOTXT+53(2),DBLE
+         OI    WTOTXT+54,X'F0'         Fix sign
+         LA    R0,L'NJE074E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR075   EQU   *
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE075E),NJE075E  syntax error
+         MVC   WTOTXT+36(8),0(R3)      Show failed keyword
+         LA    R0,L'NJE075E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR076   EQU   *
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE076E),NJE076E  unknown config stmt type
+         LA    R0,L'NJE076E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR077   EQU   *
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE077E),NJE077E  line addr required
+         LA    R0,L'NJE077E            Length of msg
+         B     ERRTYPE(R7)
+*
+ERR078   EQU   *
+         S     R15,=A(L'TOKENS)        Back to previous token
+         LA    R3,1(,R15)              -> failing keyword token
+         BAL   R14,CFGERR              Show failing stmt
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE078E),NJE078E  invalid value after keywd
+         MVC   WTOTXT+46(8),0(R3)      Show failed keyword
+         LA    R0,L'NJE078E+8          Length of msg
+         B     ERRTYPE(R7)
+*
+ERRTYPE  EQU   *                       R7 branch table index
+         B     ERRWTO               00 Issue WTO to console
+         B     ERRMSG               04 Return msg len/text to caller
+*
+ERRWTO   EQU   *
+         WTO   ,MF=(E,WTOMSG)
+         B     EXIT08
+*
+ERRMSG   EQU   *
+         L     R1,AMTEXT               -> callers MTEXT area
+         MVC   0(120,R1),WTOTXT        Pass back the msg text
+         B     EXIT08                  and exit to caller with error
+*
+SUCCMSG  EQU   *
+         L     R1,AMTEXT               -> callers MTEXT area
+         MVC   0(120,R1),WTOTXT        Pass back the msg text
+         B     EXIT00                  and exit to caller with success
+*
+CFGERR   EQU   *
+         LTR   R7,R7                   Processing CONFIG member?
+         BNZR  R14                     No; skip config msgs
+         ST    R14,SV14CF              Save return
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(L'NJE072E),NJE072E
+         CVD   R9,DBLE                 convert record #
+         MVC   WTOTXT+45(3),=X'202120' Move edit mask
+         ED    WTOTXT+44(4),DBLE+6     Edit record number
+         WTO   ,MF=(E,WTOMSG)
+         MVC   WTOMSG,WTO              Move WTO model
+         MVC   WTOTXT(7),NJE072E       Move just msg number
+         MVI   WTOTXT+8,C''''          Move apost
+         MVC   WTOTXT+09(52),REC       Move first part of record image
+         MVI   WTOTXT+61,C''''         Move apost
+         WTO   ,MF=(E,WTOMSG)
+         L     R14,SV14CF              Load return
+         BR    R14
+*
+EXIT08   EQU   *
+         LR    R6,R0                   Msg length to R6 for now
+         LA    R5,8                    RC=8
+         B     XIT000
+*
+EXIT00   EQU   *
+         LR    R6,R0                   Possible msg len to R6 for now
+         SR    R5,R5                   RC=0
+*                                                                       NJE00200
+XIT000   EQU   *                                                        NJE00210
+         TM    NJFL1,F1OPEN            Is DCB open?
+         BZ    XIT010                  No
+         MVC   MACLIST(CLOSEL),CLOSE   Move macro model
+         CLOSE (CONFIG),                                               x
+               MF=(E,MACLIST)
+         FREEPOOL CONFIG
+*
+XIT010   EQU   *
+*
+XIT090   EQU   *
+         LR    R1,R10                  -> NJEWK main work area page
+         L     R13,4(,R13)             -> caller's sa                   NJE00210
+         STM   R5,R6,16(R13)           Set RC, msg len in SA R15, R0
+*
+         FREEMAIN RU,                                                  x
+               LV=NJEWKSZ,                                             x
+               A=(1)
+         LM    R14,R12,12(R13)         Reload system's regs             NJE00220
+         BR    R14                     Return                           NJE00240
+         DROP  R12
+         LTORG ,
+*
+DMYDCB   DCB   DDNAME=CONFIG,                                          x
+               MACRF=GM,                                               x
+               DSORG=PS,                                               x
+               LRECL=80,                                               x
+               RECFM=FB,                                               x
+               EODAD=EOD000
+DMYDCBL  EQU   *-DMYDCB
+*
+*               1234567890123456789012345678901234567890123456789012345
+WTO      WTO   '                                                       x
+                                                                       x
+                        ',MF=L
+*              67890123456789012345678901234567890123456789012345678901
+WTOL     EQU   *-WTO
+*
+*
+         DS    0D
+BLANKS   DC    CL120' '
+NONBLANK DC    64X'FF',X'00'           TR Table to locate nonblank
+INVALHEX DC    193X'FF'                TR table to locate invalid hex
+         DC    6X'00'     A-F
+         DC    41X'FF'
+         DC    10X'00'    0-9
+         DC    6X'FF'
+BLANK    DC    64X'00',X'FF',191X'00'  TR Table to locate blanks
+*
+ASTER    DC    256AL1(*-ASTER)         TR table to set asterisk high
+         ORG   ASTER+C'*'               Set * high, only
+         DC    X'FF'
+         ORG   ,
+*
+HEXTRAN  DC    CL16'0123456789ABCDEF'  Translate table
+*                 0 1 2 3 4 5 6 7 8 9 A B C D E F
+TRANHEX  DC    X'00FAFBFCFDFEFF000000000000000000' C
+         DC    X'00000000000000000000000000000000' D
+         DC    X'00000000000000000000000000000000' E
+         DC    X'F0F1F2F3F4F5F6F7F8F9000000000000' F
+*
+*                 0 1 2 3 4 5 6 7 8 9 A B C D E F
+VALDNAME DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 0 Invalid node name
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 1 characters
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 2
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 3
+         DC    X'00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 4  Blank=ok/delim
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFF5CFFFFFF' 5  * indicator
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 6
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 7
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 8
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 9
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' A
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' B  valid =
+         DC    X'FF000000000000000000FFFFFFFFFFFF' C  C1-C9
+         DC    X'FF000000000000000000FFFFFFFFFFFF' D  D1-D9
+         DC    X'FFFF0000000000000000FFFFFFFFFFFF' E  E2-E9
+         DC    X'00000000000000000000FFFFFFFFFFFF' F  F0-F9
+*
+OPEN     OPEN  0,MF=L
+OPENL    EQU   *-OPEN
+CLOSE    CLOSE 0,MF=L
+CLOSEL   EQU   *-CLOSE
+RDJFCB   RDJFCB 0,MF=L
+RDJFCBL  EQU   *-RDJFCB
+*
+DEFUSER  DC    CL8'HERC01'         Default userid for LOCAL
+*
+TKNINIT  DC    12X'FF4040404040404040'  byte 0=IBM len, bytes 1-8 blank
+*                          1         2         3         4         5    NJE00250
+*                01234567890123456789012345678901234567890123456789012
+NJE042E  DC    C'NJE042E Node names must contain A-Z, 0-9 only'
+NJE044E  DC    C'NJE044E Link ' is not inactive'
+NJE045I  DC    C'NJE045I Link ' is not defined
+NJE046I  DC    C'NJE046I Link ' xxx deleted
+NJE048E  DC    C'NJE048I Link ' xxx duplicate definition
+NJE049I  DC    C'NJE049I Using configuration '
+NJE050E  DC    C'NJE050E ''AT'' keyword is required with AUTH'
+NJE051E  DC    C'NJE051E ''TO'' keyword is required with ROUTE'
+NJE052E  DC    C'NJE052E Only one LOCAL statement allowed'
+NJE053E  DC    C'NJE053E LOCAL statement must preceed LINK, ROUTE, or A*
+               UTH'
+NJE054E  DC    C'NJE054E Invalid BUFF value; range is 300 to 4020'
+NJE055E  DC    C'NJE055E Unrecognized keyword x'
+NJE063I  DC    C'NJE063I Node xxxxxxxx ' is not routed
+NJE064I  DC    C'NJE064I Route for node ' xxxxxxxx deleted
+NJE065I  DC    C'NJE065I Node xxxxxxxx ' routed through link xxxx
+NJE066I  DC    C'NJE066I Link '     xxx defined'
+NJE067I  DC    C'NJE067I User '     xxx at yyy is already authorized'
+NJE068I  DC    C'NJE068I User '     xxx at yyy is now authorized
+NJE069I  DC    C'NJE069I User '     xxx at yyy not in authorization lst
+NJE070I  DC    C'NJE070I User '     xxx at yyy removed from auth list
+NJE072E  DC    C'NJE072E Configuration syntax error in record xxx'
+NJE073E  DC    C'NJE073E Keyword is not in column 1'
+NJE074E  DC    C'NJE074E Syntax, keyword, or value error after column x*
+               x'
+NJE075E  DC    C'NJE075E Missing value after keyword x'
+NJE076E  DC    C'NJE076E Unrecognized configuration statement type'
+NJE077E  DC    C'NJE077E LINE address required on LINK statement'
+NJE078E  DC    C'NJE078E Invalid/incorrect value after keyword x'
+*                                                                       NJE00930
+* NJE043E                                                               NJE00930
+* NJE047E                                                               NJE00930
+* NJE056I                                                               NJE00930
+* NJE057I                                                               NJE00930
+* NJE058I                                                               NJE00930
+* NJE059I all NJECMX msgs                                               NJE00930
+* NJE060I                                                               NJE00930
+* NJE061I                                                               NJE00930
+* NJE062I                                                               NJE00930
+* NJE071I                                                               NJE00930
+*                                                                       NJE00930
+         COPY  LINKTABL                                                 NJE00940
+         COPY  RTE                                                      NJE00940
+         COPY  AUTHLIST                                                 NJE00940
+         COPY  NETSPOOL                                                 NJE00940
+*
+****  Main work area                                                    NJE00290
+*                                                                       NJE00290
+NJEWK    DSECT
+NJEEYE   DS    CL4'NJES'           Eyecatcher
+NJEWKLEN DS    F                   Getmain size of this area
+*
+DBLE     DS    D                   Work area                            NJE00310
+TWRK     DS    2D                  Work area
+MACLIST  DS    XL64                Macro expansion area
+REC      DS    CL120               Input record or command area
+TOKENS   DS    12CL9               Parsed keyword tokens (1 len,8 tkn)
+*
+         NJEPARMS                  Passed parameter list           v220
+*
+*
+INITPLST DS    A                   -> entry parm list in R1
+AMTEXT   DS    A                   -> MTEXT field in NJECMX
+SV14CF   DS    A                   R14 save
+SV14GT   DS    A,A                 R14-15 save
+*
+NJFL1    DS    X                   Flag bits
+F1OPEN   EQU   X'80'   1... ....    CONFIG DCB is open
+*
+NJFL2    DS    X                   token scan and ctl flags
+F2LINE   EQU   X'80'   1... ....    LINE keyword found
+F2RTO    EQU   X'40'   .1.. ....    ROUTE TO keyword found
+F2AAT    EQU   X'20'   ..1. ....    AUTH AT keyword found
+*
+         DS    0F
+EXLST    DS    A                   X'87'+AL3(JFCBL)
+JFCBL    DS    XL176
+CONFIG   DS    XL(DMYDCBL)         CONFIG DCB
+WTOMSG   DS    0XL(WTOL)           WTO header
+         DS    F                   Header area
+WTOTXT   DS    XL(WTOL-4)          WTO text area
+*
+BLDBUF   DS    XL(LINKLEN)         Build area for LINK,RTE,AUTH entries
+*
+NJESA    DS    18F                 NJESCN OS save area                  NJE00300
+BALRSAVE DS    16F                 Local rtns register save             NJE00300
+*
+         DS    0D                  Force doubleword size
+NJEWKSZ  EQU   *-NJEWK
+*
+         DCBD  DSORG=PS,DEVD=DA
+JFCB     DSECT
+         IEFJFCBN LIST=YES
+*
+         END   NJESCN                                                   NJE01000

@@ -1,0 +1,803 @@
+*
+*
+*-- NJE38 - Place a file into the spool and queue it for transmission.
+*
+*
+*   This program writes a file or dataset to the NETSPOOL dataset
+*   and POSTs NJE38 that it is available for transmission to a node.
+*
+*
+* Change log:
+*
+* 10 Dec 20 - Support for registered users and message queuing     v220
+* 29 Nov 20 - Use text-based configuration; alternate routes       v211
+* 01 Oct 20 - Put ENQ existence check in common module             v210
+* 30 Jun 20 - ERRET label on POST incorrect; could cause loop.     v200
+* 03 Jun 20 - Support a default userid if no security product.     v130
+* 14 May 20 - Remove restriction for destination being local node. v110
+*
+*
+         REGEQU
+NJ38XMIT CSECT
+         NJEVER
+         STM   R14,R12,12(R13)        SAVE CMS REGS
+         LR    R12,R15                BASE
+         USING NJ38XMIT,R12           ADDRESS IT
+         LR    R8,R1                  Save parm field addr
+*
+         GETMAIN RU,                  GET LOCAL STG AREA               X
+               LV=NJEXSZ
+         LR    R10,R1
+         LR    R1,R0                   COPY LENGTH
+         LR    R2,R0                   COPY LENGTH
+         LR    R0,R10                  -> NEW STG AREA
+         SR    R15,R15                 SET PAD
+         MVCL  R0,R14                  CLEAR THE PAGE
+*
+         USING NJEXWK,R10
+         ST    R13,NJESA+4             SAVE PRV S.A. ADDR
+         LA    R1,NJESA                -> MY SAVE AREA
+         ST    R1,8(,R13)              PLUG IT INTO PRIOR SA
+         LR    R13,R1
+*
+INIT000  EQU   *
+         MVC   NJEEYE,=CL4'NJEX'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area
+         MVC   SYSUT1(DMYUT1L),DMYUT1  Set up DCB
+         MVC   SYSPRINT(DMYPRTL),DMYPRT Set up DCB
+         MVC   LIST,BLANKS             Init print line
+         MVC   LCLNODE,=CL8'????????'  Unknown node name
+         SR    R11,R11                 Init tag data ptr
+*
+         MVC   MACLIST(OPENL),OPEN     Move OPEN list
+         OPEN  (SYSPRINT,OUTPUT),      Open the print dataset          X
+               MF=(E,MACLIST)
+*
+         MVC   LIST(L'MSG001),MSG001
+         BAL   R14,PUT                 Write the line
+         BAL   R14,PUT                 Write blank line
+*
+INIT020  EQU   *
+         BAL   R14,PARM000             Go examine the PARM field
+         BNZ   ERR004                  Bad PARM field, print error
+         BAL   R2,CHK000               Get NETSPOOL DSN            v210
+         BNZ   ERR005                  Can't; NJE38 is not active  v210
+         BAL   R14,DYN000              Allocate the NETSPOOL dataset
+         BNZ   EXIT08                  Exit if dyn alloc fails
+*
+INIT040  EQU   *
+         MVC   MACLIST(OPENL),OPEN     Move OPEN list
+         LA    R7,SYSUT1               -> DCB
+         USING IHADCB,R7
+*
+         OPEN  (SYSUT1,INPUT),         Open the SYSUT1 dataset         X
+               MF=(E,MACLIST)
+         TM    DCBOFLGS,DCBOFOPN       Is DCB open ok?
+         BZ    ERR006                  No
+         OI    FLAGS1,FL1OPEN          Indicate DCB is open
+*
+         MVC   DBLE(1),DCBRECFM        Get record format byte
+         NI    DBLE,X'06'              Keep only DCBRECCA+DCBRECCM bits
+         OC    FLAGS1,DBLE             Keep the bits in our flag bits
+*
+         TM    DCBRECFM,DCBRECU        Is this a RECFM=U file?
+         BO    ERR007                  Unsupported type
+         CLC   DCBLRECL,=AL2(133)      LRECL > max supported by NJE?
+         BH    ERR008                  Yes
+         MVC   LRECL,DCBLRECL          Save off the LRECL value
+*
+TYP000   EQU   *
+         LA    R6,TYPPUN               Assume this is punch data
+         TM    FLAGS1,FL1CA+FL1CM      Do we have carriage ctl?
+         BZ    TYP020                  No, possible punch data
+         LA    R6,TYPPRT               Y, definitely print data then
+         B     TYP030
+*
+TYP020   EQU   *
+         CLC   LRECL,=AL2(80)          Are records <=80?
+         BNH   TYP030                  Yes, it is punch data
+         LA    R6,TYPPRT               Must be PRT without CC otherwise
+         CLC   DCBLRECL,=AL2(132)      LRECL max is 132 without CC
+         BH    ERR008                  Yes
+*
+TYP030   EQU   *
+         STC   R6,DATATYPE             Save determined type
+*
+*-- Open NETSPOOL
+*
+RD000    EQU   *
+         SR    R9,R9                   Init record counter
+         LA    R8,NCB1                 -> NCB
+         USING NCB,R8
+         STC   R6,NCBFL1               Save determined type in NCB too
+*
+         NSIO  TYPE=OPEN,                                              x
+               NCB=(R8)
+         LTR   R15,R15                 Any errors?
+         BZ    RD010                   No
+         BAL   R14,FMT000              Display error
+         B     EXIT08                  Exit on VSAM error
+*
+RD010    EQU   *
+         OI    FLAGS1,FL1NSPL          Indicate NETSPOOL is open
+*
+         MVC   LIST(L'MSG009),MSG009   Local node name
+         MVC   LIST+L'MSG009+1(8),LCLNODE   Move name
+         BAL   R14,PUT
+*
+RD020    EQU   *
+         GET   SYSUT1                  Get a data record
+*
+         LR    R3,R1                   Record addr to R3
+         LH    R2,DCBLRECL             Get record length from DCB
+         TM    DCBRECFM,DCBRECF        RECFM=F data?
+         BO    RD030                   Yes, we're good
+         SR    R2,R2                   Clear for ICM
+         ICM   R2,3,0(R3)              Get the len from RDW
+         LA    R3,4(,R3)               -> start of the record data
+*
+RD030    EQU   *
+         TM    DATATYPE,TYPPUN         Is this punch data?
+         BO    RD150                   Y, write straight as is
+*
+         TM    FLAGS1,FL1CA+FL1CM      Do we have carriage ctrl?
+         BNZ   RD050                   Yes, look closer
+*
+*-- PRT records with no CC bytes
+*
+         BCTR  R2,0                    Get IBM len of input record
+         EX    R2,MVCREC1              Move it to our buffer
+         MVI   DATABUF,X'09'           Single space carriage ctl char
+         LA    R2,2(,R2)               Back to true length + CC byte
+         B     RD200                   Go write the line
+MVCREC1  MVC   DATABUF+1(0),0(R3)      executed instr
+*
+RD050    EQU   *
+         TM    FLAGS1,FL1CM            Machine carriage control?
+         BO    RD100                   Yes
+*
+*-- PRT records with RECFM=A carriage control
+*
+         LA    R0,X'13'                Space 2 lines immediate
+         CLI   0(R3),C'0'              Is CC character '0'?
+         BE    RD060                   Yes
+         LA    R0,X'8B'                Skip to channel 1 immediate
+         CLI   0(R3),C'1'              Is CC character '1'?
+         BE    RD060                   Yes
+         LA    R0,X'1B'                Space 3 lines immediate
+         CLI   0(R3),C'-'              Is CC character '-'?
+         BE    RD060                   Yes
+         LA    R0,X'01'                Write, no space
+         CLI   0(R3),C'+'              Is CC character '+'?
+         BE    RD060                   Yes
+         LA    R0,X'0B'                Otherwise use space 1 immed
+*
+RD060    EQU   *
+         STC   R0,DATABUF              Store opcode our buffer
+*
+         NSIO  TYPE=PUT,               Write the immediate command     x
+               NCB=(R8),                                               x
+               AREA=DATABUF,                                           x
+               RECLEN=1
+         LTR   R15,R15                 Any errors?
+         BZ    RD070                   No
+         BAL   R14,FMT000              Display error
+         B     EXIT08                  Exit on VSAM error
+*
+RD070    EQU   *
+         BCTR  R2,0                    Get IBM len of input record
+         EX    R2,MVCREC2              Move it to our buffer
+         MVI   DATABUF,X'01'           Insert write without space code
+         LA    R2,1(,R2)               Back to true length
+         B     RD200                   Go write the line
+MVCREC2  MVC   DATABUF(0),0(R3)
+*
+*
+*-- PRT records with RECFM=M carriage control
+*
+RD100    EQU   *
+         BCTR  R2,0                    Get IBM len of input record
+         EX    R2,MVCREC3              Move it to our buffer
+         TR    DATABUF(1),PRTCC        Ensure Mach car ctl valid
+         LA    R2,1(,R2)               Back to true length
+         B     RD200                   Go write the line
+MVCREC3  MVC   DATABUF(0),0(R3)
+*
+*-- PUN records
+*
+RD150    EQU   *
+         MVC   DATABUF,0(R3)           Move the punch record
+*
+RD200    EQU   *
+         NSIO  TYPE=PUT,                                               x
+               NCB=(R8),                                               x
+               AREA=DATABUF,                                           x
+               RECLEN=(R2)
+         LTR   R15,R15                 Any errors?
+         BZ    RD210                   No
+         BAL   R14,FMT000              Display error
+         B     EXIT08                  Exit on VSAM error
+*
+RD210    EQU   *
+         LA    R9,1(,R9)               Count # of records written
+         B     RD020                   Read another
+         DROP  R7                      IHADCB
+*
+*-- On end of file, build the tag data and pass it to CLOSE
+*
+EOD000   EQU   *
+         LA    R3,DEFUSER              -> Default userid           v130
+         TM    FLAGS1,FL1NACEE         Use NOACEE (debug only)     v130
+         BO    EOD010                  Yes, force default userid   v130
+*
+         L     R2,PSAAOLD-PSA(0)       -> my ASCB
+         L     R2,ASCBASXB-ASCB(,R2)   -> my ASXB
+         ICM   R2,15,ASXBSENV-ASXB(R2) -> my ACEE
+         BZ    EOD010                  Use default userid if no ACEE
+         LA    R3,ACEEUSR-ACEE(,R2)    -> Userid
+*
+EOD010   EQU   *
+         L     R5,16                   -> CVT
+         L     R5,CVTSMCA-CVT(,R5)     -> SMCA
+         LA    R5,SMCASID-SMCABASE(,R5) -> system id
+*
+EOD020   EQU   *
+         LA    R11,TDATA               -> tag data area
+         USING TAG,R11
+*
+         STCK  TAGINTOD                Time of spool file creation
+*
+         MVC   TAGDEV,=X'000C'         Pseudo card rdr CUU
+         MVC   TAGINLOC,LCLNODE        Local node name of origin
+         MVC   TAGINVM,0(R3)           Userid of origin
+         ST    R9,TAGRECNM             # of records written
+         MVC   TAGRECLN,LRECL          Move record length
+         MVC   TAGINDEV,DATATYPE       data type coming in (PRT/PUN)
+         MVC   TAGCLASS,=C'A'          Spool class
+         MVC   TAGCOPY,=H'1'           # copies
+         MVC   TAGNAME,BLANKS          Init receiving field
+         MVC   TAGNAME(8),0(R3)        Insert userid
+         MVC   TAGTYPE,=CL12'OUTPUT'
+         MVC   TAGDIST,BLANKS          Init receiving field
+         MVC   TAGDIST(4),0(R5)        Insert system id
+         MVC   TAGTOLOC,DESTNODE       destination node
+         MVC   TAGTOVM,DESTUSER        destination userid
+         MVC   TAGPRIOR,=H'1'          priority
+*
+CLS000   EQU   *
+         NSIO  TYPE=CLOSE,             Close NETSPOOL                  x
+               NCB=(R8),                                               x
+               TAG=(R11)               Pass TAG data
+         NI    FLAGS1,255-FL1NSPL      NETSPOOL is closed
+*
+         BAL   R2,CHK000               See if NJE38 is still activev210
+         BNZ   CLS090                  It is not, no POST required v210
+         CLC   DESTNODE,LCLNODE        Trying to send file locally?v110
+         BE    CLS090                  Y, but skip the POST        v110
+*
+         LR    R7,R1                   -> NJE38 CSA ptr to R7      v210
+         USING NJ38CSA,R7
+*
+         MODESET MODE=SUP,KEY=ZERO
+*
+         GETMAIN RU,                   Get CSA for WRE TYPE=WRENEW     x
+               LV=WRESIZE,                                         v220x
+               SP=241
+         XC    0(WRESIZE,R1),0(R1)     Clear stg area              v220
+         USING WRE,R1
+         MVI   WRESP,241               Save subpool                v220
+         MVI   WRETYPE,WRENEW          "New file in spool" WRE
+         MVC   WRELINK,DESTNODE        Set destination node
+         MVC   WREUSER,DESTUSER        Set destination userid
+*
+         LM    R2,R3,NJ38SWAP          Get first WRE ptr, sync count
+CLS020   EQU   *
+         ST    R2,WRENEXT              First WRE becomes next
+         LR    R4,R1                   -> WRE to be added as first
+         LA    R5,1(,R3)               Incr synchronization count
+         CDS   R2,R4,NJ38SWAP          Update CSA WRE anchor, sync
+         BC    7,CLS020                Gotta try again
+*
+         LA    R6,NJ38ECB              -> NJE38 external WRE ECB
+         L     R7,NJ38ASCB             -> NJE38 ASCB
+         DROP  R7                      NJ38CSA
+*
+         MVC   MACLIST(POSTL),POST     Move macro model
+         POST  (6),                    Wake up NJE38 to new spool file x
+               ASCB=(7),                                               x
+               ERRET=CLS090,           Exit if can't do the post   v200x
+               ECBKEY=0,                                               x
+               MF=(E,MACLIST)
+*
+         MODESET MODE=PROB,KEY=NZERO
+*
+*-- Write: xxx records queued for node(userid), File(####)
+*
+CLS090   EQU   *
+         CVD   R9,DBLE                 Convert # records written
+         MVC   LIST(12),=X'402020206B2020206B202120'  Move edit mask
+         ED    LIST(12),DBLE+3         Edit result
+         TRT   LIST(12),NONBLANK       Look for start of result
+         MVC   LIST(12),0(R1)          Left justify result
+         TRT   LIST(13),BLANK          Look for end of result
+         LA    R1,1(,R1)               Skip over the blank
+         MVC   0(L'MSG010,R1),MSG010   Move records queued msg
+         LA    R1,L'MSG010(,R1)        Bump position
+         MVC   0(8,R1),DESTNODE        Move destination node name
+         TRT   0(9,R1),BLANK           Look for end of node name
+         MVI   0(R1),C'('              Insert (
+         MVC   1(8,R1),DESTUSER        Move destination userid
+         TRT   1(9,R1),BLANK           Look for end of userid
+         MVC   0(2,R1),=C'),'          Insert )
+         MVC   3(11,R1),=C'File (xxxx)'
+         LH    R2,NCBFID               Get file id after close
+         CVD   R2,DBLE                 Convert
+         UNPK  9(4,R1),DBLE            Unpk file #
+         OI    12(R1),X'F0'            Fix sign
+         BAL   R14,PUT                 Write the line
+         B     EXIT00
+*
+*-- Error msgs
+*
+*
+ERR004   EQU   *
+         BAL   R14,ERROR               Print ERROR line
+         MVC   LIST(L'MSG004),MSG004   No parm field
+         BAL   R14,PUT
+         B     EXIT08
+*
+ERR005   EQU   *
+         BAL   R14,ERROR               Print ERROR line
+         MVC   LIST(L'MSG005),MSG005   No NETSPOOL dsn.
+         BAL   R14,PUT
+         MVC   LIST(L'MSG005A),MSG005A Code in JCL and resubmit
+         BAL   R14,PUT
+         B     EXIT08
+*
+ERR006   EQU   *
+         BAL   R14,ERROR               Print ERROR line
+         MVC   LIST(L'MSG006),MSG006   Unable to open SYSUT1
+         BAL   R14,PUT
+         B     EXIT08
+*
+ERR007   EQU   *
+         BAL   R14,ERROR               Print ERROR line
+         MVC   LIST(L'MSG007),MSG007   RECFM=U invalid
+         BAL   R14,PUT
+         B     EXIT08
+*
+ERR008   EQU   *
+         BAL   R14,ERROR               Print ERROR line
+         MVC   LIST(L'MSG008),MSG008   LRECL > 133
+         BAL   R14,PUT
+         MVC   LIST(L'MSG008A),MSG008A LRECL > 133 part 2
+         BAL   R14,PUT
+         MVC   LIST(L'MSG008B),MSG008B LRECL > 133 part 3
+         BAL   R14,PUT
+         B     EXIT08
+*
+ERR013   EQU   *
+         BAL   R14,ERROR               Print ERROR line
+         MVC   LIST(L'MSG013),MSG013   local node destination rejected
+         BAL   R14,PUT
+         B     EXIT08
+*
+ERROR    EQU   *
+         MVC   LIST(6),=C'ERROR:'
+*
+PUT      EQU   *
+         ST    R14,SV14
+         PUT   SYSPRINT,LIST
+         MVC   LIST,BLANKS
+         L     R14,SV14
+         BR    R14
+*
+*-- Examine the PARM field
+*
+*-- Entry: R8 contains the Register 1 address value at program entry.
+*-- Exit:  CC=0  PARM field ok; DESTNODE & DESTUSER are valid.
+*--        CC<>0 PARM field missing or otherwise coded incorrectly.
+*
+*-- Valid PARM field formats:  PARM=(NODE.USERID)
+*--                            PARM=(NODE,USERID)
+*--                            PARM='NODE USERID'
+*
+*-- NODE and USERID must be 1-8 characters.
+*-- Apostrophes may be used in lieu of parenthesis in all cases.
+*
+PARM000  EQU   *
+         L     R1,0(,R8)               -> PARM field
+         LH    R2,0(,R1)               Get length of PARM field
+         LTR   R2,R2                   Check length
+         BZ    PARMERR                 No PARM field specified
+         CH    R2,=H'3'                Is the length at least 3 char?
+         BL    PARMERR                 Shorter cant be valid
+         CH    R2,=H'17'               More than 17 char?
+         BH    PARMERR                 Longer cant be valid
+*
+         BCTR  R2,0                    Adjust len for execute
+         EX    R2,MVCPARM              Move parm field to work area
+*MVCPARM MVC   MACLIST(0),2(R1)
+*
+         OC    MACLIST(17),BLANKS      Upper case the parm data
+         MVC   TRTAB,BLANK             Set up translate table
+         MVI   TRTAB+C'.',X'FF'        Also search for '.' chars
+         MVI   TRTAB+C',',X'FF'        Also search for ',' chars
+*
+         LA    R1,0(,R1)               Clear high order byte
+         TRT   MACLIST(18),NONBLANK    Look for first char
+         BZ    PARMERR                 Invalid
+         LR    R3,R1                   -> start of node id
+         TRT   0(18,R1),TRTAB          Look for blank or '.' or ','
+         BZ    PARMERR                 Invalid
+         LA    R2,1(,R1)               -> position just past delimeter
+         SR    R1,R3                   Compute node name length
+         BNP   PARMERR                 Exit if invalid
+         CH    R1,=H'8'                More than 8 char?
+         BH    PARMERR                 It is invalid
+*
+         MVC   DESTNODE,BLANKS         Init receiving field
+         BCTR  R1,0                    Adjust for execute
+         EX    R1,MVCNODE              Move nodename
+*MVCNODE MVC   DESTNODE(0),0(R3)
+*
+         LR    R3,R2                   -> start of userid
+         TRT   0(9,R2),BLANK           Look for blank
+         BZ    PARMERR                 Invalid
+         SR    R1,R3                   Compute userid length
+         BNP   PARMERR                 Exit if invalid
+         CH    R1,=H'8'                More than 8 char?
+         BH    PARMERR                 It is invalid
+*
+         MVC   DESTUSER,BLANKS         Init receiving field
+         BCTR  R1,0                    Adjust for execute
+         EX    R1,MVCUSER              Move nodename
+*MVCUSER MVC   DESTUSER(0),0(R3)
+*
+         CLI   *+1,0                   Set CC=0
+         BR    R14                     Return w/ DESTNODE&DESTUSER ok
+*
+PARMERR  EQU   *
+         LTR   R12,R12                 Set CC non-zero
+         BR    R14                     Errors in PARM field
+*
+MVCPARM  MVC   MACLIST(0),2(R1)        executed instr
+MVCNODE  MVC   DESTNODE(0),0(R3)       executed instr
+MVCUSER  MVC   DESTUSER(0),0(R3)       executed instr
+*
+*
+*-- Look for ENQ QCB from NJE38
+*
+*-- Entry: None
+*-- Exit:  CC=0  NJE38 is not active  (No matching ENQ found)
+*--        CC<>0 NJE is active. R15->NJE38 CSA Block
+*
+CHK000   EQU   *
+         LA    R1,NSPLDSN              -> where to place spool DSN v210
+         L     R15,=V(NJESYS)          -> ENQ finder               v210
+         BALR  R14,R15                 Check if NJE38 already act  v210
+         LTR   R15,R15                 Set CC (RC=0 NJE38 active)  v210
+         BNZR  R2                      Return if NJE38 inactive    v210
+         MVC   LCLNODE,NJ38NODE-NJ38CSA(R1)  Save off lcl node namev210
+         MVC   DEFUSER,NJ38DUSR-NJ38CSA(R1)  Save off default user v211
+         BR    R2                      Return; NJE38 active        v210
+*
+*- Dynamically allocate the NETSPOOL dataset when there is no DD
+*- statement and when NJE38 is active.
+*
+DYN000   EQU   *
+         MVC   TXT1,TXT1D               INITIALIZE DDNAME TXT UNIT
+         MVC   TXT2,TXT2D               INITIALIZE TXT UNIT
+         MVC   TXT3,TXT3D               INITIALIZE TXT UNIT
+         MVC   TXT4,TXT4D               INITIALIZE TXT UNIT
+         LA    R1,TXT1                  POINT TO TEXT UNIT
+         ST    R1,MACLIST               SET IN ADDRESS LIST
+         LA    R1,TXT2                  POINT TO TEXT UNIT
+         ST    R1,MACLIST+4             SET IN ADDRESS LIST
+         LA    R1,TXT3                  POINT TO TEXT UNIT
+         ST    R1,MACLIST+8             SET IN ADDRESS LIST
+         LA    R1,TXT4                  POINT TO TEXT UNIT
+         ST    R1,MACLIST+12            SET IN ADDRESS LIST
+         OI    MACLIST+12,X'80'         SET VL
+*
+*-- Issue Dynalloc SVC
+*
+         ST    R14,DYNR14               SAVE RETURN REG
+         MVC   LS99RB,CPS99RB           INIT THE S99RB
+         LA    R1,LS99RB                POINT TO BLOCK
+         USING S99RB,R1
+         OI    S99FLAG1,S99NOCNV        FORCE NEW ALLOCATION
+         ST    R1,LS99PTR               SET PARAMETER WORD
+         OI    LS99PTR,X'80'            SET VL
+         LA    R14,MACLIST              GET ADDRESS OF TEXT UNITS
+         ST    R14,S99TXTPP             PUT IN S99RB
+*
+         LA    R1,LS99PTR               POINTER TO S99 PTR
+         SVC   99                       ISSUE DYNALLOC
+*
+         LTR   R15,R15                  R15 non zero?
+         BZ    DYN090                   No
+*
+         LA    R1,LS99RB
+         UNPK  TWRK(9),S99ERROR(5)      Add zones to error code
+         DROP  R1
+         TR    TWRK(8),HEXTRAN-240
+         MVC   LIST(L'MSG012),MSG012    Dyn alloc failure msg
+         MVC   LIST+22(8),TWRK          Error codes to line
+         MVC   LIST+36(44),NSPLDSN      Move DSNAME
+         BAL   R14,PUT                  Write line
+         CLI   *,0                      Set CC=non-zero
+*
+DYN090   EQU   *
+         L     R14,DYNR14               Restore return addr
+         BR    R14
+*
+FMT000   EQU   *
+         STM   R14,R2,BALRSAVE         Save regs used
+         MVC   LIST+0(L'MSG000),MSG000 Move msg text
+         MVC   LIST+51(8),5(R12)       Move csect name
+         TRT   LIST+51(9),BLANK        Look for end of csect name
+         MVI   0(R1),C'+'
+*
+         LA    R15,0(,R14)  Clear high, Get addr of call to this rtn
+         LA    R12,0(,R12)             Clear high byte
+         SR    R15,R12                 Compute offset of call
+         ST    R15,DBLE                Save to work area
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   1(4,R1),TWRK            Move call offset to msg
+*
+         LA    R15,NCB1
+         UNPK  TWRK(5),NCBRTNCD-NCB(3,R15)  Add zones
+         TR    TWRK(4),HEXTRAN-240
+         MVC   LIST+31(4),TWRK         Move rtncd/errcd
+*
+         UNPK  TWRK(3),NCBREQ-NCB(2,R15)  Add zones
+         TR    TWRK(2),HEXTRAN-240
+         MVC   LIST+41(2),TWRK         Move req code
+*
+         L     R1,NCBMACAD-NCB(,R15)   Get failing VSAM macro addr
+         LA    R1,0(,R1)               Clear high byte
+         S     R1,=V(NJESPOOL)         Compute offset into NJESPOOL rtn
+         ST    R1,DBLE
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   LIST+46(4),TWRK         Move NJESPOOL offset to msg
+*
+         PUT   SYSPRINT,LIST
+         MVC   LIST,BLANKS
+*
+FMT090   EQU   *
+         LM    R14,R2,BALRSAVE         Restore caller regs
+         BR    R14                     Return
+*
+EXIT00   EQU   *
+         SR    R5,R5
+         B     QUIT000
+*
+EXIT08   EQU   *
+         LA    R5,8
+         B     QUIT000
+*
+QUIT000  EQU   *
+         TM    FLAGS1,FL1OPEN          Is SYSUT1 open?
+         BZ    QUIT010                 No
+         MVC   MACLIST(CLOSEL),CLOSE   Move close list
+         CLOSE (SYSUT1),               Close it                        X
+               MF=(E,MACLIST)
+*
+QUIT010  EQU   *
+         TM    FLAGS1,FL1NSPL          Is NETSPOOL open?
+         BZ    QUIT020                 No
+*                               ** This close is for error exit only **
+         SR    R11,R11                 Ensure no tag data
+         NSIO  TYPE=CLOSE,                                             x
+               NCB=(R8),                                               x
+               TAG=(R11)
+*
+QUIT020  EQU   *
+         BAL   R14,PUT                 Write blank line
+         MVC   LIST(L'MSG011),MSG011   Move ended RC=x msg
+         CVD   R5,DBLE                 Convert RC
+         UNPK  LIST+18(1),DBLE
+         OI    LIST+18,X'F0'           Fix sign
+         BAL   R14,PUT
+*
+         MVC   MACLIST(CLOSEL),CLOSE   Move close list
+         CLOSE (SYSPRINT),                                             X
+               MF=(E,MACLIST)
+*
+         LR    R1,R10                  -> NJEFWK work area
+         L     R13,4(,R13)             -> CALLER'S SA
+         FREEMAIN RU,                  Free the work area              X
+               LV=NJEXSZ,                                              X
+               A=(1)
+*
+         ST    R5,16(,R13)             Save R15 RC
+         LM    R14,R12,12(R13)         RELOAD SYSTEM'S REGS
+         BR    R14                     Return
+*
+         LTORG
+*
+DMYUT1   DCB   DDNAME=SYSUT1,                                          X
+               MACRF=(GL),                                             X
+               DSORG=PS,                                               X
+               EODAD=EOD000
+DMYUT1L  EQU   *-DMYUT1
+*
+DMYPRT   DCB   DDNAME=SYSPRINT,                                        X
+               MACRF=(PM),                                             X
+               DSORG=PS,                                               X
+               LRECL=80,                                               X
+               RECFM=FB,                                               X
+               BLKSIZE=800
+DMYPRTL  EQU   *-DMYPRT
+*
+OPEN     OPEN  0,MF=L
+OPENL    EQU   *-OPEN
+CLOSE    CLOSE 0,MF=L
+CLOSEL   EQU   *-CLOSE
+POST     POST  0,ASCB=0,ERRET=0,MF=L
+POSTL    EQU   *-POST
+*
+NJE38Q   DC    CL8'NJE38'              QNAME
+NJERCON  DC    CL8'NJEINIT'            RNAME (first 8 bytes)
+*
+* TEXT UNITS TO SET UP  //NETSPOOL DD DSN=DSNAME,DISP=SHR,FREE=CLOSE
+*
+TXT1D    DC    Y(DALDDNAM),AL2(1),AL2(8),CL8'NETSPOOL'   DDNAME
+TXT2D    DC    Y(DALDSNAM),AL2(1),AL2(44)         DSNAME
+TXT3D    DC    Y(DALSTATS),AL2(1),AL2(1),X'08'    DISP=SHR
+TXT4D    DC    Y(DALCLOSE),AL2(0)                 FREE=CLOSE
+*
+         DS    0F
+CPS99RB  DS    0XL20                   DEFINE INITIAL S99RB
+         DC    AL1(20)                 LENGTH OF REQ BLOCK
+         DC    AL1(1)                  VERB CODE:  ALLOCATION
+         DC    X'20'                   FLAGS:  NO MOUNTS,OFFLINE VOLS
+         DC    X'00'                   FLAGS
+         DC    AL2(0)                  ERROR REASON CODE
+         DC    AL2(0)                  INFO REASON CODE
+         DC    A(0)                    ADDR OF TEXT PTRS
+         DC    A(0)                    ADDR OF RBX
+         DC    AL4(0)                  MORE FLAGS
+*
+*-- Translate table to validate Machine Carriage Control
+*-- Any code not in the table will be replaced by single space 09 code
+*
+PRTCC    EQU   *  0 1 2 3 4 5 6 7 8 9 A B C D E F
+         DC    X'09010909090909090909090B09090909' 0  01,09,0b
+         DC    X'09110913090909090919091B09090909' 1  11,13,19,1b
+         DC    X'09090909090909090909090909090909' 2
+         DC    X'09090909090909090909090909090909' 3
+         DC    X'09090909090909090909090909090909' 4
+         DC    X'09090909090909090909095B09090909' 5  5b
+         DC    X'09090909090909090909090909090909' 6
+         DC    X'09090909090909090909090909090909' 7
+         DC    X'09810983090909090989098B09090909' 8  81,83,89,8b
+         DC    X'09910993090909090999099B09090909' 9  91,93,99,9b
+         DC    X'09A109A30909090909A909AB09090909' A  a1,a3,a9,ab
+         DC    X'09B109B30909090909B909BB09090909' B  b1,b3,b9,bb
+         DC    X'09C109C30909090909C909CB09090909' C  c1,c3,c9,cb
+         DC    X'09D109D30909090909D909DB09090909' D  d1,d3,d9,db
+         DC    X'09E109E3090909090909090909090909' E  e1,e3
+         DC    X'09090909090909090909090909090909' F
+*
+*                012345678901234567890123456789 01234 56789012345678901
+MSG000   DC    C'ERROR:  NETSPOOL RTNCD/ERRCD=X''0000'',REQ=01,O=1234,Mx
+               MMMMMMM     '
+*
+MSG001   DC    C'NJ38XMIT - NJE38 File Transmit Utility'
+*                0123456789012345678901234567890123456789012 345 6789
+MSG002   DC    C'Open failed for NETSPOOL, RC=xx,ACBERFLG=X''xx'''
+*                012345678901234567890123456789012345678901234567 8901
+MSG003   DC    C'PUT failed writing record xxxxxxx, RTNCD-FDBK=X''xxxx'x
+               ''
+MSG004   DC    C'Invalid or missing ''NODE.USERID'' in the JCL EXEC PARx
+               M field'
+MSG005   DC    C'Unable to determine NETSPOOL dsname'
+MSG005A  DC    C'Start NJE38 and resubmit this job'                v220
+MSG006   DC    C'Unable to open SYSUT1'
+MSG007   DC    C'RECFM=U datasets are not supported'
+MSG008   DC    C'LRECL of the SYSUT1 dataset is too large for NJE transx
+               mission'
+MSG008A  DC    C'The maximum allowed LRECL is 133 bytes with a carriagex
+                control byte,'
+MSG008B  DC    C'or 132 bytes with no carriage control byte'
+MSG009   DC    C'Local node:'
+MSG010   DC    C'records queued for '
+MSG011   DC    C'NJ38XMIT ends; RC=x'
+MSG012   DC    C'Dyn. allocation error xxxxxxxx, DSN='
+MSG013   DC    C'File destinations to local node rejected'
+*                0123456789012345678901234567890123456789012345678901
+*
+BLANKS   DC    CL80' '
+BLANK    DC    64X'00',X'FF',191X'00'
+NONBLANK DC    64X'FF',X'00',191X'FF'
+HEXTRAN  DC    CL16'0123456789ABCDEF'
+*
+*
+*
+*
+*
+NJEXWK   DSECT
+NJEEYE   DS    CL4'NJEX'               EYECATCHER
+NJEWKLEN DS    F                       SIZE OF WORK AREA
+*
+NJESA    DS    18F
+BALRSAVE DS    16F
+LCLNODE  DS    CL8                     Local node name
+DEFUSER  DS    CL8                     Default user if no security v130
+DBLE     DS    D
+TWRK     DS    XL16
+MACLIST  DS    XL128
+NCB1     DS    XL48
+LIST     DS    CL80                    PRINT LINE
+DESTNODE DS    CL8                     Destination node name
+DESTUSER DS    CL8                     Destination user id
+SV14     DS    F                       R14 save area
+DYNR14   DS    A                       R14 SAVE AREA
+LS99PTR  DS    A                       PTR TO S99RB
+LS99RB   DS    XL20                    SPACE FOR S99RB
+*
+*
+TXT1     DS    0XL14,Y,AL2,AL2         SPACE FOR THE DDNAME TEXT UNIT
+DDNAME   DS    CL8                      DDNAME
+*
+TXT2     DS    0XL06,Y,AL2,AL2         DSN=
+NSPLDSN  DS    CL44                     NETSPOOL DSNAME
+*
+TXT3     DS    0XL07,Y,AL2,AL2,X       DISP=SHR
+TXT4     DS    0XL04,Y,AL2             FREE=CLOSE
+*
+LRECL    DS    H                       LRECL of SYSUT1 file
+*
+FLAGS1   DS    X
+FL1OPEN  EQU   X'80'      1... ....    SYSUT1 is open
+FL1NSPL  EQU   X'40'      .1.. ....    NETSPOOL is open
+FL1NACEE EQU   X'10'      ...1 ....    NOACEE specified (debug onlyv130
+FL1CA    EQU   X'04'      .... .1..    Records contain ASA car ctl
+FL1CM    EQU   X'02'      .... ..1.    Records contain Mach car ctl
+*                         ..x. x..x    Available                   v130
+*
+DATATYPE DS    X                       PRT/PUN type
+TYPPRT   EQU   X'40'                   PRT dev
+TYPPUN   EQU   X'80'                   PUN dev
+*
+DATABUF  DS    CL133                   Area for a print line
+TDATA    DS    XL108                   TAG data area
+SYSUT1   DS    (DMYUT1L)X              SYSUT1 DCB
+SYSPRINT DS    (DMYPRTL)X              SYSPRINT DCB
+TRTAB    DS    CL256                   Translate table area
+         DS    0D                      Force doubleword boundary
+NJEXSZ   EQU   *-NJEXWK                Size of work area
+*
+*-- System DSECTs
+*
+*
+         CVT   DSECT=YES,LIST=NO
+         IHAPSA
+         IKJTCB
+IEFTIOT  DSECT
+         IEFTIOT1
+         IEESMCA
+         IEFZB4D0
+         IEFZB4D2
+         IHAASCB
+         IHAASXB
+*
+ACEE     DSECT                         Maps a portion of ACEE in MVS3.8
+ACEEEYE  DS    CL4'ACEE'
+         DS    16X
+ACEEUSRL DS    X                       Length of userid
+ACEEUSR  DS    CL8                     Userid
+*
+         DCBD  DSORG=PS,DEVD=DA
+         COPY  NETSPOOL
+         COPY  TAG
+         COPY  LINKTABL
+*
+*-- NJE38 DSECTs
+*
+         NJEWRE                                                    v220
+         END

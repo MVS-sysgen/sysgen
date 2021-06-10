@@ -1,0 +1,56 @@
+         MACRO
+&X       NJETRACE &TYPE=
+.*
+.* Change log:
+.*
+.* 10 Dec 20 - Support for registered users and message queuing    v220
+.* 10 Dec 20 - Create NJETRACE macro from old in-line TRACE macro  v220
+.*
+         AIF   ('&TYPE' EQ 'DSECT').DSECT
+.*
+&X       STM   R15,R2,16(R13)          R0-R2 restored by trace rtn
+         L     R2,ATRACE               -> trace table
+         L     R15,TRCRTN-TRCCTL(,R2)  -> trace routine
+         BALR  R14,R15                 Go get a new trace entry
+         L     R15,16(,R13)            Restore R15
+         MVI   0(R14),&TYPE            Move in trace type code
+         MEXIT
+.*
+.DSECT   ANOP
+TRCCTL   DSECT
+TRCEYE   DS    CL8'TRACETAB'       Eyecatcher
+TRCRTN   DS    A                   -> Trace routine
+         DS    A                   Reserved
+TRCSTRT  DS    A                   -> Start of trace table
+TRCCURR  DS    A                   -> Current trace entry
+TRCEND   DS    A                   -> End of trace table
+         DS    A                   Reserved
+TRCSZ    EQU   32                  Size of each trace entry
+*
+*-- TRACE TABLE TYPES
+*
+TRCEXCP  EQU   X'01'                    EXCP operation
+TRCWAIT  EQU   X'02'                    Wait completed
+TRCDYNA  EQU   X'03'                    Dynamic Allocation
+TRCMSG   EQU   X'04'                    Message
+TRCRCMD  EQU   X'05'                    remote command
+TRCGET   EQU   X'06'                    Getmain
+TRCFREE  EQU   X'07'                    Freemain
+TRCOPNO  EQU   X'08'                    Open output request
+TRCCLSO  EQU   X'09'                    Close output request
+TRCOPNI  EQU   X'0A'                    Open input request
+TRCCONT  EQU   X'0B'                    Spool contents request
+TRCCLSI  EQU   X'0C'                    Close input request
+TRCPURG  EQU   X'0D'                    File Purge request
+TRC0E    EQU   X'0E'                   Available
+TRCGLQ   EQU   X'0F'                    GLINKREQ
+TRCGRQ   EQU   X'10'                    GROUTREQ
+TRCALQ   EQU   X'11'                    ALERTREQ
+TRCGMQM  EQU   X'12'                    GMSGREQ from MSGQ
+TRCGMQR  EQU   X'13'                    GMSGREQ from RQE
+TRCIWRE  EQU   X'14'                    Incoming WRE
+TRCOWRE  EQU   X'15'                    Outgoing WRE
+TRCGWRE  EQU   X'16'                    Getmain WRE
+TRCFWRE  EQU   X'17'                    Freemain WRE
+*
+         MEND

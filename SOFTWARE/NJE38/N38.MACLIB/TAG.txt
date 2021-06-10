@@ -1,0 +1,69 @@
+         PUSH  PRINT
+         AIF   ('&SYSPARM' NE 'SUP').TAG01
+         PRINT OFF,NOGEN
+.TAG01   ANOP
+TAG      DSECT
+         SPACE 1
+***                          TAG  -  FILE TAG
+*
+*          0   +-----------------------+-----------------------+
+*              |      TAGNEXT          |     TAGBLOCK          |
+*          8   +-----------------------+-----------------------+
+*              |                   TAGINLOC                    |
+*         10   +-----------------------------------------------+
+*              |                   TAGLINK                     |
+*         18   +-----------------------------------------------+
+*              |                   TAGINTOD                    |
+*         20   +-----------------------------------------------+
+*              |                   TAGINVM                     |
+*         28   +-----------------------+-----------+-----+-----+
+*              |      TAGRECNM         | TAGRECLN  | T*1 | T*2 |
+*         30   +-----------+-----------+-----------+-----+-----+
+*              |   TAGID   |  TAGCOPY  | T*3 | T*4 |   SPARE   |
+*         38   +-----------+-----------+-----------------------+
+*              |                   TAGNAME                     |
+*         40   |                       +-----------------------+
+*              |                       |                       |
+*         48   +-----------------------+                       |
+*              |                   TAGTYPE                     |
+*         50   +-----------------------------------------------+
+*              |                   TAGDIST                     |
+*         58   +-----------------------------------------------+
+*              |                   TAGTOLOC                    |
+*         60   +-----------------------------------------------+
+*              |                   TAGTOVM                     |
+*         68   +-----------------------------------------------+
+*              | TAGPRIOR  |  TAGDEV   |
+*         70   +-----------+-----------+
+*
+***                          TAG  -  FILE TAG
+         SPACE 1
+TAGNEXT  DS    1F                  ADDR OF NEXT ACTIVE QUEUE ENTRY
+TAGBLOCK DS    1F                  ADDR OF ASSOCIATED I/O AREA
+         SPACE
+TAGINLOC DS    CL8                 ORIGINATING LOCATION
+TAGLINK  DS    CL8                 NEXT LOCATION FOR TRANSMISSION
+TAGINTOD DS    CL8                 TIME OF FILE ORIGIN
+TAGINVM  DS    CL8                 ORIGINATING VIRTUAL MACHINE
+TAGRECNM DS    1F                  NUMBER OF RECORDS IN FILE
+TAGRECLN DS    1H                  MAXIMUM FILE DATA RECORD LENGTH
+TAGINDEV DS    1X              T*1 DEVICE CODE OF ORIGINATING DEV
+TAGCLASS DS    CL1             T*2 FILE OUTPUT CLASS
+TAGID    DS    1H                  FILE NUMBER AT ORIGIN LOCATION
+TAGCOPY  DS    1H                  NUMBER OF COPIES REQUESTED
+TAGFLAG  DS    1X              T*3 VM/370 SFBLOK CONTROL FLAGS
+TAGFLAG2 DS    1X              T*4 VM/370 SFBLOK CONTROL FLAGS
+         DS    1H                  SPARE
+TAGNAME  DS    CL12                FILE NAME
+TAGTYPE  DS    CL12                FILE TYPE
+TAGDIST  DS    CL8                 FILE DISTRIBUTION CODE
+TAGTOLOC DS    CL8                 DESTINATION LOCATION ID
+TAGTOVM  DS    CL8                 DESTINATION VIRTUAL MACHINE ID
+TAGPRIOR DS    1H                  TRANSMISSION PRIORITY
+TAGDEV   DS    2X                  ACTIVE FILE'S VIRT DEV ADDR
+         SPACE
+TAGUSELN EQU   *-TAGINLOC          USABLE TAG INFO LEN            *XJE
+TAGLEN   EQU   *-TAGNEXT           LENGTH OF THE FILE TAG
+         EJECT
+         POP   PRINT
+         SPACE

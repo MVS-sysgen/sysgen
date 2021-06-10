@@ -1,0 +1,23 @@
+*
+* NJE38 EXAMPLE CONFIGURATION FILE
+*
+*-- Local parameters
+*
+LOCAL MVSA     DEFUSER HERC01
+*
+*-- Physical links to remote nodes
+*
+LINK  MVSB     LINE 090   AUTO YES   BUFF 1012
+*
+*-- Routes to indirect nodes
+*
+*ROUTE nodeid   TO linkid
+*
+*
+*-- Authorized users
+*
+*     Userid   AT Node
+*     -------- -- --------
+AUTH  HERC01   AT MVSA
+AUTH  HERC01   AT MVSB
+*

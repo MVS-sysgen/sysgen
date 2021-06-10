@@ -1,0 +1,78 @@
+*
+*
+*-- NJE38 - Locate NJE38 information from an ENQ resource
+*
+*
+*   Called by NJEINIT,NJERCV,NJETRN,NJE38,NJ38XMIT,NJ38RECV
+*
+*
+* Change log:
+*
+* 01 Oct 20 - Initial creation                                     v210
+*
+*
+         GBLC  &VERS
+         REGEQU
+NJESYS   CSECT
+         NJEVER
+         STM   R14,R12,12(R13) Save regs
+         LR    R12,R15
+         USING NJESYS,R12
+*
+*-- Determine if NJE38 is already active in another address space
+*
+CHK000   EQU   *
+         L     R2,16           Get CVT ptr
+         USING CVT,R2
+         LA    R2,CVTFQCB      -> ENQ QCB chain anchor
+         USING QCB,R2
+*
+CHK010   EQU   *
+         ICM   R2,15,MAJNMAJ   -> next major QCB
+         BZ    CHK080          Our guy not found
+         CLC   MAJNAME,NJE38Q  Look for our QNAME "NJE38"
+         BNE   CHK010          Nope, go to next QCB
+*
+         L     R3,MAJFMIN      -> first minor QCB
+         USING MIN,R3
+*
+CHK020   EQU   *
+         LA    R4,MINNAME      -> minor name
+         CLC   NJERCON,0(R4)   Does minor name match?
+         BE    CHK030          Yes. NJE38 is active
+         C     R3,MAJLMIN      Is this the last minor QCB?
+         BE    CHK080          Yes, we're done. NJE38 is not active
+         ICM   R3,15,MINNMIN   -> next minor name
+         BZR   R14             Just in case no address
+         B     CHK020          Spin through the minor QCBs
+*
+CHK030   EQU   *
+         LTR   R1,R1           Store spool DSN?
+         BZ    CHK040          No
+         MVC   0(44,R1),12(R4) Save off NETSPOOL dsname
+*
+CHK040   EQU   *
+         L     R1,8(,R4)       Get CSABLK ptr from QCB minor
+         SR    R15,R15         RC=0, ENQ data was found
+         B     CHK090
+*
+CHK080   EQU   *
+         LA    R15,4           RC=4, no ENQ located
+*
+CHK090   EQU   *
+         ST    R1,24(,R13)     Return R1 value
+         ST    R15,16(,R13)    Return R15 RC
+*
+         LM    R14,R12,12(R13) Reload regs
+         BR    R14             Return
+*
+         DS    0D
+NJE38Q   DC    CL8'NJE38'
+NJERCON  DC    CL8'NJEINIT'
+*
+         LTORG ,
+*
+         CVT   DSECT=YES,PREFIX=NO
+         IHAQCB
+*
+         END

@@ -1,0 +1,6 @@
+AUTHLIST DSECT
+AUTHPTR  DS    A                   -> next AUTHLIST entry or 0
+         DS    A                   Reserved
+AUTHUSER DS    CL8                 Authorized userid
+AUTHNODE DS    CL8                 Authorized node of above userid
+AUTHSIZE EQU   *-AUTHLIST          Length of an authlist entry

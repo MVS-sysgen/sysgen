@@ -1,0 +1,11 @@
+         MACRO
+         NJEVER
+         GBLC  &VERS
+&VERS    SETC  'v2.2.1'               -> Current version
+         B     34(,R15)
+         DC    AL1(29)
+         DC    CL9'&SYSECT'
+         DC    CL6'&VERS'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         MEND

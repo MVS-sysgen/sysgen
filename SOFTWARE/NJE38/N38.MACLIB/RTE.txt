@@ -1,0 +1,9 @@
+RTE      DSECT
+ROUTPTR  DS    A                   -> next RTE entry or 0
+         DS    A                   Reserved
+ROUTNAME DS    CL8                 Route destination node
+ROUTNEXT DS    CL8                 Link id for indirect routing
+ROUTALT1 DS    CL8                 Alternate link id for indirect rt'g
+ROUTALT2 DS    CL8                 Alternate link id for indirect rt'g
+ROUTALT3 DS    CL8                 Alternate link id for indirect rt'g
+ROUTSIZE EQU   *-RTE               Length of a routing table entry

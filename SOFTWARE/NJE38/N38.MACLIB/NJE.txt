@@ -1,0 +1,184 @@
+*
+*        DSECTs defining NJE headers
+*
+*        Prefix section common to all headers
+*
+NJEPDSEC DSECT                     NJE header prefix
+NJEPLEN  DS    AL2                 NJE header segment length
+NJEPFLGS DS    XL1                 NJE header segment flags
+NJEPSEQ  DS    XL1                 NJE header segment sequence
+NJEPSIZE EQU   *-NJEPDSEC          NJE header prefix size
+*
+*        NJE job header general section
+*
+NJHGDSEC DSECT                     NJE job hdr general section
+NJHGLEN  DS    AL2                 NJE job gen. sect. length
+NJHGTYPE DS    XL1                 NJE job gen. sect. type
+NJHGMOD  DS    XL1                 NJE job gen. sect. modifier
+NJHGJID  DS    AL2                 NJE job gen. sect. identif.
+NJHGJCLS DS    CL1                 NJE job gen. sect. class
+NJHGMCLS DS    CL1                 NJE job gen. sect. msg cls
+NJHGFLG1 DS    XL1                 NJE job gen. sect. flags
+NJHGPRIO DS    XL1                 NJE job gen. sect. priority
+NJHGORGQ DS    XL1                 NJE job gen. sect. qualifier
+NJHGJCPY DS    XL1                 NJE job gen. sect. copy
+NJHGLNCT DS    XL1                 NJE job gen. sect. lpp
+         DS    XL1                 NJE job gen. sect. reserved
+NJHGHOPS DS    AL2                 NJE job gen. sect. hop count
+NJHGACCT DS    CL8                 NJE job gen. sect. acct
+NJHGJNAM DS    CL8                 NJE job gen. sect. name
+NJHGUSID DS    CL8                 NJE job gen. sect. userid
+NJHGPASS DS    XL8                 NJE job gen. sect. password
+NJHGNPAS DS    XL8                 NJE job gen. sect. new pass
+NJHGETS  DS    XL8                 NJE job gen. sect. TOD time
+NJHGORGN DS    CL8                 NJE job gen. sect. org node
+NJHGORGR DS    CL8                 NJE job gen. sect. org user
+NJHGXEQN DS    CL8                 NJE job gen. sect. exe node
+NJHGXEQU DS    CL8                 NJE job gen. sect. exe user
+NJHGPRTN DS    CL8                 NJE job gen. sect. prt dest
+NJHGPRTR DS    CL8                 NJE job gen. sect. prt user
+NJHGPUNN DS    CL8                 NJE job gen. sect. pun dest
+NJHGPUNR DS    CL8                 NJE job gen. sect. pun user
+NJHGFORM DS    CL8                 NJE job gen. sect. form
+NJHGICRD DS    XL4                 NJE job gen. sect. inp cards
+NJHGETIM DS    XL4                 NJE job gen. sect. job time
+NJHGELIN DS    XL4                 NJE job gen. sect. prt lines
+NJHGECRD DS    XL4                 NJE job gen. sect. pun cards
+NJHGPRGN DS    CL20                NJE job gen. sect. programmr
+NJHGROOM DS    CL8                 NJE job gen. sect. room no
+NJHGDEPT DS    CL8                 NJE job gen. sect. dept
+NJHGBLDG DS    CL8                 NJE job gen. sect. building
+NJHGNREC DS    XL4                 NJE job gen. sect. rec. cnt
+NJHGSIZE EQU   *-NJHGDSEC          NJE job gen. sect. size
+NJHSIZE  EQU   NJEPSIZE+NJHGSIZE   NJE job header total size
+*
+*        NJE data set header general section
+*
+NDHGDSEC DSECT                     NJE data set general sect.
+NDHGLEN  DS    AL2                 NJE ds gen sect. length
+NDHGTYPE DS    XL1                 NJE ds gen sect. type
+NDHGMOD  DS    XL1                 NJE ds gen sect. type modif
+NDHGNODE DS    CL8                 NJE ds gen sect. dest node
+NDHGRMT  DS    CL8                 NJE ds gen sect. dest user
+NDHGPROC DS    CL8                 NJE ds gen sect. proc name
+NDHGSTEP DS    CL8                 NJE ds gen sect. step type
+NDHGDD   DS    CL8                 NJE ds gen sect. ddname
+NDHGDSNO DS    AL2                 NJE ds gen sect. count
+         DS    XL1                 Reserved
+NDHGCLAS DS    CL1                 NJE ds gen sect. class
+NDHGNREC DS    XL4                 NJE ds gen sect. Record cnt
+NDHGFLG1 DS    XL1                 NJE ds gen sect. flags
+NDHGRCFM DS    XL1                 NJE ds gen sect. record fmt
+NDHGLREC DS    AL2                 NJE ds gen sect. record len
+NDHGDSCT DS    XL1                 NJE ds gen sect. copy count
+NDHGFCBI DS    XL1                 NJE ds gen sect. print index
+NDHGLNCT DS    XL1                 NJE ds gen sect. lpp
+         DS    XL1                 Reserved
+NDHGFORM DS    CL8                 NJE ds gen sect. form
+NDHGFCB  DS    CL8                 NJE ds gen sect. FCB
+NDHGUCS  DS    CL8                 Universal char set name
+NDHGXWTR DS    CL8                 Data set external writer
+NDHGNAME DS    CL8                 Data set name qualifier
+NDHGFLG2 DS    XL1                 Second flag byte
+NDHGUCSO DS    XL1                 NJE ds gen sect. UCS options
+         DS    XL2                 Reserved
+NDHGPMDE DS    CL8                 NJE ds gen sect. proc mode
+NDHGSIZE EQU   *-NDHGDSEC          Ds hdr general section size
+*
+*        NJE data set header RSCS section
+*
+NDHVDSEC DSECT                     Data set header RSCS sect.
+NDHVLEN  DS    AL2                 Ds header RSCS sect. length
+NDHVTYPE DS    AL1                 Ds header RSCS sect. type
+NDHVMOD  DS    AL1                 Ds header RSCS sec modifier
+NDHVFLG1 DS    AL1                 Ds header RSCS sect flags
+NDHVCLAS DS    CL1                 Ds header RSCS sect class
+NDHVIDEV DS    AL1                 Ds header RSCS sect dev typ
+NDHVPGLE DS    AL1                 Ds header RSCS 3800 page ln
+NDHVDIST DS    CL8                 Ds header RSCS dist code
+NDHVFNAM DS    CL12                Ds header RSCS filename
+NDHVFTYP DS    CL12                Ds header RSCS filetype
+NDHVPRIO DS    AL2                 Ds header RSCS trn priority
+NDHVVRSN DS    AL1                 Ds header RSCS version no
+NDHVRELN DS    AL1                 Ds header RSCS release no
+NDHVSIZE EQU   *-NDHVDSEC          Ds header RSCS section size
+NDHSIZE  EQU   NJEPSIZE+NDHGSIZE+NDHVSIZE Total ds header size
+*
+*        NJE job trailer general section
+*
+NJTGDSEC DSECT                     Job trailer general section
+NJTGLEN  DS    AL2                 Job trailer gen sect length
+NJTGTYPE DS    AL1                 Job trailer gen sect type
+NJTGMOD  DS    AL1                 Job trailer gen sc modifier
+NJTGFLG1 DS    AL1                 Job trailer gen sect flags
+NJTGXCLS DS    CL1                 Job trailer execution class
+         DS    XL2                 Reserved
+NJTGSTRT DS    XL8                 Job trailer job start TOD
+NJTGSTOP DS    XL8                 Job trailer job stop TOD
+         DS    XL4                 Reserved
+NJTGALIN DS    XL4                 Job trailer print lines
+NJTGACRD DS    XL4                 Job trailer card images
+         DS    XL4                 Reserved
+NJTGIXPR DS    XL1                 Job trailer init exec prior
+NJTGAXPR DS    XL1                 Job trailer actul exe prior
+NJTGIOPR DS    XL1                 Job trailer init job prior
+NJTGAOPR DS    XL1                 Job trailer actual job prio
+NJTGSIZE EQU   *-NJTGDSEC          Job trailer gen. sect. size
+NJTSIZE  EQU   NJEPSIZE+NJTGSIZE   Job trailer total size
+*
+* NMR record
+*
+NMRDSECT DSECT
+NMRFLAG  DS    XL1                 NMR flags
+NMRLVPR  DS    XL1                 NMR level / priority
+NMRTYPE  DS    XL1                 NMR type
+NMRML    DS    XL1                 Length of contents of NMRMSG
+NMRTO    DS    0XL9                Destination system
+NMRTONOD DS    CL8                 NMR destination node
+NMRTOQUL DS    XL1                 Destination node system identifier
+NMROUT   DS    CL8                 Userid / remote id / console id
+NMRFM    DS    0XL9                NMR originating system
+NMRFMNOD DS    CL8                 NMR originating node
+NMRFMQUL DS    XL1                 Originating node system identifier
+NMRHSIZE EQU   *-NMRDSECT          Size of NMR header only
+NMRECSID DS    0CL8                Message origination node
+NMRMSG   DS    CL148               NMR message / command
+NMRSIZE  EQU   *-NMRDSECT          NMR size including message / command
+*
+*        Fields in NMRFLAG
+*
+NMRFLAGC EQU   X'80'               NMR is a command
+NMRFLAGW EQU   X'40'               NMROUT has remote workstation id
+NMRFLAGT EQU   X'20'               NMROUT contains a userid
+NMRFLAGU EQU   X'10'               NMROUT contains console identifier
+NMRFLAGR EQU   X'08'               Console is remote-authorized only
+NMRFLAGJ EQU   X'04'               Console is not job-authorized
+NMRFLAGD EQU   X'02'               Console is not device-authorized
+NMRFLAGS EQU   X'01'               Console is not system-authorized
+*
+*        Fields in NMRTYPE
+*
+NMRTYPE4 EQU   X'08'               Source userid embedded in NMRMSG
+NMRTYPET EQU   X'04'               Timestamp is not embedded in NMRMSG
+NMRTYPEF EQU   X'02'               NMR comtains a formatted command
+NMRTYPED EQU   X'02'               Contains a delete operator message
+*
+*        SYSIN RCBs
+*
+RRCB1    EQU   X'98'               Stream 1 sysin records
+RRCB2    EQU   X'A8'               Stream 2 sysin records
+RRCB3    EQU   X'B8'               Stream 3 sysin records
+RRCB4    EQU   X'C8'               Stream 4 sysin records
+RRCB5    EQU   X'D8'               Stream 5 sysin records
+RRCB6    EQU   X'E8'               Stream 6 sysin records
+RRCB7    EQU   X'F8'               Stream 7 sysin records
+*
+*        SYSOUT RCBs
+*
+PRCB1    EQU   X'99'               Stream 1 sysout records
+PRCB2    EQU   X'A9'               Stream 2 sysout records
+PRCB3    EQU   X'B9'               Stream 3 sysout records
+PRCB4    EQU   X'C9'               Stream 4 sysout records
+PRCB5    EQU   X'D9'               Stream 5 sysout records
+PRCB6    EQU   X'E9'               Stream 6 sysout records
+PRCB7    EQU   X'F9'               Stream 7 sysout records

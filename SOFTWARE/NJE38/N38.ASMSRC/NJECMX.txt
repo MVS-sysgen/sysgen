@@ -1,0 +1,3340 @@
+*
+*
+*-- NJE38 - Command Processor
+*
+*
+*   Called by NJEINIT (for commands entered from Console or TSO users)
+*   Called by NJEDRV (for commands entered by remote users)
+*
+*
+* Change log:
+*
+* 10 Dec 20 - Support for registered users and message queuing     v220
+* 04 Dec 20 - Expanded internal trace table support                v212
+* 02 Dec 20 - New command "D nodeid"                               v211
+* 29 Nov 20 - Use text-based configuration; alternate routes       v211
+* 02 Oct 20 - Use actual length for MGCR SEND cmds                 v210
+* 01 Oct 20 - CPLEVEL clarity                                      v210
+* 10 Aug 20 - Use single NJESPOOL load for all STC NJE38 modules.  v210
+* 23 Jul 20 - Display spool percentage full after D FILES.         v200
+* 21 Jul 20 - Don't execute commands from a non-LINK or ROUTE node.v200
+* 21 Jul 20 - D AUTH command now requires authorization.           v200
+* 02 Jun 20 - Display of RECFM shows blanks for some VM files.     v130
+* 02 Jun 20 - Unable to issue some commands to node names that     v130
+*              begin with a numeric digit.                         v130
+* 20 May 20 - Add RESET filenum command to change destination.     v120
+* 17 May 20 - Error in msg N026F length causes RSCS v1 PIC 5 crash.v110
+* 14 May 20 - Add support file D filenum command.                  v110
+* 08 May 20 - Assembly date and time to CPQ CPLEVEL response.      v110
+* 08 May 20 - Cancel file# causes Abend U0039 if spool empty.      v110
+* 07 May 20 - Growing pains: split into CSECTs.                    v110
+* 06 May 20 - Node name missing from MSG NJE014I w/ empty spool.   v102
+* 06 May 20 - MSG NJE025I not displayed if no AUTH users defined.  v102
+* 05 May 20 - Abend SD23 if SVC 34 parmlist >=130 bytes.           v102
+* 05 May 20 - Incorrect handling of TSO userids with 7-characters. v102
+*
+*
+         GBLC  &VERS
+         REGEQU
+NJECMX   CSECT
+         NJEVER
+         STM   R14,R12,12(R13)         Save Regs
+         LR    R12,R15                 Base
+         USING NJECMX,R12
+         LR    R7,R0                   Save input code
+         LR    R8,R1                   Save input parm list addr
+*
+         GETMAIN RU,                   Get local stg area              X
+               LV=4096,                                                X
+               BNDRY=PAGE
+         LR    R10,R1
+         LR    R1,R0                   Copy length
+         LR    R2,R0                   Copy length
+         LR    R0,R10                  -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the page
+*
+         USING NJEWK,R10
+         ST    R13,NJESA+4             SAVE prv S.A. ADDR
+         LA    R1,NJESA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         MVC   NJEEYE,=CL4'NJEC'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area in area
+         L     R11,=A(NJECOM)          -> common csect
+         USING NJECOM,R11
+*
+         MVC   INITPARM,0(R8)          Copy passed parameters
+         STC   R7,TARGET               Sav 'who gets the response' code
+         L     R8,ACMDBLOK             -> CMDBLOK
+         USING CMDBLOK,R8
+*
+         L     R15,=A(NJECMC)          -> control cmds processing
+         BALR  R14,R15
+         LTR   R15,R15                 Any RC returned?
+         BZ    QUIT                    No, we're done here
+*
+         L     R15,=A(NJECMG)          -> general commands processing
+         BALR  R14,R15
+*
+QUIT     EQU   *
+         LR    R1,R10                  -> NJEWK main work area page
+         L     R13,4(,R13)             -> caller's sa
+         FREEMAIN RU,                                                  x
+               LV=4096,                                                x
+               A=(1)
+         LM    R14,R12,12(R13)         Reload system's regs
+         XR    R15,R15                 RC=0
+         BR    R14                     Return
+         DROP  R12
+         LTORG ,
+*
+*********************
+*  N J E C O M      *               NJECOM hosts small routines and
+*                   *               frequently used constants that
+*  Common routines  *               are available to all NJECxx csects
+*  and constants    *               via base register 11
+*                   *
+*********************
+*
+NJECOM   CSECT
+         DC    A(0)                 No branch around constants
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECOM'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         USING NJECOM,R11
+         USING CMDBLOK,R8
+*
+*-- Check userid/nodeid in authorization table
+*    Entry:  None
+*    Exit:   CC = 0  User not in AUTH list
+*            CC<>0   User in AUTH list and may execute command
+*
+CHKAUTH  EQU   *
+         CLC   CMDLINK,LCLNODE      Checking against local user?   v211
+         BNE   CHKA010              No, do full auth check
+         CLC   CMDVMID,=CL8'OP'     Local operator?
+         BE    CHKA030              Yes, always authorized
+*
+CHKA010  EQU   *
+         L     R1,AAUTHS            -> AUTHLIST chain anchor       v211
+         ICM   R1,15,0(R1)          -> AUTHLIST chain              v211
+         BZR   R14                  If 0, no authorization
+         USING AUTHLIST,R1                                         v211
+         CLC   CMDVMID,BLANKS       Null user (RSCS console) ?     v211
+         BNE   CHKA020              No                             v211
+         MVC   CMDVMID,=CL8'$RSCS'  Look for this name in AUTH listv211
+*
+*
+CHKA020  EQU   *
+         CLC   CMDVMID,AUTHUSER     Is userid in auth list?        v211
+         BNE   CHKA090              No, scan next
+         CLC   CMDLINK,AUTHNODE     Is nodeid in auth list?        v211
+         BNE   CHKA090              No, scan next
+*
+CHKA030  EQU   *
+         CLI   *,1                  Set CC to non-zero:  AUTHORIZED
+         BR    R14                  Return with CC set
+*
+CHKA090  EQU   *
+         ICM   R1,15,AUTHPTR        -> next auth entry             v211
+         BNZ   CHKA020              Go check the next one          v211
+         BR    R14                  CC=0: NOT AUTHORIZED           v211
+         DROP  R1
+*
+*
+*-- Stack a message on a chain for DMTXJE to transmit to a remote
+*-- user over a link. (Messages are unstacked by NJEGMQ when DMTXJE
+*-- requests that function).
+*
+* On entry:
+*
+*    R1 contains true length of message text to stack.
+*    MTEXT contains the message text.
+*
+ISSUE000 EQU   *
+         ST    R14,SVR14I          Save return addr                v220
+         STM   R2,R3,SV23          Save across function
+         LR    R3,R1               Message text length to R3
+         CLI   TARGET,TGTCONS      Is response destined for console?
+         BE    ISSUE100            Yes
+*
+ISSUE010 EQU   *
+         L     R0,RQENUM           Get # of RQEs                   v210
+         L     R1,ARQESTG          Get ptr to first RQE            v210
+         USING RQE,R1
+*
+ISSUE020 EQU   *
+         CLC   RQEOWN,=A(0)        Look for empty RQE
+         BE    ISSUE030            Got one
+         LA    R1,RQESZ(,R1)       -> next RQE
+         BCT   R0,ISSUE020
+U0045    ABEND 45,DUMP,STEP
+*
+ISSUE030 EQU   *
+         L     R2,XJELINK          -> this task's LINKTABL entry
+         SR    R0,R0               Look for owner word value of 0
+         CS    R0,R2,RQEOWN        Set owner to LINKTABL addr
+         BC    4,ISSUE010          CC=1; owner non-zero, look again
+*
+         XC    RQEDATA(256),RQEDATA       Init area
+         XC    RQEDATA+256(4),RQEDATA+4   Init area
+*
+         USING STACKMSG,R1
+         MVC   STKNODE,CMDLINK     Move node name to respond to
+         MVC   STKID,CMDVMID       Move user name to respond to
+         MVC   STKMSG(120),MTEXT   Move msg to stacked stg area
+         LA    R3,L'STKNODE+L'STKID(R3) Compute stacked length
+         STC   R3,STKLEN           Store in block
+         DROP  R1                  STACKMSG
+*
+         LA    R2,MSGQ-(STKNEXT-STACKMSG)  -> 0th stacked msg
+         USING STACKMSG,R2
+*
+ISSUE040 EQU   *
+         ICM   R15,15,STKNEXT      -> next stacked message
+         BZ    ISSUE050            Found the end
+         LR    R2,R15              stacked msg ptr to R2
+         B     ISSUE040
+*
+ISSUE050 EQU   *
+         ST    R1,STKNEXT          Add new stacked msg to the end
+         LM    R2,R3,SV23          Restore
+         L     R14,SVR14I          Load return addr                v220
+         BR    R14
+*
+         DROP  R2                  STACKMSG
+*
+*--Issue the msg response to the system console or to a TSO user
+*
+ISSUE100 EQU   *
+         CLC   CMDVMID,=CL8'OP'    Responding to operator?
+         BNE   ISSUE200            No, send to TSO
+*
+*-- Response to console
+*
+         MVC   WTOMSG(4),WTO       Move dummy
+         MVC   WTOMSG+4(120),MTEXT
+*
+         WTO   ,MF=(E,WTOMSG)
+*
+         LM    R2,R3,SV23          Restore
+         L     R14,SVR14I          Load return addr                v220
+         BR    R14
+*
+*
+*-- Send the msg response to a local TSO user
+*
+ISSUE200 EQU   *
+         LA    R15,CMDVMID         -> userid to locate             v220
+         BAL   R14,REG000          Is TSO user registered?         v220
+         BNZ   ISSUE290            Y; we queued it. just exit      v220
+         BAL   R14,ISSUE800        Is TSO user logged on?
+         BZ    ISSUE290            No.  Skip the message
+         MVC   WTOMSG+4(4),=C'SE '''
+         MVC   WTOMSG+8(104),MTEXT                                 v102
+         LA    R2,WTOMSG+111       -> last byte from MTEXT area    v210
+         LA    R0,32               # char to check backwards       v210
+*
+ISSUE220 EQU   *                   Only look backwards to col 80   v210
+         CLI   0(R2),C' '          Try to find last non-blank      v210
+         BNE   ISSUE230            Found it                        v210
+         BCTR  R2,0                -> prev char                    v210
+         BCT   R0,ISSUE220         Keep scanning                   v210
+*
+ISSUE230 EQU   *                                                   v210
+         LA    R2,1(,R2)           -> first blank after last char  v210
+         MVC   0(8,R2),=C''',USER=('                               v210
+         MVC   8(12,R2),BLANKS      Ensure trailer initted         v210
+         MVC   8(7,R2),CMDVMID      Max for TSO userid is 7        v210
+         LA    R1,8+7(,R2)          -> max end of trt              v210
+         TRT   8(7,R2),BLANK        Look for end of userid         v210
+         MVI   0(R1),C')'           Move closing                   v210
+         MVI   1(R1),C' '           Plus 1 blank                   v210
+         LA    R0,WTOMSG            -> start of msg area           v210
+         SR    R1,R0                Compute length of msg          v210
+         LA    R1,1(,R1)            Account for blank at end       v210
+         XC    WTOMSG(4),WTOMSG     Clear len, flags               v210
+         STH   R1,WTOMSG            Insert the msg length          v210
+*
+         SPKA  0
+         LA    R1,WTOMSG
+         SR    R0,R0
+         SVC   34                  Issue MGCR SVC
+         SPKA  X'80'
+*
+ISSUE290 EQU   *
+         LM    R2,R3,SV23          Restore
+         L     R14,SVR14I          Load return addr                v220
+         BR    R14
+*
+*-- Search CSCB chain to see if TSO user is logged on
+*-- Exit:  CC=0  user was not logged on
+*--        CC<>0 user is logged on
+*
+ISSUE800 EQU   *
+         L     R1,16               Get CVT ptr
+         USING CVT,R1
+         L     R1,CVTASCBH         -> highest prty ASCB
+         USING ASCB,R1
+*
+ISSUE810 EQU   *
+         L     R2,ASCBCSCB         -> CSCB
+         USING CSCB,R2
+         LTR   R2,R2               Is there a CSCB?
+         BZ    ISSUE840            No, get next ASCB
+*
+ISSUE820 EQU   *
+         CLC   CHKEY,=XL8'00'      Jobname zeroed?
+         BE    ISSUE830            Y, skip this CSCB
+         CLC   CHKEY,=CL8' '       Jobname is blank?
+         BE    ISSUE830            Y, skip this CSCB
+         CLC   CMDVMID,CHKEY       Is this the userid?
+         BE    ISSUE890            Yes
+*
+ISSUE830 EQU   *
+         L     R2,CHPTR            -> next CSCB
+         LA    R2,0(,R2)           Clear high order
+         LTR   R2,R2               Last CSCB?
+         BNZ   ISSUE820            No
+         BR    R14                 Return with CC=0 (not found)
+*
+ISSUE840 EQU   *
+         L     R1,ASCBFWDP         -> next ASCB
+         LTR   R1,R1               last one?
+         BNZ   ISSUE810            No
+         BR    R14                 Return with CC=0 (not found)
+*
+ISSUE890 EQU   *
+         LTR   R14,R14             Set CC=non zero (userid found)
+         BR    R14                 Return to caller
+*
+         DROP  R1                  ASCB
+         DROP  R2                  CSCB
+*
+*
+*-- Special code to intercept messages destined for                v220
+*-- registered users                                               v220
+*
+*
+REG000   EQU   *                                                   v220
+         L     R2,AREGUSER         -> registered user anchor word  v220
+         ICM   R2,15,0(R2)         -> registered user queue        v220
+         BZR   R14                 No registered users             v220
+*
+         USING REGUSERB,R2                                         v220
+REG010   EQU   *                                                   v220
+         CLC   REGUSRID,0(R15)     Find a matching registered user v220
+         BE    REG020              Found it                        v220
+         ICM   R2,15,REGNEXT       -> next REGUSER entry           v220
+         BNZ   REG010              Keep looking                    v220
+         BR    R14                 Userid was not registered       v220
+*
+REG020   EQU   *                                                   v220
+         STM   R0,R14,BALRSAVE     Save regs                       v220
+         BAL   R14,GTW000          Get a WRE                       v220
+         LR    R4,R1                                               v220
+         USING WRE,R4                                              v220
+         MVI   WRETYPE,WREQRM      Queue registered msg WRE        v220
+*
+         MVC   WRELINK,LCLNODE     Target WRE to local node task   v220
+         MVC   WREUSER,REGUSRID    Dest= registered user id        v220
+         MVC   WREORIG,BLANKS      No originating node             v220
+         MVC   WRETXT(104),MTEXT   Plug in the msg to be queued    v220
+         MVC   WRETXT+104(12),BLANKS  Clear the rest               v220
+         MVI   WRETXTLN,L'WRETXT   Set the max possible len        v220
+*
+*
+         SPKA  0                                                   v220
+         L     R15,CSABLK          -> NJE38 CSA block              v220
+         USING NJ38CSA,R15                                         v220
+         LM    R0,R1,NJ38SWAP      Get first WRE ptr, sync count   v220
+*
+REG030   EQU   *                                                   v220
+         ST    R0,WRENEXT          First WRE becomes next          v220
+         LA    R5,1(,R1)           Incr synchronization count      v220
+         CDS   R0,R4,NJ38SWAP      Update LINK WRE anchor, sync    v220
+         BC    7,REG030            Gotta try again                 v220
+*
+         LA    R1,NJ38ECB          -> main task notification ECB   v220
+         POST  (1)                 Wake him up                     v220
+*
+         SPKA  X'80'                                               v220
+*
+         DROP  R2,R4,R15           REGUSERB,WRE,NJ38CSA            v220
+*
+REG090   EQU   *                                                   v220
+         LM    R0,R14,BALRSAVE     Load return addr and regs       v220
+         LTR   R14,R14             Set non-zero CC                 v220
+         BR    R14                 Ret w/CC non-zero (msg queued)  v220
+*
+*
+* FLNK000 - Locate a link table entry by link name
+*
+*  Entry:  R1 -> Link name to find (CL8 field padded with blanks)
+*  Exit:   CC=0 link was not found
+*          CC<>0 link table entry address is in R2
+*
+*
+*
+FLNK000  EQU   *
+         L     R2,ALINKS               -> LINKS anchor word        v211
+         L     R2,0(,R2)               -> LOCAL LINKTABL entry     v211
+         USING LINKTABL,R2
+         ICM   R2,15,LNEXT             -> first LINKTABL entry     v211
+         BZR   R14                     Doesnt exist                v211
+*
+FLNK010  EQU   *
+         CLC   LINKID,0(R1)            Find the link entry by name
+         BE    FLNK020                 Got it
+         ICM   R2,15,LNEXT             -> next LINKTABL entry
+         BZR   R14                     Exit CC=0 if not found
+         B     FLNK010                 Keep searching
+         DROP  R2                      LINKTABL
+*
+FLNK020  EQU   *
+         LTR   R2,R2                   Set CC non-zero
+         BR    R14                     Return w/LINKTABL entry -> R2
+*
+* RLNK000 - Locate a name in the route table
+*
+*  Entry:  R1 -> Routed name to find (CL8 field padded with blanks)
+*  Exit:   CC=0 link was not found
+*          CC<>0 Associated link name address is in R1
+*          CC<>0 Named route address is in R15
+*
+*-- First determine if the route name we are looking up is actually
+*-- a link name.
+*
+RLNK000  EQU   *
+         L     R15,AROUTES         -> RTE anchor word              v211
+         ICM   R15,15,0(R15)       -> RTE list                     v211
+         BZR   R14                 Exit CC=0 if no RTE list        v211
+         USING RTE,R15                                             v211
+*
+         L     R2,ALINKS           -> LINKS anchor word            v211
+         L     R2,0(,R2)           1st entry (LOCAL entry)         v211
+         USING LINKTABL,R2
+         ICM   R2,15,LNEXT         Skip over local entry           v211
+         BZR   R14                 Fail the request if none        v211
+         SR    R0,R0               R0=0 assume name not a link     v211
+*
+RLNK010  EQU   *                                                   v211
+         CLC   LINKID,0(R1)        Find the link entry by name     v211
+         BE    RLNK020             Got it                          v211
+         ICM   R2,15,LNEXT         -> next LINKTABL entry          v211
+         BNZ   RLNK010             Keep looking                    v211
+         B     RLNK030             Didn't find a matching link     v211
+         DROP  R2                  LINKTABL                        v211
+*
+*-- Here if route we want is a link name too (dont use wildcards)  v211
+*
+RLNK020  EQU   *                                                   v211
+         BCTR  R0,0                Indic route is explicit link nm v211
+*                                                                  v211
+*-- Search the RTEs for the route name                             v211
+*                                                                  v211
+RLNK030  EQU   *
+         STM   R4,R7,12(R13)       Save work regs                  v211
+*
+RLNK040  EQU   *                                                   v211
+         LA    R4,ROUTNAME         -> name from route list         v211
+         LA    R5,8                max length                      v211
+         LR    R6,R1               -> selected name to locate      v211
+         LR    R7,R5               copy length                     v211
+         CLCL  R4,R6               Did we locate the name?         v211
+         BE    RLNK400             Yes, exact match                v211
+         LTR   R0,R0               Must be explicit link name?     v211
+         BNZ   RLNK050             Yes, no wildcard checking       v211
+         CLI   0(R4),C'*'          Wildcard was in the name?       v211
+         BE    RLNK400             Then we matched to that point   v211
+*
+RLNK050  EQU   *
+         ICM   R15,15,ROUTPTR      -> Next route entry             v211
+         BNZ   RLNK040             Keep looking                    v211
+         LM    R4,R7,12(R13)       Restore work regs               v211
+         BR    R14                 No matching route               v211
+*
+*-- Found the RTE with a matching name, now determine what link    v211
+*-- to route to.                                                   v211
+*
+RLNK400  EQU   *                                                   v211
+         LM    R4,R7,12(R13)       Restore work regs               v211
+         LA    R0,4                # possible routed-to names      v211
+         LA    R1,ROUTNEXT         -> first possible name          v211
+*
+RLNK410  EQU   *                                                   v211
+         L     R2,ALINKS           -> LINKS anchor word            v211
+         L     R2,0(,R2)           1st entry (LOCAL entry)         v211
+         USING LINKTABL,R2                                         v211
+         ICM   R2,15,LNEXT         Skip over local entry           v211
+         BZR   R14                 Fail the request if none        v211
+*
+RLNK420  EQU   *                                                   v211
+         CLC   0(8,R1),BLANKS      No route-to name?               v211
+         BE    RLNK499             Fail the request                v211
+         CLC   0(8,R1),LINKID      Look for destination link       v211
+         BE    RLNK440             Found it                        v211
+         ICM   R2,15,LNEXT         -> next LINKTABL entry          v211
+         BNZ   RLNK420             Keep searching                  v211
+*
+RLNK430  EQU   *                                                   v211
+         LA    R1,8(,R1)           Next alternate route-to         v211
+         BCT   R0,RLNK410          Rescan for matching link        v211
+         B     RLNK499             None found, fail the request    v211
+*
+RLNK440  EQU   *                                                   v211
+         TM    LFLAG,LCONNECT      Is the link active?             v211
+         BZ    RLNK430             N, try next route-to link       v211
+         DROP  R2,R15              LINKTABL, RTE                   v211
+*
+RLNK490  EQU   *                                                   v211
+         CLI   *,0                 Set CC to non-zero              v211
+         BR    R14                 Return with link name -> R1     v211
+*
+RLNK499  EQU   *                                                   v211
+         CLI   *+1,0               Set CC to 0                     v211
+         BR    R14                 No matching route/act link foundv211
+*
+*-- Get a new command type WRE
+*
+*-- Entry:  None
+*   Exit:   R1 -> WRE
+*
+*
+GTW000   EQU   *
+         ST    R14,SV14            Save return addr
+         GETMAIN RU,               Get CSA for WRE TYPE=WRECMD         x
+               LV=WRESIZE,                                         v220x
+               SP=2                                                v220
+         XC    0(WRESIZE,R1),0(R1)    Clear stg area               v220
+         USING WRE,R1
+         MVI   WRESP,2             Set WRE subspool                v220
+         MVI   WRETYPE,WRECMD      CMD/MSG WRE
+*
+         NJETRACE TYPE=TRCGWRE
+         STCM  R10,7,1(R14)        Identify trace entry            v220
+         MVC   5(3,R14),SV14+1     Addr of GTW000 caller           v220
+         STM   R0,R1,8(R14)        Len, stg addr to trace          v220
+         MVI   8(R14),2            Trace subpool #                 v220
+         DROP  R1
+         L     R14,SV14            Load return addr
+         BR    R14
+*
+*-- Queue the WRE on the Link and post link's ECB
+*
+*-- Entry:  R2 -> LINKTABL entry
+*--         R4 -> WRE
+*-- Exit:   None
+*
+PST000   EQU   *
+         USING LINKTABL,R2
+         USING WRE,R4
+         ST    R14,SV14            Save return addr
+         LM    R0,R1,LWRESWAP      Get first WRE ptr, sync count
+*
+PST020   EQU   *
+         ST    R0,WRENEXT          First WRE becomes next
+         LA    R5,1(,R1)           Incr synchronization count
+         CDS   R0,R4,LWRESWAP      Update LINK WRE anchor, sync
+         BC    7,PST020            Gotta try again
+*
+         LA    R1,LECB             -> link task notification ECB
+         POST  (1)                 Tell subtask to quit
+         L     R14,SV14            Load return addr
+         BR    R14
+*
+         DROP  R2                  LINKTABL
+         DROP  R4                  WRE
+*
+*
+*-- Format VSAM error msg
+*
+*
+FMT000   EQU   *
+         STM   R14,R2,BALRSAVE         Save regs used
+         MVC   WTOMSG(WTOL),WTO
+         MVC   WTOMSG+4(L'NJE079I),NJE079I    Move msg text
+         MVC   WTOMSG+55(8),5(R12)     Move csect name
+         TRT   WTOMSG+55(9),BLANK      Look for end of csect name
+         MVI   0(R1),C'+'
+*
+         LA    R15,0(,R14)  Clear high, Get addr of call to this rtn
+         LA    R12,0(,R12)             Clear high byte
+         SR    R15,R12                 Compute offset of call
+         ST    R15,DBLE                Save to work area
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   1(4,R1),TWRK            Move call offset to msg
+*
+         LA    R15,NCB1
+         UNPK  TWRK(5),NCBRTNCD-NCB(3,R15)  Add zones
+         TR    TWRK(4),HEXTRAN-240
+         MVC   WTOMSG+35(4),TWRK       Move rtncd/errcd
+*
+         UNPK  TWRK(3),NCBREQ-NCB(2,R15)  Add zones
+         TR    TWRK(2),HEXTRAN-240
+         MVC   WTOMSG+45(2),TWRK       Move req code
+*
+         L     R1,NCBMACAD-NCB(,R15)   Get failing VSAM macro addr
+         LA    R1,0(,R1)               Clear high byte
+         S     R1,ANJESPL              Comp offset into NJESPOOL   v210
+         ST    R1,DBLE
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   WTOMSG+50(4),TWRK       Move NJESPOOL offset to msg
+*
+         OI    NJFL1,NJF1VSER          Indicate VSAM error occurred
+*
+         WTO   ,MF=(E,WTOMSG)
+*
+FMT090   EQU   *
+         LM    R14,R2,BALRSAVE         Restore caller regs
+         BR    R14                     Exit with CC set
+*
+U0039    ABEND 39,DUMP,STEP            Abend on NETSPOOL VSAM error
+*
+*
+*-- Common Error Messaging --
+*
+CMDE030  EQU   *                                                   v200
+         MVC   MTEXT(L'NJE030E),NJE030E                            v200
+         MVI   TARGET,TGTCONS      Respond to console              v200
+         MVC   CMDVMID,=CL8'OP'    Respond to console              v200
+         LA    R1,L'NJE030E        Length                          v200
+         BAL   R14,ISSUE000        Respond to console only         v200
+         B     XITCXX00            Exit from active csect          v200
+*
+CMDE033  EQU   *                                                   v211
+         MVC   MTEXT(L'NJE033E),NJE033E                            v211
+         MVI   TARGET,TGTCONS      Respond to console              v211
+         MVC   CMDVMID,=CL8'OP'    Respond to console              v211
+         LA    R1,L'NJE033E        Length                          v211
+         BAL   R14,ISSUE000        Respond to console only         v211
+         B     XITCXX00            Exit from active csect          v211
+*
+CMDE041  EQU   *
+         MVC   MTEXT(L'NJE041E),NJE041E
+         MVC   MTEXT+33(8),CMDNODE Move link name to msg
+         LA    R1,L'NJE041E
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE047  EQU   *                                                   v211
+         MVC   MTEXT(L'NJE047E),NJE047E                            v211
+         MVC   MTEXT+45(8),LINKID-LINKTABL(R15) node name to msg   v211
+         UNPK  DBLE(4),LDEFLINE-LINKTABL(3,R15) Convert CUU of linev211
+         TR    DBLE(3),HEXTRAN-240                                 v211
+         MVC   MTEXT+26(3),DBLE    move CUU to line                v211
+         LA    R1,L'NJE047E+8      Add len plus node name          v211
+         BAL   R14,ISSUE000        Respond to user or operator     v211
+         B     XITCXX00            Exit from active csect          v211
+*                                                                  v211
+CMDE056  EQU   *
+         MVC   MTEXT(L'NJE056I),NJE056I
+         LA    R1,L'NJE056I
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE057  EQU   *
+         MVC   MTEXT(L'NJE057I),NJE057I
+         LA    R1,L'NJE057I
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE058  EQU   *
+         MVC   MTEXT(L'NJE058I),NJE058I
+         LA    R1,L'NJE058I
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE059  EQU   *
+         MVC   MTEXT(L'NJE059E),NJE059E                            v211
+         MVC   MTEXT+21(8),CMDNODE Move link name to msg
+         LA    R1,L'NJE059E                                        v211
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE060  EQU   *
+         MVC   MTEXT(L'NJE060I),NJE060I
+         MVC   MTEXT+13(8),CMDNODE Move link name to msg
+         LA    R1,L'NJE060I
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE061  EQU   *
+         MVC   MTEXT(L'NJE061I),NJE061I
+         MVC   MTEXT+13(8),CMDNODE Move link name to msg
+         LA    R1,L'NJE061I
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE062  EQU   *
+         MVC   MTEXT(L'NJE062I),NJE062I
+         MVC   MTEXT+13(8),CMDNODE Move link name to msg
+         LA    R1,L'NJE062I
+         BAL   R14,ISSUE000        Respond to user or operator
+         B     XITCXX00            Exit from active csect
+*
+CMDE071  EQU   *                                                   v200
+         MVC   MTEXT(L'NJE071I),NJE071I                            v200
+         LA    R1,L'NJE071I                                        v200
+         BAL   R14,ISSUE000        Respond to user or operator     v200
+         SPKA  X'80'               Exit in user key                v200
+         B     XITCXX00            Exit from active csect          v200
+*
+NOTAUTH  EQU   *
+         MVC   MTEXT(L'NJE023E),NJE023E  Move in msg text
+         LA    R1,L'NJE023E        Compute length of text
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVI   TARGET,TGTCONS      Send it to console              v200
+         MVC   CMDVMID,=CL8'OP'    Respond to operator too         v200
+         LA    R1,L'NJE023E        Compute length of text          v200
+         BAL   R14,ISSUE000        Go stack the message            v200
+         B     XITCXX00            Exit command processing
+*
+*
+*-- This exit point will allow an exit from whatever active csect
+*-- was in control when a common routine was invoked. Control will be
+*-- returned to the caller of the active csect (NJECMC or NJECMG).
+*
+XITCXX00 EQU   *
+         SR    R15,R15             Set RC=0
+         L     R13,4(,R13)         -> prev s.a.
+         ST    R15,16(,R13)        Set RC
+         LM    R14,R12,12(R13)     Reload callers regs
+         BR    R14                 Return with RC
+*
+         LTORG
+*
+*                0123456789012345678901234567890123456789012345678901
+NJE023E  DC    C'NJE023E Not authorized for command'
+NJE030E  DC    C'NJE030E Command not executed: user from unknown node' x
+                                                                   v200
+NJE033E  DC    C'NJE033E Command not executed: no return path'     v211
+NJE041E  DC    C'NJE041E No active route paths to ' nodeid         v211
+NJE047E  DC    C'NJE047E Not started; line xxx in use by link '    v211
+NJE056I  DC    C'NJE056I Unrecognized command'
+NJE057I  DC    C'NJE057I Invalid command syntax'
+NJE058I  DC    C'NJE058I Invalid link or userid specification'
+NJE059E  DC    C'NJE059I Unknown link xxxxxxxx'                    v211
+NJE060I  DC    C'NJE060I Link xxxxxxxx already started'
+NJE061I  DC    C'NJE061I Link xxxxxxxx is not active'
+NJE062I  DC    C'NJE062I Link xxxxxxxx is draining'
+NJE071I  DC    C'NJE071I Chained CMD commands are not supported by NJE3x
+               8'                                                  v200
+*
+*                456789012345678901234567890123 45678 90123456789012345
+NJE079I  DC    C'NJE079I NETSPOOL RTNCD/ERRCD=X''0000'',REQ=01,O=1234,Mx
+               MMMMMMM     '
+*
+*               1234567890123456789012345678901234567890123456789012345
+WTO      WTO   '                                                       x
+                                                                       x
+                        ',MF=L
+*              67890123456789012345678901234567890123456789012345678901
+WTOL     EQU   *-WTO
+*
+ATTACH   ATTACH SF=L
+ATTACHL  EQU   *-ATTACH
+*
+BLANKS   DC    CL120' '
+NONBLANK DC    64X'FF',X'00',191X'FF'  TR Table to locate nonblank
+BLANK    DC    64X'00',X'FF',191X'00'  TR Table to locate blanks
+HEXTRAN  DC    CL16'0123456789ABCDEF'  Translate table
+         DROP  R8                      CMDBLOK
+*
+*
+*
+***********************
+*  N J E C M C        *             NJECMC examines the command and
+*                     *             processes control-oriented
+*  Command processor  *             commands.  Commands not handled
+*  for control cmds   *             here result in an exit with RC 4
+*                     *             so the general command processing
+***********************             routine NJECMG can be called.
+*
+NJECMC   CSECT
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECMC'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+*
+         STM   R14,R12,12(R13)         Save Regs
+         LR    R12,R15                 Base
+         USING NJECMC,R12
+         USING NJEWK,R10
+         ST    R13,CMCSA+4             SAVE prv S.A. ADDR
+         LA    R1,CMCSA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         USING CMDBLOK,R8
+         USING NJECOM,R11
+*
+*-- Ensure command came from a valid named link or route           v200
+*
+VLD000   EQU   *                                                   v200
+         CLC   CMDLINK,LCLNODE      Command from local node?       v211
+         BE    CMD000               Yes                            v200
+*
+         LA    R1,CMDLINK          -> originating node of cmd      v200
+         SR    R3,R3               R3=0 assume not a link origin   v211
+         BAL   R14,FLNK000         Check if it is a link           v211
+         BZ    VLD020              Not a link, check routes        v211
+         TM    LFLAG-LINKTABL(R2),LCONNECT Is link connected?      v211
+         BO    CMD000                  Yes, use it                 v211
+         LA    R3,4                R3=4 Link origin (not connected)v211
+*
+VLD020   EQU   *                                                   v211
+         BAL   R14,RLNK000         Check if it is a route          v211
+         BNZ   CMD000              Route found, do command         v211
+*
+         LTR   R3,R3               Origin from known link?
+         BZ    CMDE030         00  No, disallow command            v211
+         B     CMDE033         04  Yes, ignore cmd (no return path)v211
+*
+*-- Examine and process a command
+*
+CMD000   EQU   *
+         MVC   CMDAREA,BLANKS      Init receiving field
+         SR    R1,R1               Clear for IC
+         IC    R1,CMDBLEN          Get command text length
+         EX    R1,MVCMD2           Create local copy of cmd text
+*MVCMD2  MVC   CMDAREA(0),CMDTEXT
+*
+         BAL   R14,CHKAUTH         Check for user authorization
+         BZ    CMD010              Not auth for sensitive commands
+         OI    NJFL1,NJF1AUTH      Indicate user is cmd authorized
+*
+CMD010   EQU   *
+         LA    R1,CMDAREA          -> start of cmd image
+         CLI   0(R1),X'7D'         Is cmd inside apostrophes?
+         BNE   CMD020              No
+         LA    R1,1(,R1)
+*
+*-- Parse the first field (should be the command, START, DRAIN, etc)
+*
+CMD020   EQU   *
+         TRT   0(120,R1),NONBLANK  Look for 1st char
+         BZ    CMDE056             Something wrong
+         LR    R3,R1               -> first char
+         TRT   0(120,R3),BLANK     Look for end of 1st "word"
+         BZ    CMDE056             Something wrong
+*
+         LR    R5,R1               Save addr at end of word
+         SR    R1,R3               Compute length of command
+         BNP   CMDE056             Unknown command
+         C     R1,=F'8'            text too long?
+         BH    CMDE056             unknown cmmand
+*
+         MVC   COMMAND,BLANKS      Init receiving field
+         BCTR  R1,0                Adjust length for execute
+         EX    R1,MVCMD1           Move and uppercase the command
+*MVCMD1  OC    COMMAND(0),0(R3)
+*
+*-- The following commands are parsed by NJESCN config scanner     v211
+*
+         CLC   =C'AUTH ',COMMAND   AUTH cmd?                       v211
+         BE    CMDSCAN             Yes                             v211
+         CLC   =C'ROUTE ',COMMAND  ROUTE cmd?                      v211
+         BE    CMDSCAN             Yes                             v211
+         CLC   =C'LINK ',COMMAND   LINK cmd?                       v211
+         BE    CMDSCAN             Yes                             v211
+*
+*-- The following commands require a link name
+*-- Parse the second field (should be a link name)
+*
+         TRT   0(120,R5),NONBLANK  Look for next word
+         BZ    CMDE057             Something wrong, inv syntax
+         LR    R3,R1               -> start of word
+         TRT   0(120,R3),BLANK     Look for end of word
+         BZ    CMDE057             Something wrong, inv syntax
+*
+*v130    CLI   0(R3),X'EF'         Is link name a number?          v120
+*v130    BH    XITCMC04            Go direct to general commands   v120
+*
+         LR    R5,R1               Save addr at end of word
+         SR    R1,R3               Compute length of link id
+         BNP   CMDE058             invalid link name
+         C     R1,=F'8'            Name too long?
+         BH    XITCMC04            Y; pass to general commands     v130
+*v130    BH    CMDE058             invalid link name
+*
+         MVC   CMDNODE,BLANKS      Init receiving field
+         BCTR  R1,0                Adjust length for execute
+         EX    R1,MVLNK1           Move and uppercase the lnk id
+*MVLNK1  OC    CMDNODE(0),0(R3)
+*
+* For the most part, this section processes commands that affect
+* a link, or specify a link name (with an exception or two).
+*
+* R5 -> blank after 2nd parameter of command, if addt'l fields needed.
+*
+*
+CMD030   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         CLC   =C'CMD ',COMMAND    CMD   cmd?
+         BE    CCD000              Yes
+         CLC   =C'MSG ',COMMAND    MSG   cmd?
+         BE    MCD000              Yes
+         CLC   =C'M ',COMMAND      MSG   cmd?
+         BE    MCD000              Yes
+         CLC   =C'S ',COMMAND      Start cmd?
+         BE    STR000              Yes
+         CLC   =C'START ',COMMAND  Start cmd?
+         BE    STR000              Yes
+         CLC   =C'P ',COMMAND      Stop cmd?
+         BE    DRN000              Yes
+         CLC   =C'STOP ',COMMAND   Stop cmd?
+         BE    DRN000              Yes
+         CLC   =C'ABEND ',COMMAND  Abend cmd?
+         BE    ABD000              Yes
+*
+         B     XITCMC04            Otherwise, general cmd processing
+*
+ABD000   ABEND 99,DUMP,STEP
+*
+*
+*-- START command
+*
+STR000   EQU   *
+         TM    NJFL1,NJF1AUTH      Is user cmd authorized?
+         BZ    NOTAUTH             Not auth for command
+         LA    R1,CMDNODE          -> Link name to find
+         BAL   R14,FLNK000         Find the link name in link table
+         BZ    CMDE059             Link name not found
+*
+         USING LINKTABL,R2
+         CLC   LTCBA,=A(0)         TCB addr present for link?
+         BNE   CMDE060             Y, link already started
+*
+         L     R15,ALINKS          -> LINKS anchor word            v211
+         L     R15,0(,R15)         -> LOCAL LINKTABL entry         v211
+         L     R15,LNEXT-LINKTABL(,R15) -> first LINKTABL entry    v211
+*
+STR010   EQU   *                                                   v211
+         CR    R2,R15              Looking at same link entry?     v211
+         BE    STR020              Yes, skip this one              v211
+         CLC   LDEFLINE,LDEFLINE-LINKTABL(R15) Look for same line #v211
+         BE    STR030              Hmm, someone else use same line v211
+*
+STR020   EQU   *
+         ICM   R15,15,LNEXT-LINKTABL(R15) -> next LINKTABL entry   v211
+         BZ    STR060              Exit loop if no line dups found v211
+         B     STR010              Keep searching                  v211
+*
+STR030   EQU   *               **  Check if line has activity      v211
+         TM    LFLAG-LINKTABL(R15),LCONNECT+LACTIVE+LDRAIN  busy?  v211
+         BNZ   CMDE047             Can't start; line in use        v211
+*
+STR060   EQU   *                                                   v211
+         BAL   R14,GTW000          Get WRE                         v220
+         LR    R4,R1               -> WRE
+         USING WRE,R4
+         MVI   WRESP,2             Save subspool                   v220
+         MVI   WRETYPE,WRESTAR     This is a START cmd WRE
+         ST    R2,WREUSER          Set A(LINKTABL) for link in user fld
+         MVC   WRELINK,LCLNODE     Assign WRE to local node        v211
+         DROP  R2                  LINKTABL
+*
+         SPKA  0                                                   v220
+         L     R6,CSABLK           -> CSA comm area                v211
+         USING NJ38CSA,R6
+*
+         LM    R0,R1,NJ38SWAP      Get first WRE ptr, sync count
+STR090   EQU   *                                                   v210
+         ST    R0,WRENEXT          First WRE becomes next
+         LA    R5,1(,R1)           Incr synchronization count
+         CDS   R0,R4,NJ38SWAP      Update CSA WRE anchor, sync
+         BC    7,STR090            Gotta try again                 v210
+*
+         LA    R7,NJ38ECB          -> NJE38 external WRE ECB
+         DROP  R6                  NJ38CSA
+         DROP  R4                  WRE
+*                                  WRE will be queued to main task
+         POST  (7)                 Post the main task WRE ECB
+*
+         SPKA  X'80'               Back to user key
+         B     XITCMC00            Exit
+*
+*
+*
+*-- Handle CMD command
+*
+CCD000   EQU   *
+         CLC   CMDNODE,LCLNODE     Was CMD for local node?         v211
+         BE    CCD100              Yes
+*
+*---------------------------------------------------------------------
+*-
+*- 16 July 2020
+*-
+*- Starting in NJE38 v2.0.0, chained commands have been disallowed
+*- due to security reasons.  This is because the original issuer node
+*- is not being propagated through each node correctly (or at all),
+*- and the last node to forward the command becomes the "issuer".
+*- But the original issuer userid is passed through intact. For example
+*-
+*- User XYZ on Node ABC issues this chained CMD command:
+*-
+*- CMD MVSA CMD MVSB C 123
+*-
+*- The console on MVSB will show 'Location MVSA(XYZ) issuing C 123'
+*- when the command originated from node ABC!  If user MVSA(XYZ) was
+*- also an actual user and authorized to issue Cancel commands on
+*- MVSB, then user ABC(XYZ) just obtained cancel authority in error.
+*- Further, user MVSA(XYZ) receives any command responses, not
+*- ABC(XYZ).
+*-
+*-
+*---------------------------------------------------------------------
+*
+         CLC   CMDLINK,LCLNODE     CMD origin from this local node?v211
+         BNE   CMDE071             no CMD cmds allowed from remote v200
+         SR    R1,R1               Clear for TRT                   v200
+         TRT   0(120,R5),NONBLANK  Find 1st char of cmd text       v200
+         BZ    CMDE057             None, inv syntax                v200
+         CLC   0(4,R1),=C'CMD '    OP gets 1 CMD, err on 2nd one   v200
+         BE    CMDE071                                             v200
+*
+         BAL   R14,CHKN000         Find and validate link task
+         LR    R7,R2               LINKTABL entry to R7
+         BAL   R14,GTW000          Get WRE
+         LR    R4,R1               -> WRE
+         USING WRE,R4
+         MVI   WRECODE,X'B0'       CMD for remote node
+         MVC   WRELINK,CMDNODE     Set target to receive cmd
+         MVC   WREUSER,CMDVMID     Set userid of issuer
+         MVC   WREORIG,CMDLINK     Set nodeid of issuer (not used) v200
+*
+         SR    R1,R1               Clear for TRT
+         TRT   0(120,R5),NONBLANK  Find 1st char of cmd text
+         BZ    CMDE057             None, inv syntax
+         LA    R5,CMDAREA          -> start of CIB entered text
+         LR    R0,R1               Copy current position
+         SR    R0,R5               Compute length we've skipped
+         SR    R5,R5               Clear for IC
+         IC    R5,CMDBLEN          Get total cmd text length
+         SR    R5,R0               Less len skipped = text portion len
+         MVC   WRETXT,BLANKS       Init receiving field
+         EX    R5,CPYTXT           Copy text portion into WRE
+*CPYTXT  MVC   WRETXT(0),0(R1)
+         STC   R5,WRETXTLN         Set text portion length
+*
+         LR    R2,R7               LINKTABL entry back to R2
+         BAL   R14,PST000          Queue WRE to link task
+         B     XITCMC00            Exit
+*
+*-- Here if the console operator issued F NJE38,CMD lclnode command
+*
+CCD100   EQU   *
+         LR    R2,R5               Copy current position
+         LA    R0,CMDAREA          -> start of cmd text area
+         LA    R1,L'CMDAREA        Length of entire area
+         SR    R2,R0               Compute length consumed
+         SR    R15,R15             Clear for IC
+         IC    R15,CMDBLEN         Get original length
+         SR    R15,R2              Adjust length for new size
+         STC   R15,CMDBLEN         Put back
+         LA    R15,1(,R15)         Make actual length for move
+         LR    R14,R5              Copy current position
+         ICM   R15,8,=X'40'        Set pad char
+         MVCL  R0,R14              Shift remaining text and pad
+         B     CMD010              And restart cmd processing
+*
+CPYTXT   MVC   WRETXT(0),0(R1)     Executed instr
+*
+*
+*
+*
+*
+*-- Handle MSG
+*
+MCD000   EQU   *
+*
+*-- Parse the third field (should be a userid)
+*
+         TRT   0(120,R5),NONBLANK  Look for next word
+         BZ    CMDE057             Something wrong, inv syntax
+         LR    R3,R1               -> start of word
+         TRT   0(120,R3),BLANK     Look for end of word
+         BZ    CMDE057             Something wrong, inv syntax
+*
+         LR    R5,R1               Save addr at end of word
+         SR    R1,R3               Compute length of user id
+         BNP   CMDE058             invalid user name
+         C     R1,=F'8'            Name too long?
+         BH    CMDE058             invalid user name
+*
+         MVC   CMDUID,BLANKS       Init receiving field
+         BCTR  R1,0                Adjust length for execute
+         EX    R1,MVLNK2           Move and uppercase the user id
+*MVLNK2  OC    CMDUID(0),0(R3)
+*
+MCD010   EQU   *
+         BAL   R14,CHKN000         Find and validate link task
+         LR    R7,R2               LINKTABL entry to R7
+         BAL   R14,GTW000          Get WRE
+         LR    R4,R1               -> WRE
+         USING WRE,R4
+         MVI   WRETYPE,WREMSG      MSG type wre
+         MVI   WRECODE,X'B1'       MSG for remote node
+         MVC   WRELINK,CMDNODE     Set target to receive msg
+         MVC   WREUSER,CMDUID      Set target to receive msg
+         MVC   WREORIG,=CL8'OP'    Set origin id
+*
+*-- R5 -> rest of msg text
+*
+         LA    R1,8(,R5)           Limit if TRT fails (send blanks)
+         TRT   0(120,R5),NONBLANK  Find 1st char of msg text
+         LA    R5,CMDAREA          -> start of text
+         LR    R0,R1               Copy current position
+         SR    R0,R5               Compute length we've skipped
+         SR    R5,R5               Clear for IC
+         IC    R5,CMDBLEN          Get total cmd text length
+         SR    R5,R0               Less len skipped = text portion len
+         MVC   WRETXT,BLANKS       Init receiving field
+         EX    R5,CPYTXT           Copy text portion into WRE
+*CPYTXT  MVC   WRETXT(0),0(R1)
+         STC   R5,WRETXTLN         Set text portion length
+*
+         LR    R2,R7               LINKTABL entry back to R2
+         BAL   R14,PST000          Queue WRE to link task
+         B     XITCMC00            Exit
+*
+*
+*
+*-- STOP command
+*
+DRN000   EQU   *
+         TM    NJFL1,NJF1AUTH      Is user cmd authorized?
+         BZ    NOTAUTH             Not auth for command
+         LA    R1,CMDNODE          -> link to drain
+         BAL   R14,FLNK000         Find the via name in link table
+         BZ    CMDE059             Not found
+*
+         USING LINKTABL,R2
+         CLC   LTCBA,=A(0)         Is link active?
+         BE    CMDE061             No
+         TM    LFLAG,LDRAIN        Drain already issued?
+         BO    CMDE062             Drain in progress
+         DROP  R2
+*
+         BAL   R14,GTW000          Get WRE
+         LR    R4,R1               -> WRE
+         USING WRE,R4
+         MVI   WRECODE,X'81'       Code for drain link
+         BAL   R14,PST000          Queue wre to link task
+*
+         B     XITCMC00            Exit
+         DROP  R4                  WRE
+*
+MVCMD1   OC    COMMAND(0),0(R3)    executed instr
+MVCMD2   MVC   CMDAREA(0),CMDTEXT  executed instr
+MVLNK1   OC    CMDNODE(0),0(R3)    executed instr
+MVLNK2   OC    CMDUID(0),0(R3)     executed instr
+*
+*
+*-- Dynamic Configuration Commands  (handled by NJESCN)            v211
+*
+*
+*-- LINK command                                                   v211
+*-- 1. LINK  xxxxx LINE cuu BUFF nnnn AUTO aaa                     v211
+*-- 2. LINK  xxxxx OFF                                             v211
+*
+*-- ROUTE command                                                  v211
+*-- 1. ROUTE xxxxx TO yyyyy                                        v211
+*-- 2. ROUTE xxxxx OFF                                             v211
+*
+*-- AUTH command                                                   v211
+*-- 1. AUTH userid AT nodeid                                       v211
+*-- 2. AUTH userid AT nodeid OFF                                   v211
+*
+CMDSCAN  EQU   *                                                   v211
+         TM    NJFL1,NJF1AUTH      Is user cmd authorized?         v211
+         BZ    NOTAUTH             Not auth for command            v211
+*
+         LA    R0,4                R0=4: scan a configuration cmd  v211
+         LA    R1,INITPARM         -> pass parm area               v211
+         LA    R2,MTEXT            -> area to return msg text      v211
+         L     15,=V(NJESCN)       -> config scan                  v211
+         BALR  R14,R15             Scan the command                v211
+         LR    R1,R0               Returned msg length to R1       v211
+         BAL   R14,ISSUE000        Respond to user or operator     v211
+         B     XITCMC00            Done with command               v211
+*
+*
+*
+*
+*-- Find and validate a link task (ensure it is active) so it can
+*-- be posted with a new command to execute.
+*
+*-- Entry:  CMDNODE contains LINK ID
+*   Exit:   R2 -> LINKTABL entry for LINK ID
+*           Exit to error msgs if error.
+*
+*
+*
+CHKN000  EQU   *
+         ST    R14,SV14            Save return addr
+         LA    R1,CMDNODE          -> Link name to find
+         BAL   R14,FLNK000         Find the link name in link table
+         BNZ   CHKN010             Got it
+         BAL   R14,RLNK000         Check for matching route
+         BZ    CMDE041             No match, no route paths
+         BAL   R14,FLNK000         Find the via name in link table
+         BZ    CMDE059             Not found again
+*
+CHKN010  EQU   *
+         USING LINKTABL,R2
+         CLC   LTCBA,=A(0)         Is link active?
+         BE    CHKN020             No, try a route
+         TM    LFLAG,LDRAIN        Drain already issued?
+         BO    CMDE062             Drain in progress
+         L     R14,SV14            Load return addr
+         BR    R14                 Return
+*
+CHKN020  EQU   *
+         MVC   CMDNODE,0(R1)       Switch to route-via name
+         BAL   R14,RLNK000         Check for matching route
+         BZ    CMDE061             Couldnt; report primary link inact
+         BAL   R14,FLNK000         Find the via name in link table
+         BZ    CMDE061             Couldnt; report primary as inact
+         CLC   LTCBA,=A(0)         Is link active?
+         BE    CMDE061             No, primary is inact
+         TM    LFLAG,LDRAIN        Drain already issued?
+         BO    CMDE061             Primary is inact
+         DROP  R2
+         L     R14,SV14            Load return addr
+         BR    R14                 Return
+*
+*
+*
+XITCMC00 EQU   *
+         SR    R15,R15             Set RC=0
+         B     XITCMC              And exit
+*
+XITCMC04 EQU   *
+         LA    R15,4               Set RC=4: do general commands
+*
+XITCMC   EQU   *
+         L     R13,4(,R13)         -> prev s.a.
+         ST    R15,16(,R13)        Set RC
+         LM    R14,R12,12(R13)     Reload callers regs
+         BR    R14                 Return with RC
+*
+         LTORG ,
+*
+*
+*********************
+*  N J E C M G      *               NJECMG handles general command
+*                   *               processing.  These are mostly
+*  General commands *               display commands frequently
+*  processing       *               by remote users.
+*                   *
+*********************
+*
+NJECMG   CSECT
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECMG'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+*
+         STM   R14,R12,12(R13)         Save Regs
+         LR    R12,R15                 Base
+         USING NJECMG,R12
+         USING NJEWK,R10
+         ST    R13,CMGSA+4             SAVE prv S.A. ADDR
+         LA    R1,CMGSA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         USING CMDBLOK,R8
+         USING NJECOM,R11
+*
+*-- General command processing
+*
+*
+CMD100   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MWORK,BLANKS        Clear work area
+         SR    R5,R5               Clear
+         IC    R5,CMDBLEN          Get cmd text IBM len
+         LA    R2,CMDAREA          -> original cmd text image
+         LA    R1,MTEXT
+         EX    R5,MVCCMD2          Move and upper to msg area      v200
+*MVCCMD2 OC    0(0,R1),0(R2)                                       v200
+*
+         LA    R3,MTEXT            -> command text
+         TRT   0(096,R3),NONBLANK  Look for text start
+         BZ    CMD700              Unknown or invalid command
+         CLC   =C'Q ',0(R1)        Is this a query   command?
+         BE    CMD110              Yes
+         CLC   =C'D ',0(R1)        Is this a display command?
+         BE    CMD120              Yes
+         CLC   =C'C ',0(R1)        Is this a cancel command?
+         BE    CMD300              Yes
+         CLC   =C'E ',0(R1)        Is this a RESET command?        v120
+         BE    CMD230              Yes                             v120
+         CLC   =C'RESET ',0(R1)    Is this a RESET command?        v120
+         BE    CMD230              Yes                             v120
+         CLC   =C'CPQ ',0(R1)      Is this a CPQ     command?
+         BE    CMD130              Yes
+         B     CMD700              Otherwise invalid command
+*
+* Q
+CMD110   EQU   *
+         TRT   0(096,R1),BLANK     Look for end of string
+         BZ    CMD700              Invalid
+         TRT   0(096,R1),NONBLANK  Look for 2nd string in cmd text
+         BZ    CMD700              Not found, inv command
+         CLC   =C'SY ',0(R1)       Is this a Q SYS command?
+         BE    CMD200              Yes
+         CLC   =C'SYS ',0(R1)      Is this a Q SYS command?
+         BE    CMD200              Yes
+         CLC   =C'SYSTEM ',0(R1)   Is this a Q SYS command?
+         BE    CMD200              Yes
+         CLC   =C'F ',0(R1)        Is this a files command?
+         BE    CMD250              Yes
+         CLC   =C'FILES ',0(R1)    Is this a files command?
+         BE    CMD250              Yes
+         B     CMD500              Treat as "Q nodeid"             v211
+* D
+CMD120   EQU   *
+         TRT   0(096,R1),BLANK     Look for end of string
+         BZ    CMD700              Invalid
+         TRT   0(096,R1),NONBLANK  Look for 2nd string in cmd text
+         BZ    CMD700              Not found, inv command
+         CLC   =C'T ',0(R1)        Is this a time command?
+         BE    CMD140              Yes
+         CLC   =C'TIME ',0(R1)     Is this a time command?
+         BE    CMD140              Yes
+         CLC   =C'F ',0(R1)        Is this a files command?
+         BE    CMD250              Yes
+         CLC   =C'FILES ',0(R1)    Is this a files command?
+         BE    CMD250              Yes
+         CLC   =C'NODES ',0(R1)    Is this a NODES command?
+         BE    CMD205              Yes
+         CLC   =C'ROUTES ',0(R1)   Is this a ROUTES command?
+         BE    CMD400              Yes
+         CLC   =C'AUTH ',0(R1)     Is this a AUTH command?
+         BE    CMD450              Yes
+         CLC   =C'A ',0(R1)        Is this a active command?
+         BE    CMD160              Yes
+         CLC   =C'ACTIVE ',0(R1)   Is this a active command?
+         BE    CMD160              Yes
+         CLI   0(R1),X'EF'         Possible numeric file number?   v110
+         BH    CMD240              Y,use microscope to check closerv110
+         B     CMD500              Otherwise treat as "D nodeid"   v211
+* CPQ
+CMD130   EQU   *
+         TRT   0(096,R1),BLANK     Look for end of string
+         BZ    CMD700              Invalid
+         TRT   0(096,R1),NONBLANK  Look for 2nd string in cmd text
+         BZ    CMD700              Not found, inv command
+         CLC   =C'T ',0(R1)        Is this a time command?
+         BE    CMD140              Yes
+         CLC   =C'TIME ',0(R1)     Is this a time command?
+         BE    CMD140              Yes
+         CLC   =C'N ',0(R1)        Is this a name command?
+         BE    CMD160              Yes
+         CLC   =C'NAMES ',0(R1)    Is this a name command?
+         BE    CMD160              Yes
+         CLC   =C'CPLEVEL ',0(R1)  Is this a CPLEVEL command?
+         BE    CMD190              Yes
+         B     CMD700              Otherwise invalid command
+* TIME
+CMD140   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+*
+         TIME  DEC                 Get the time and date
+         ST    R1,DBLE             Store date 00YYDDDF
+         UNPK  TWRK(9),DBLE(5)     Add zones
+         MVC   MTEXT(L'CMSG2),CMSG2  Move model time response
+         MVC   MTEXT+28(2),TWRK+2  Move YY to msg
+         MVC   MTEXT+31(3),TWRK+4  Move DDD to msg
+         ST    R0,DBLE             Store time HHMMSSTH
+         UNPK  TWRK(9),DBLE(5)     Add zones
+         MVC   MTEXT+14(2),TWRK+0  Move HH to msg
+         MVC   MTEXT+17(2),TWRK+2  Move MM to msg
+         MVC   MTEXT+20(2),TWRK+4  Move SS to msg
+         LA    R1,L'CMSG2          Length of time message
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            And exit command processing
+*
+* ACTIVE
+CMD160   EQU   *
+         BAL   R14,DACT000         Prepare display active results
+*
+         MVC   MTEXT(L'CMSG6),CMSG6  Move msg
+         MVC   MTEXT+L'CMSG6(8),LCLNODE Plug local node name to msgv211
+         LA    R1,L'CMSG6+8        Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG7),CMSG7  Move msg
+         LA    R1,L'CMSG7          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         LA    R6,ASIDTAB
+         LA    R5,24
+*
+CMD170   EQU   *
+         CLC   0(24,R6),BLANKS
+         BE    CMD180
+         MVC   MTEXT(24),0(R6)
+         LA    R1,24
+         BAL   R14,ISSUE000
+*
+CMD180   EQU   *
+         LA    R6,24(,R6)
+         BCT   R5,CMD170
+         B     XITCMG00            And exit command processing
+*
+* CPLEVEL
+CMD190   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         LA    R1,CPUID            -> CPUID info                   v211
+         UNPK  TWRK(13),0(7,R1)    Make part of CPI displayable
+         TR    TWRK(12),HEXTRAN-240 Make char hex
+*
+         MVC   MTEXT(L'CMSG8),CMSG8  Move msg model
+         MVC   MTEXT+30(4),TWRK+8  Move CPU model
+         MVC   MTEXT+38(8),TWRK    Move CPU ID
+         L     R1,16               -> CVT
+         L     R2,CVTSMCA-CVT(,R1) -> SMCA                         v210
+         MVC   MTEXT+52(4),SMCASID-SMCABASE(R2)  Move system id    v210
+         S     R1,=F'40'           Back up into CVT prefix area    v210
+         CLI   0(R1),C' '          Is anything there?              v210
+         BNH   CMD195              Blank or zeros...no             v210
+         MVC   MTEXT+9(15),0(R1)   Report whatever you find        v210
+*
+CMD195   EQU   *                                                   v210
+         LA    R1,L'CMSG8          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG8A),CMSG8A  Move msg model
+         LA    R1,L'CMSG8A         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            And exit command processing
+*
+* Q SYS
+CMD200   EQU   *
+         TRT   0(096,R1),BLANK     Look for end of string
+         TRT   0(096,R1),NONBLANK  Look for 4nd string in cmd text
+         BZ    CMD205              Not found, its just Q SYstem
+* Possible Q SYS RO?
+         CLC   =C'RO',0(R1)        Is this a Q SYS ROutes?
+         BE    CMD400              Yes
+         B     CMD700              Nope, whatever it is disallow it
+* NODES
+CMD205   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         L     R6,ALINKS           -> LINKS anchor word            v211
+         L     R6,0(,R6)           -> first LINKTABL entry         v211
+         USING LINKTABL,R6
+         ICM   R6,15,LNEXT         Skip over local entry           v211
+         BZ    CMD225              Exit if no links defined        v211
+*
+         MVC   MTEXT(L'CMSG3),CMSG3  Move msg
+         MVC   MTEXT+L'CMSG3(8),LCLNODE Plug local node name to msgv211
+         LA    R1,L'CMSG3+8        Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG4),CMSG4  Move msg
+         LA    R1,L'CMSG4          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+*
+CMD210   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG5),CMSG5  Move msg
+         MVC   MTEXT(8),LINKID     Move link id
+         UNPK  DBLE(4),LDEFLINE(3) Convert CUU of line             v211
+         TR    DBLE(3),HEXTRAN-240
+         MVC   MTEXT+29(3),DBLE
+         TM    LFLAG,LACTIVE       Is line in active status?
+         BZ    *+10                No
+         MVC   MTEXT+9(8),=CL8'Active'
+         TM    LFLAG,LDRAIN        Is line in drain status?
+         BZ    *+10                No
+         MVC   MTEXT+9(8),=CL8'Draining'
+         TM    LFLAG,LCONNECT      Is line in connect status?
+         BZ    *+10                No
+         MVC   MTEXT+9(8),=CL8'Connect'
+*
+         LH    R1,LBUFF            Get defined max buffer size     v211
+         TM    LFLAG,LCONNECT      Is line in connect status?      v211
+         BZ    CMD220              No                              v211
+         LH    R1,LNEGO            Connected: show negotiated size v211
+*
+CMD220   EQU   *                                                   v211
+         CVD   R1,DBLE             Convert
+         MVC   MTEXT+34(6),=X'402020202120'  Mask
+         ED    MTEXT+34(6),DBLE+5  Edit size
+*
+         LA    R1,L'CMSG5          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         ICM   R6,15,LNEXT         -> next LINKTABL entry
+         BNZ   CMD210              Keep searching
+         DROP  R6                  LINKTABL
+         B     XITCMG00            And exit command processing
+*
+CMD225   EQU   *                                                   v211
+         MVC   MTEXT,BLANKS        Clear work area                 v211
+         MVC   MTEXT(L'CMSG43),CMSG43 No links defined             v211
+         LA    R1,L'CMSG43         Length of message               v211
+         BAL   R14,ISSUE000        Go stack the message            v211
+         B     XITCMG00            And exit command processing     v211
+*
+* RESET ###                        Check for possible file number  v120
+*                                                                  v120
+CMD230   EQU   *                                                   v120
+         TRT   0(096,R1),BLANK     Look for end of command name    v120
+         BZ    CMD700              Invalid                         v120
+         TRT   0(096,R1),NONBLANK  Look for 2nd string in cmd text v120
+         BZ    CMD700              Not found, inv command          v120
+*
+         LR    R4,R1               Save start of possible file #   v120
+         XC    TRTAB,TRTAB         Init translate table            v120
+         MVI   TRTAB+C',',X'FF'    Search for ',' chars            v120
+         TRT   0(096,R1),TRTAB     Look for end of numerics        v120
+         BZ    CMD700              Not found, inv command          v120
+*                                                                  v120
+         LR    R2,R1               Save position of comma          v110
+         SR    R1,R4               Compute length of string        v120
+         C     R1,=F'4'            4-char or less?                 v120
+         BH    CMD390              No, not valid file #            v120
+         BCTR  R1,0                Adjust for execute              v120
+         EX    R1,CMDMV1           Make a copy of specified #      v120
+         EX    R1,CMDOC1           Force copy numeric              v120
+         EX    R1,CMDCL1           Was original numeric?           v120
+         BNE   CMD390              No, invalid file number         v120
+         EX    R1,CMDPK1           Pack the number                 v120
+         CVB   R1,DBLE             Convert file #                  v120
+*                                                                  v120
+*                                  r1 = file num                   v120
+*                                  r2 -> comma at end of file num  v120
+         LA    R0,E####            Load E filenum function code    v120
+         L     R15,=A(NJECMH)      -> extended general commands rtnv120
+         BALR  R14,R15             Go handle the command           v120
+         B     XITCMG00            Done with command               v120
+*
+* DISPLAY ###                      Check for possible file number  v110
+*                                                                  v110
+CMD240   EQU   *                                                   v110
+         LR    R4,R1               Save start of possible file #   v110
+         TRT   0(096,R1),BLANK     Look for end of numerics        v110
+         BZ    CMD700              Not found, inv command          v110
+*                                                                  v110
+         SR    R1,R4               Compute length of string        v110
+         C     R1,=F'4'            4-char or less?                 v110
+         BH    CMD390              No, not valid file #            v110
+         BCTR  R1,0                Adjust for execute              v110
+         EX    R1,CMDMV1           Make a copy of specified #      v110
+         EX    R1,CMDOC1           Force copy numeric              v110
+         EX    R1,CMDCL1           Was original numeric?           v110
+         BNE   CMD390              No, invalid file number         v110
+         EX    R1,CMDPK1           Pack the number                 v110
+         CVB   R1,DBLE             Convert file #                  v110
+*                                                                  v110
+*                                  r1 = file num                   v120
+         LA    R0,D####            Load D filenum function code    v110
+         L     R15,=A(NJECMH)      -> extended general commands rtnv110
+         BALR  R14,R15             Go handle the command           v110
+         B     XITCMG00            Done with command               v110
+*
+* FILES
+CMD250   EQU   *
+         XC    NCB1,NCB1           Init NCB
+         LA    R2,NCB1             -> NCB area
+         USING NCB,R2
+*
+         NSIO  TYPE=OPEN,          Open dataset                        x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15             Any errors?
+         BZ    CMD255              No
+         BAL   R14,FMT000          Display error
+         B     U0039               Abend on VSAM error
+*
+CMD255   EQU   *
+         NSIO  TYPE=CONTENTS,      get directory contents              x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15             Any errors?
+         BZ    CMD260
+         ICM   R5,3,NCBRTNCD       Save error codes for now
+*
+CMD260   EQU   *
+         NSIO  TYPE=CLOSE,         Close dataet                        x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         CLM   R5,3,=AL1(12,6)     Were no directory entries returned?
+         BE    CMD280              Correct
+         CLM   R5,2,=AL1(0)        Were there any error codes?
+         BZ    CMD265              No
+         STCM  R5,3,NCBRTNCD       Restore codes for formatting    v110
+         BAL   R14,FMT000          Display error
+         B     U0039               Abend on VSAM error
+*
+CMD265   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG9),CMSG9  Move msg
+         MVC   MTEXT+L'CMSG9(8),LCLNODE Plug local node name to msgv211
+         LA    R1,L'CMSG9+8        Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG10),CMSG10 Move msg
+         LA    R1,L'CMSG10         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG11),CMSG11 Move msg
+         LA    R1,L'CMSG11         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG12),CMSG12 Move msg
+*
+         L     R6,NCBAREA          -> returned directory entries
+         USING NSDIR,R6
+         SR    R5,R5
+         ICM   R5,3,NCBRECCT       # of returned entries
+*
+CMD270   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         LH    R1,NSID             Get file id number
+         CVD   R1,DBLE             Convert
+         UNPK  MTEXT(4),DBLE
+         OI    MTEXT+3,X'F0'
+         MVC   MTEXT+06(8),NSINLOC  Origin node
+         MVC   MTEXT+15(8),NSINVM   Origin userid
+         MVC   MTEXT+25(8),NSTOLOC  Destination node
+         MVC   MTEXT+34(8),NSTOVM   Destination userid
+         MVC   MTEXT+44(1),NSCLASS  Class
+*
+         MVC   MTEXT+45(10),=X'40206B2020206B202120'
+         L     R1,NSRECNM          Get # of records in file
+         CVD   R1,DBLE             Convert
+         ED    MTEXT+45(10),DBLE+4 Edit result
+*
+         LA    R1,L'CMSG12         Length of msg
+         BAL   R14,ISSUE000        Stack it
+*
+         AH    R6,NCBRECLN         -> next directory entry
+         BCT   R5,CMD270           Loop through entries
+         DROP  R6                  NSDIR
+*
+         LM    R0,R1,NCBAREAL      Get list length and address
+         XC    NCBAREA,NCBAREA     Clear obsolete ptr
+         FREEMAIN RU,LV=(0),A=(1)
+         B     CMD290              Display % full                  v200
+*
+CMD280   EQU   *                   No files queued
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG9),CMSG9  Move msg
+         MVC   MTEXT+L'CMSG9(8),LCLNODE Plug local node name to msgv211
+         LA    R1,L'CMSG9+8        Length of message               v102
+         BAL   R14,ISSUE000        Go stack the message
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG13),CMSG13  Move msg
+         LA    R1,L'CMSG13         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+CMD290   EQU   *                                                   v200
+         MVC   MTEXT,BLANKS        Clear work area                 v200
+         MVC   MTEXT(L'CMSG26),CMSG26  Move msg                    v200
+         LH    R3,NCBPCT           Get spool full %                v200
+         CVD   R3,DBLE             Convert % full                  v200
+         UNPK  MTEXT+6(2),DBLE     Unpk                            v200
+         OI    MTEXT+7,X'F0'       Fix sign                        v200
+         LA    R1,L'CMSG26         Length of message               v200
+         BAL   R14,ISSUE000        Go stack the message            v200
+         B     XITCMG00            Exit command function completed v200
+*
+* CANCEL #
+CMD300   EQU   *
+         TRT   0(096,R1),BLANK     Look for end of string
+         BZ    CMD700              Invalid
+         TRT   0(096,R1),NONBLANK  Look for 2nd string in cmd text
+         BZ    CMD700              Not found, inv command
+*
+         XC    BLNKDASH,BLNKDASH   Set up special translate table
+         MVI   BLNKDASH+C' ',X'04' Code 4 for a blank
+         MVI   BLNKDASH+C'-',X'08' Code 8 for a dash
+*
+         LR    R4,R1               Save start of possible file #
+         SR    R2,R2               Clear for TRT
+         TRT   0(096,R1),BLNKDASH  Look for end of 1st number
+         BZ    CMD700              Invalid
+         LR    R0,R1               Save position of blank or dash char
+         SR    R1,R4               Compute length of string
+         C     R1,=F'4'            4-char or less?
+         BH    CMD390              No, not valid file #
+         BCTR  R1,0                Adjust for execute
+         EX    R1,CMDMV1           Make a copy of specified #
+         EX    R1,CMDOC1           Force copy numeric
+         EX    R1,CMDCL1           Was original numeric?
+         BNE   CMD390              No, invalid file number
+         EX    R1,CMDPK1           Pack the number
+         CVB   R5,DBLE             Convert starting file #
+         LR    R6,R5               Ending file # is the same
+*
+         CLM   R2,1,=X'08'         Was a dash char the delimiter?
+         BNE   CMD310              No, just delete one file
+*
+         LR    R1,R0               -> to the delimiting dash char
+         LA    R4,1(,R1)           -> next char (presumably a digit)
+         TRT   0(096,R1),BLANK     Look for end of string
+         BZ    CMD700              Invalid
+         SR    R1,R4               Compute length of string
+         C     R1,=F'4'            4-char or less?
+         BH    CMD390              No, not valid file #
+         BCTR  R1,0                Adjust for execute
+         EX    R1,CMDMV1           Make a copy of specified #
+         EX    R1,CMDOC1           Force copy numeric
+         EX    R1,CMDCL1           Was original numeric?
+         BNE   CMD390              No, invalid file number
+         EX    R1,CMDPK1           Pack the number
+         CVB   R6,DBLE             Convert ending file #
+         OI    NJFL1,NJF1MULT      Indicate multi-file cancel
+         B     CMD310
+*
+CMDMV1   MVC   DBLE(0),0(R4)       executed instr
+CMDOC1   OC    DBLE(0),=4C'0'      executed instr
+CMDCL1   CLC   DBLE(0),0(R4)       executed instr
+CMDPK1   PACK  DBLE(8),0(0,R4)     executed instr
+*
+CMD310   EQU   *
+         XC    NCB1,NCB1           Init NCB
+         LA    R2,NCB1             -> NCB area
+         USING NCB,R2
+*
+         NSIO  TYPE=OPEN,          Open dataset                        x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15             Any errors?
+         BZ    CMD320              No
+         BAL   R14,FMT000          Display error
+         B     U0039               Abend on VSAM error
+*
+CMD320   EQU   *
+         NSIO  TYPE=CONTENTS,      get directory contents              x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15             Any errors?
+         BZ    CMD330              No
+         CLC   NCBRTNCD(2),=AL1(12,6) No files in spool?           v110
+         BE    CMD370              True                            v110
+         BAL   R14,FMT000          Display error
+         B     U0039               Abend on VSAM error
+*
+CMD330   EQU   *
+         L     R3,NCBAREA          -> returned directory entries
+         USING NSDIR,R3
+         SR    R4,R4
+         ICM   R4,3,NCBRECCT       # of returned entries
+*
+CMD340   EQU   *
+         LH    R14,NSID            Get a file number
+         CR    R14,R5              Is file number in cancel range?
+         BL    CMD360              N, get next
+         CR    R14,R6              Is file number in cancel range?
+         BH    CMD360              N, get next
+*
+         TM    NJFL1,NJF1AUTH      Is issuing user cmd authorized?
+         BO    CMD348              Yes, continue
+*
+*-- See if file originated from command issuing user. YES=ALLOW
+         CLC   CMDLINK,NSINLOC     Is file here on issuer's node?
+         BNE   CMD344              Nope cant cncl files on other nodes
+         CLC   CMDVMID,NSINVM      Does userid match issuer's ?
+         BE    CMD348              Yes, allow the cancel
+*
+*-- See if file was destined for command issuing user.  YES=ALLOW
+CMD344   EQU   *
+         CLC   CMDLINK,NSTOLOC     Was file dest = cmd issuer's node?
+         BNE   CMD360              Nope cant cncl files on other nodes
+         CLC   CMDVMID,NSTOVM      Does userid match issuer's ?
+         BNE   CMD360              No, disallow the cancel
+*
+CMD348   EQU   *
+         LA    R15,TDATA           -> tag data area
+         USING TAG,R15
+         STH   R14,TAGID           Save file id in tag data
+         DROP  R15                 TAG
+*
+         NSIO  TYPE=PURGE,         Purge the file by file #            x
+               NCB=(R2),                                               x
+               TAG=(R15),                                          v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15             Any errors?
+         BZ    CMD350              No
+         CLC   NCBRTNCD(2),=AL1(12,4) Was file # not found in NETSPOOL?
+         BE    CMD360              True
+         BAL   R14,FMT000          Display other error
+         B     U0039               Abend on VSAM error
+*
+CMD350   EQU   *
+         OI    NJFL1,NJF1CNCL      Indic at least one file purged
+         LH    R1,NSID             Get the file number
+         CVD   R1,DBLE             Convert file #
+         UNPK  TWRK(4),DBLE        Add zones
+         OI    TWRK+3,X'F0'        Fix sign
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG14),CMSG14  Move msg
+         MVC   MTEXT+14(4),TWRK    Insert file number
+         LA    R1,L'CMSG14         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+CMD360   EQU   *
+         LA    R3,NSDIRLN(,R3)     -> next dir entry
+         BCT   R4,CMD340           Keep scanning for files to purge
+         DROP  R3                  NSDIR
+*
+CMD370   EQU   *
+         NSIO  TYPE=CLOSE,         Done with dataset                   x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         LM    R0,R1,NCBAREAL      Get list length and address
+         LTR   R1,R1               Was an area returned?           v110
+         BZ    CMD380              No; avoid freemain              v110
+         XC    NCBAREA,NCBAREA     Clear obsolete ptr
+         FREEMAIN RU,LV=(0),A=(1)
+         DROP  R2                  NCB
+*
+         TM    NJFL1,NJF1CNCL      Were any files successfully purged?
+         BO    XITCMG00            Yes, done with command
+*
+CMD380   EQU   *                   File was not found
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG15),CMSG15  Move msg
+         LA    R1,L'CMSG15         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            Exit command function completed
+*
+CMD390   EQU   *                   Invalid file # specified
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG16),CMSG16  Move msg
+         LA    R1,L'CMSG16         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            Exit command function completed
+*
+* D ROUTES / Q SYS ROUTES
+CMD400   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+*
+         MVC   MTEXT(L'CMSG20),CMSG20  Move msg
+         MVC   MTEXT+L'CMSG20(8),LCLNODE Plug local node nm to msg v211
+         LA    R1,L'CMSG20+8       Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         L     R5,AROUTES          -> ROUTES anchor word           v211
+         ICM   R5,15,0(R5)         -> RTE chain                    v211
+         BZ    CMD430              If 0, no routes found
+         USING RTE,R5                                              v211
+*
+         MVC   MTEXT,BLANKS        Clear work area                 v211
+         MVC   MTEXT(L'CMSG22),CMSG22  Move header                 v211
+         LA    R1,L'CMSG22         Length of message               v211
+         BAL   R14,ISSUE000        Go stack the message            v211
+*
+CMD410   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT+00(8),ROUTNAME Move node name                 v211
+         MVC   MTEXT+10(8),ROUTNEXT Move route-to name             v211
+         MVC   MTEXT+22(8),ROUTALT1 Move alternate name            v211
+         MVC   MTEXT+31(8),ROUTALT2                                v211
+         MVC   MTEXT+40(8),ROUTALT3                                v211
+*  ST R5,DBLE
+*  UNPK TWRK(9),DBLE(5)
+*  TR TWRK(8),HEXTRAN-240
+*  MVC MTEXT+40(8),TWRK
+         LA    R1,48               Max Length of message           v211
+         BAL   R14,ISSUE000        Go stack the message
+*
+CMD420   EQU   *
+         ICM   R5,15,ROUTPTR       -> next RTE                     v211
+         BNZ   CMD410              Keep looking                    v211
+         DROP  R5                  RTE                             v211
+         B     XITCMG00            All done
+*
+CMD430   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area                 v102
+         MVC   MTEXT(L'CMSG21),CMSG21  Move msg, no routes defined
+         LA    R1,L'CMSG21         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            Exit command function completed
+*
+* D AUTH
+CMD450   EQU   *
+         TM    NJFL1,NJF1AUTH      Is user cmd authorized?         v200
+         BZ    NOTAUTH             Not auth for command            v200
+         MVC   MTEXT,BLANKS        Clear work area
+*
+         MVC   MTEXT(L'CMSG24),CMSG24  Move msg
+         MVC   MTEXT+L'CMSG24(8),LCLNODE Plug local node nm to msg v211
+         LA    R1,L'CMSG24+8       Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         NI    NJFL1,255-NJF1DATH  Init flag bit                   v102
+         L     R5,AAUTHS           -> AUTHLIST chain anchor        v211
+         ICM   R5,15,0(R5)         -> AUTHLIST chain               v211
+         BZ    CMD480              No authorized users             v211
+         USING AUTHLIST,R5                                         v211
+*
+CMD460   EQU   *
+         OI    NJFL1,NJF1DATH      Indicate auth user displayed    v102
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(4),=C'User'
+         MVC   MTEXT+5(8),AUTHUSER Move user name                  v211
+         TRT   MTEXT+5(9),BLANK    Look for end
+         MVC   1(2,R1),=C'at'
+         MVC   4(8,R1),AUTHNODE    Move link name                  v211
+         LA    R1,25               Max Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+CMD470   EQU   *
+         ICM   R5,15,AUTHPTR       Next auth entry                 v211
+         BNZ   CMD460              Keep looking                    v211
+         DROP  R5                  AUTHLIST                        v211
+         TM    NJFL1,NJF1DATH      Were any users displayed?       v102
+         BO    XITCMG00            Yes, all done                   v102
+*
+CMD480   EQU   *
+         MVC   MTEXT,BLANKS        Clear work area                 v102
+         MVC   MTEXT(L'CMSG25),CMSG25  Move msg, no auth users
+         LA    R1,L'CMSG25         Length of message
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            Exit command function completed
+*
+*
+*-- Handle "D nodeid"
+*
+CMD500   EQU   *                   Handle unknown command
+         LR    R3,R1               -> start of possible nodeid
+         TRT   0(9,R1),BLANK       Look for end of nodeid
+         BZ    CMD700              Not valid, unknown
+         SR    R1,R3               Compute length of nodeid
+         BCTR  R1,0                Adjust for execute
+         MVC   TWRK,BLANKS         Init receiving field
+         EX    R1,TMPMVC           Move in the nodeid
+*TMPMVC  MVC   TWRK(0),0(R3)
+         SR    R6,R6               R6=0 assume nodeid not found
+*
+         LA    R1,TWRK             -> node id
+         BAL   R14,FLNK000         Try to find the link
+         BZ    CMD540              Its not a link name. Try route
+*
+*-- Show link status for this 'nodeid'
+*
+         LA    R6,1                Indicate nodeid was found
+         USING LINKTABL,R2
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(4),=C'Link'
+         LA    R1,4                Length of message
+         BAL   R14,ISSUE000        Go stack the message
+         MVC   MTEXT(L'CMSG4),CMSG4  Move msg hdr
+         LA    R1,L'CMSG4          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'CMSG5),CMSG5  Move msg
+         MVC   MTEXT(8),LINKID     Move link id
+         UNPK  DBLE(4),LDEFLINE(3) Convert CUU of line             v211
+         TR    DBLE(3),HEXTRAN-240
+         MVC   MTEXT+29(3),DBLE
+         TM    LFLAG,LACTIVE       Is line in active status?
+         BZ    *+10                No
+         MVC   MTEXT+9(8),=CL8'Active'
+         TM    LFLAG,LDRAIN        Is line in drain status?
+         BZ    *+10                No
+         MVC   MTEXT+9(8),=CL8'Draining'
+         TM    LFLAG,LCONNECT      Is line in connect status?
+         BZ    *+10                No
+         MVC   MTEXT+9(8),=CL8'Connect'
+*
+         LH    R1,LBUFF            Get defined max buffer size     v211
+         TM    LFLAG,LCONNECT      Is line in connect status?      v211
+         BZ    CMD520              No                              v211
+         LH    R1,LNEGO            Connected: show negotiated size v211
+*
+CMD520   EQU   *                                                   v211
+         CVD   R1,DBLE             Convert
+         MVC   MTEXT+34(6),=X'402020202120'  Mask
+         ED    MTEXT+34(6),DBLE+5  Edit size
+*
+         LA    R1,L'CMSG5          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+CMD540   EQU   *
+         L     R5,AROUTES              -> ROUTES anchor word       v211
+         ICM   R5,15,0(R5)             -> RTE list chain           v211
+         BZ    CMD570                  Exit if no RTE list         v211
+         USING RTE,R5                                              v211
+*
+CMD550   EQU   *
+         LA    R14,ROUTNAME        -> name from route list         v211
+         LA    R15,8               max length                      v211
+         LA    R6,TWRK             -> selected name to locate      v211
+         LR    R7,R15              copy length                     v211
+         CLCL  R14,R6              Did we locate the name?         v211
+         BE    CMD560              Yes                             v211
+         CLI   0(R14),C'*'         Wildcard was in the name?       v211
+         BE    CMD560              Then we matched to that point   v211
+******   CLC   ROUTNAME,TWRK       Is name in route list?          v211
+******   BE    CMD560              Found it                        v211
+         ICM   R5,15,ROUTPTR       -> Next route entry             v211
+         BNZ   CMD550              Keep looking                    v211
+         B     CMD570              No matching route               v211
+*
+*-- Show route status for this 'nodeid'
+*
+CMD560   EQU   *
+         LA    R6,1                Indicate nodeid was found
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(5),=C'Route'
+         LA    R1,5                Length of message
+         BAL   R14,ISSUE000        Go stack the message
+         MVC   MTEXT(L'CMSG22),CMSG22  Move header                 v211
+         LA    R1,L'CMSG22         Length of message               v211
+         BAL   R14,ISSUE000        Go stack the message            v211
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT+00(8),ROUTNAME Move node name                 v211
+         MVC   MTEXT+10(8),ROUTNEXT Move route-to name             v211
+         MVC   MTEXT+22(8),ROUTALT1 Move alternate name            v211
+         MVC   MTEXT+31(8),ROUTALT2                                v211
+         MVC   MTEXT+40(8),ROUTALT3                                v211
+         DROP  R5                  RTE
+         LA    R1,48               Max Length of message           v211
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            Exit command function completed
+*
+CMD570   EQU   *
+         LTR   R6,R6               Was nodeid found as link/route?
+         BNZ   XITCMG00            Yes, our work is done here
+*
+         MVC   MTEXT,BLANKS        Clear work area                 v211
+         MVC   MTEXT(L'CMSG40),CMSG40  Move msg                    v211
+         MVC   MTEXT+13(8),TWRK    Insert node name
+         TRT   MTEXT+13(9),BLANK   Look for end
+         MVC   1(14,R1),=C'is not defined'
+         LA    R1,13+8+15          Length if msg
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            Exit command function completed
+*
+TMPMVC   MVC   TWRK(0),0(R3)       executed instr
+*
+*
+*
+*-- Handle "unknown command"
+*
+CMD700   EQU   *                   Handle unknown command
+         MVC   MTEXT,BLANKS                                        v200
+         MVC   MTEXT(L'CMSG1),CMSG1  Move in msg text
+         SR    R5,R5               Clear
+         IC    R5,CMDBLEN          Get cmd text IBM len
+         LA    R2,CMDAREA          -> original cmd text image
+         LA    R1,MTEXT+L'CMSG1+1  Where to place orig cmd text
+         EX    R5,MVCCMD2          Move and uppercase              v200
+*MVCCMD2 OC    0(0,R1),0(R2)                                       v200
+         LA    R1,1(R5,R1)         -> end of built msg text
+         LA    R2,MTEXT            -> start of built msg
+         SR    R1,R2               Compute length of text
+         BAL   R14,ISSUE000        Go stack the message
+         B     XITCMG00            Exit command processing
+*
+MVCCMD2  OC    0(0,R1),0(R2)          executed instr               v200
+*
+*-- Exit command processing
+*
+*
+XITCMG00 EQU   *
+         SR    R15,R15             Set RC=0
+*        B     XITCMG              And exit
+*
+*ITCMG04 EQU   *
+*        LA    R15,4               Set RC=4
+*
+XITCMG   EQU   *
+         L     R13,4(,R13)         -> prev s.a.
+         ST    R15,16(,R13)        Set RC
+         LM    R14,R12,12(R13)     Reload callers regs
+         BR    R14                 Return with RC
+*
+*-- Build the display table of address spaces on behalf of the
+*-- D ACTIVE command.
+*
+* On entry:
+*
+*    None.
+*
+* On exit:
+*
+*    ASIDTAB contains information about up to 24 address spaces.
+*    Each ASIDTAB element is mapped by dsect ACTLINE.
+*
+DACT000  EQU   *
+         LA    R0,ASIDTAB          Init formatted region display tab
+         LA    R1,24*24            Length
+         L     R15,=X'40000000'    Set pad
+         MVCL  R0,R14              Clear it
+*
+         L     R1,16               Get CVT ptr
+         USING CVT,R1
+*
+         L     R3,CVTASVT          -> ASVT
+         USING ASVT,R3
+*
+         L     R4,CVTASCBH         -> highest prty ASCB
+         USING ASCB,R4
+         DROP  R1
+*
+GETCSCB  EQU   *
+         L     R9,ASCBCSCB         -> CSCB
+         USING CSCB,R9
+         LTR   R9,R9               Is there a CSCB?
+         BZ    NEXTASCB            No, get next ASCB
+*
+CHKCSCB  EQU   *
+         CLC   CHKEY,=XL8'00'      Jobname zeroed?
+         BE    NEXTCSCB            Y, skip this CSCB
+         CLC   CHKEY,=CL8' '       Jobname is blank?
+         BE    NEXTCSCB            Y, skip this CSCB
+*
+         LH    R6,CHASID           Get ASID from CSCB
+         C     R6,=F'23'           Highest ASID we can display
+         BH    DACT090             Done formatting table
+*
+         LR    R2,R6               Copy ASID
+         MH    R2,=Y(L'ASIDTAB)    Make into table index
+         LA    R2,ASIDTAB(R2)      -> slot in ASID line table
+         USING ACTLINE,R2
+*
+         CVD   R6,DBLE             Convert to display
+         UNPK  REGION(4),DBLE      Unpk for display
+         OI    REGION+3,X'F0'      Fix sign
+*
+         CLC   CHKEY,=CL8'STARTING' Is this a starting task?
+         BE    STARTING             Yes
+         MVC   JOBNAME(8),CHKEY     Use that name for job
+         CLC   CHPROCSN,=CL8' '     Is PROCSTEP blank?
+         BE    PROCSTEP             Yes
+         CLC   CHPROCSN,=XL8'00'    PROCSTEP zero?
+         BE    PROCSTEP             Yes
+*
+         MVC   STEPNAME(8),CHPROCSN Use PROCSTEP name
+         B     REGINIT
+*
+STARTING EQU   *
+         MVC   JOBNAME(8),CHCLS     Set job name
+         MVC   STEPNAME(8),=CL8'STARTING'  Set to Starting
+         B     REGINIT
+*
+PROCSTEP EQU   *
+         MVC   STEPNAME(8),CHCLS    Else use PROCSTEP
+*
+REGINIT  EQU   *
+*        LH    R6,CHASID            Get ASID
+         SLL   R6,2                 Get ASID times 4 - make index
+         L     R4,ASVTFRST(R6)      ->  ASCB for this ASID
+*
+*        L     R6,ASCBTSB           Is there a TSB for this ASCB?
+*        LA    R6,0(,R6)            Clear high order
+*        LTR   R6,R6                Check if address present?
+*        BNZ   TSOUSER              Yes, this is a TSO user
+*
+         B     NEXTCSCB
+*
+*
+*SOUSER  EQU   *
+*        MVC   REGION(3),=CL3' '    DONT DISPLAY TSO USERS
+*
+NEXTCSCB EQU   *
+         L     R9,CHPTR             -> next CSCB
+         LA    R9,0(,R9)            Clear high order
+         LTR   R9,R9                Last CSCB?
+         BNZ   CHKCSCB              No
+         B     DACT090              Done
+*
+NEXTASCB EQU   *
+         L     R4,ASCBFWDP          -> next ASCB
+         LTR   R4,R4                last one?
+         BNZ   GETCSCB              No
+*
+DACT090  EQU   *
+         BR    R14                  Return to caller
+*
+         DROP  R2                   ACTLINE
+         DROP  R3                   ASCB
+         DROP  R4                   ASVT
+         DROP  R9                   CSCB
+*
+         LTORG ,
+*
+*-- Error response:
+CMSG1    DC    C'NJE011E Unrecognized command'
+*
+*-- D TIME response model:
+CMSG2    DC    C'NJE163I  TIME=xx.xx.xx DATE=xx.xxx'
+*
+*-- D NODES response models:
+CMSG43   DC    C'NJE043E No links defined'                         v211
+CMSG3    DC    C'NJE012I  Node status for node '
+CMSG4    DC    C'Name     Status    Type     Addr    Buff'
+CMSG5    DC    C'xxxxxxxx Inactive  NJE       cuu    xxxx'
+*                012345678901234567890123456789012345678901234567
+*
+*-- D ACTIVE response models:
+CMSG6    DC    C'NJE013I  Active status for node '
+CMSG7    DC    C'ASID  Jobname   Procstep'
+*
+*-- CPQ CPLEVEL response model:
+CMSG8  DC C'NJE018I  OS/VS2 038 JES2, CPU=xxxx ID=xxxxxxxx  SYS=xxxx'
+CMSG8A DC C'NJE019I  NJE38  &VERS   &SYSDATE &SYSTIME'             v210
+*
+*-- D FILES response models:
+CMSG9  DC C'NJE014I  File status for node '
+CMSG10 DC C'File  Origin   Origin    Dest     Dest'
+CMSG11 DC C' ID   Node     Userid    Node     Userid    CL  Records'
+CMSG12 DC C'xxxx  xxxxxxxx xxxxxxxx  xxxxxxxx xxxxxxxx  A x,xxx,xxx'
+CMSG13 DC C'No files queued'
+CMSG26 DC C'Spool xx% full'                                        v200
+*           012345678901234567890123456789012345678901234567890123456
+*
+*                012345678901234567890123456789012345678901
+*-- C #### response models:
+CMSG14   DC    C'NJE015I  File(xxxx) purged'
+CMSG15   DC    C'NJE016E  No eligible files found'
+CMSG16   DC    C'NJE017E  Invalid file number specified'
+*
+*-- D ROUTES response models:
+CMSG20   DC    C'NJE020I  Routes status for node '
+CMSG21   DC    C'NJE021I  No routes defined'
+CMSG22   DC    C'Node      Primary     Alternates'                 v211
+*              C'ROUTNODE  ROUTNEXT    ROUTALT1 ROUTALT2 ROUTALT3' v211
+CMSG40   DC    C'NJE040E Node x' is not defined                    v211
+*
+*CMSG23 available
+*
+*-- D AUTH  response models:
+CMSG24   DC    C'NJE024I  Authorized users for node '
+CMSG25   DC    C'NJE025I  No users authorized'
+*
+*
+*-- Documentation:
+*-- Example of stacked message format required by DMTXJE
+*SAMPLE  DC    AL1(56,0)           length of stacked msg+node/user
+*        DC    CL8'MVSA'           node name
+*        DC    CL8'TSOUSER'        userid
+*        DC    CL40'NJE163I  TIME=18.11.00 DATE=19.352'
+*
+*
+*
+*********************
+*  N J E C M H      *               NJECMH handles additional
+*                   *               general command processing
+*  More general     *
+*  commands         *
+*                   *
+*********************               Entire CSECT added             v110
+*
+NJECMH   CSECT
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECMH'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+*
+         STM   R14,R12,12(R13)         Save Regs
+         LR    R12,R15                 Base
+         USING NJECMH,R12
+         USING NJEWK,R10
+         LR    R3,R1                   Copy input parameter
+         ST    R13,CMHSA+4             SAVE prv S.A. ADDR
+         LA    R1,CMHSA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+D####    EQU   0                   00 - Handle D filenum
+E####    EQU   4                   04 - Handle E filenum           v120
+*
+         USING CMDBLOK,R8
+         USING NJECOM,R11
+*
+*-- Additional general command processing
+*
+*-- R3 = file number                                               v120
+*-- R2 -> character after last digit of file number in cmd image   v120
+*
+*
+         LR    R15,R0              Copy input function code        v120
+         B     FUNC000(R15)        Branch into table               v120
+*
+FUNC000  B     DNUM000             00 - handle D filenum
+         B     ENUM000             04 - handle E filenum           v120
+*
+*
+*-- Display filenum
+*     Entry:  R3 = file number
+*
+DNUM000  EQU   *
+         XC    NCB1,NCB1           Init NCB
+         LA    R2,NCB1             -> NCB area
+         USING NCB,R2
+*
+         NSIO  TYPE=OPEN,          Open dataset                        x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15             Any errors?
+         BZ    DNUM020             No
+         BAL   R14,FMT000          Display error
+         B     U0039               Abend on VSAM error
+*
+DNUM020  EQU   *
+         LA    R6,TDATA            -> tag data area
+         USING TAG,R6
+         STH   R3,TAGID            Set file # to find
+*
+         NSIO  TYPE=FIND,          get directory entry                 x
+               NCB=(R2),                                               x
+               TAG=(R6),           Where to place tag data         v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15             Any errors?
+         BZ    DNUM040
+         CLC   NCBRTNCD(2),=AL1(12,4) Was specified file id not found?
+         BE    DNUM900             Yes
+         BAL   R14,FMT000          Otherwise, display error
+         B     U0039               Abend on VSAM error
+*
+DNUM040  EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'NJE026I),NJE026I Move msg
+         MVC   MTEXT+L'NJE026I(8),LCLNODE Plug local node nm to msgv211
+         LA    R1,L'NJE026I+8      Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026A),N026A Move msg
+         LA    R1,L'N026A          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026B),N026B Move msg
+         LA    R1,L'N026B          Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026C),N026C Move msg
+*
+DNUM050  EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         LH    R1,TAGID            Get file id number
+         CVD   R1,DBLE             Convert
+         UNPK  MTEXT(4),DBLE
+         OI    MTEXT+3,X'F0'
+         MVC   MTEXT+06(8),TAGINLOC  Origin node
+         MVC   MTEXT+15(8),TAGINVM   Origin userid
+         MVC   MTEXT+25(8),TAGTOLOC  Destination node
+         MVC   MTEXT+34(8),TAGTOVM   Destination userid
+         MVC   MTEXT+44(1),TAGCLASS  Class
+*
+         MVC   MTEXT+45(10),=X'40206B2020206B202120'
+         L     R1,TAGRECNM         Get # of records in file
+         CVD   R1,DBLE             Convert
+         ED    MTEXT+45(10),DBLE+4 Edit result
+*
+         LA    R1,L'N026C          Length of msg
+         BAL   R14,ISSUE000        Stack it
+*
+         TM    TAGINDEV,TYPPRT     Is it PRINT data?
+         BO    DNUM060             Y, don't need to check for NETDATA
+*
+         L     R15,=A(NJECME)      NETDATA examination routine
+         BALR  R14,R15             Go look for NETDATA
+         LTR   R15,R15             Check RC
+         BZ    DNUM070             All is well, we have NETDATA
+*
+DNUM060  EQU   *
+         OI    NJFL1,NJF1NYET      No NETDATA or PRINT file
+*
+DNUM070  EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026D),N026D  Move model msg
+         LA    R1,MTEXT+L'N026D    -> end of model
+         MVC   0(12,R1),TAGNAME    Move file name
+*
+         TRT   0(13,R1),BLANK      Look for end of file name
+         LA    R1,1(,R1)           Skip blank
+         MVC   0(12,R1),TAGTYPE    Move file type
+*
+         TRT   0(13,R1),BLANK      Look for end of file type
+         LA    R1,3(,R1)           Skip 3 blanks
+         MVC   0(11,R1),=C'Type: PRINT'  Assume print data
+         LA    R1,6(,R1)           -> where to put format type
+         TM    TAGINDEV,TYPPRT     Was it actually PRINT type?
+         BO    DNUM080             Yes, display PRINT attr
+*
+         MVC   0(5,R1),=C'PUNCH'   Assume PUNCH unless its NETDATA
+         TM    NJFL1,NJF1NYET      Was it NETDATA or PRINT file
+         BO    DNUM100             No, display PUNCH attr
+         MVC   0(7,R1),=C'NETDATA' Yes
+         B     DNUM200             Display NETDATA attr
+*
+*-- Display for flat PRINT type file
+*
+DNUM080  EQU   *
+         LA    R1,7(,R1)           -> end of message
+         LA    R0,MTEXT            -> Start
+         SR    R1,R0               compute length of msg
+         BAL   R14,ISSUE000        Stack msg N026D
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026E),N026E  Move model msg
+         LA    R1,MTEXT+L'N026E    -> end of model
+         MVC   0(8,R1),=C'132/F/PS' Display all we know
+         LA    R1,8(,R1)           Bump length
+         BAL   R14,ISSUE000        Stack msg N026E
+         B     DNUM990             Command function completed
+*
+*-- Display for flat PUNCH type file
+*
+DNUM100  EQU   *
+         LA    R1,7(,R1)           -> end of message
+         LA    R0,MTEXT            -> Start
+         SR    R1,R0               compute length of msg
+         BAL   R14,ISSUE000        Stack msg N026D
+*
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026E),N026E  Move model msg
+         LA    R1,MTEXT+L'N026E    -> end of model
+         MVC   0(7,R1),=C'80/F/PS' Display all we know
+         LA    R1,7(,R1)           Bump length
+         BAL   R14,ISSUE000        Stack msg N026E
+         B     DNUM990             Command function completed
+*
+*-- Display for NETDATA files
+*
+DNUM200  EQU   *
+         LA    R1,7(,R1)           -> end of message
+         LA    R0,MTEXT            -> Start
+         SR    R1,R0               compute length of msg
+         BAL   R14,ISSUE000        Stack msg N026D
+*
+         CLI   FFM,X'00'           Was a file mode present?
+         BE    DNUM300             Its 0, so this is OS NETDATA
+*
+*-- Display for VM-based NETDATA files
+*
+DNUM210  EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026E),N026E  Move model msg
+         LA    R1,MTEXT+L'N026E    -> end of model
+*
+*-- Dont display BLKSIZE for VM files; it is meaningless
+*        L     R4,BLKSIZE          Get the blocksize  value
+*        CVD   R4,DBLE             Convert
+*        BAL   R14,DSPNUM          Make number displayable
+*        MVI   0(R1),C'/'
+*        LA    R1,1(,R1)
+*
+         L     R4,LRECL            Get the lrecl value
+         CVD   R4,DBLE             Convert
+         BAL   R14,DSPNUM          Make number displayable
+         MVI   0(R1),C'/'
+         LA    R1,1(,R1)
+*
+         BAL   R14,DSPRECFM        Format the RECFM value
+         MVI   0(R1),C'/'
+         LA    R1,1(,R1)
+*
+         BAL   R14,DSPORG          Format the DSORG value
+*
+         LA    R1,4(,R1)           Skip some space in msg
+         MVC   0(10,R1),=C'File size:'
+         LA    R1,11(,R1)
+         LM    R4,R5,FILESIZE      Get approx file size
+         LA    R3,8                Max length of file size value
+         LH    R0,FSIZELEN         Get length from NETDATA key
+         SR    R3,R0               Compute # bytes of shift
+         SLA   R3,3                Turn # bytes into # bits
+         SRDL  R4,0(R3)            Right justify the filesize
+         SRL   R5,10               divide by 1024 to get kilobytes
+         LA    R5,1(,R5)           Always round up
+         CVD   R5,DBLE             Convert
+         BAL   R14,DSPNUM          Make number displayable
+         MVC   1(2,R1),=C'KB'
+         LA    R1,3(,R1)           -> end of msg
+*
+         LA    R0,MTEXT            -> Start
+         SR    R1,R0               compute length of msg
+         BAL   R14,ISSUE000        Stack msg N026E
+         B     DNUM990
+*
+*-- Display for OS-based NETDATA files
+*
+DNUM300  EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026E),N026E  Move model msg
+         LA    R1,MTEXT+L'N026E    -> end of model
+*
+         L     R4,BLKSIZE          Get the blocksize  value
+         CVD   R4,DBLE             Convert
+         BAL   R14,DSPNUM          Make number displayable
+         MVI   0(R1),C'/'
+         LA    R1,1(,R1)
+*
+         TM    RECFM,DCBRECU       Is this a RECFM=U dataset?
+         BO    DNUM310             Y, don't format LRECL
+*
+         L     R4,LRECL            Get the lrecl value
+         CVD   R4,DBLE             Convert
+         BAL   R14,DSPNUM          Make number displayable
+         MVI   0(R1),C'/'
+         LA    R1,1(,R1)
+*
+DNUM310  EQU   *
+         BAL   R14,DSPRECFM        Format the RECFM value
+         MVI   0(R1),C'/'
+         LA    R1,1(,R1)
+*
+         BAL   R14,DSPORG          Format the DSORG value
+*
+         CLI   DSORG,X'02'         Is this DSORG=PO?
+         BNE   DNUM330             No, skip dir blks
+         LA    R1,3(,R1)           Skip some space in msg
+         MVC   0(8,R1),=C'DIRBLKS:'
+         LA    R1,9(,R1)
+         LM    R4,R5,DIRBLKS       Get approx file size
+         LA    R3,8                Max length of value
+         LH    R0,DIRBLKLN         Get length from NETDATA key
+         SR    R3,R0               Compute # bytes of shift
+         SLA   R3,3                Turn # bytes into # bits
+         SRDL  R4,0(R3)            Right justify the # dir blks
+         CVD   R5,DBLE             Convert
+         BAL   R14,DSPNUM          Make number displayable
+*
+DNUM330  EQU   *
+         LA    R1,3(,R1)           Skip some space in msg
+         MVC   0(10,R1),=C'File size:'
+         LA    R1,11(,R1)
+         LM    R4,R5,FILESIZE      Get approx file size
+         LA    R3,8                Max length of file size value
+         LH    R0,FSIZELEN         Get length from NETDATA key
+         SR    R3,R0               Compute # bytes of shift
+         SLA   R3,3                Turn # bytes into # bits
+         SRDL  R4,0(R3)            Right justify the filesize
+         SRL   R5,10               divide by 1024 to get kilobytes
+         LA    R5,1(,R5)           Always round up
+         CVD   R5,DBLE             Convert
+         BAL   R14,DSPNUM          Make number displayable
+         MVC   1(2,R1),=C'KB'
+         LA    R1,3(,R1)           -> end of msg
+*
+         LA    R0,MTEXT            -> Start
+         SR    R1,R0               compute length of msg
+         BAL   R14,ISSUE000        Stack msg N026E
+*
+DNUM350  EQU   *
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'N026F),N026F  Move model msg
+         LA    R1,MTEXT+L'N026F    -> end of model
+         MVC   0(44,R1),DSNAME     Move DSNAME to msg
+         LA    R1,L'N026F+44       Length of MSG + DSNAME          V110
+         BAL   R14,ISSUE000        Stack msg N026F
+         B     DNUM990
+*
+*-- Format a number to remove leading blanks and insert into msg line
+*   Entry:  R1 -> where to place result
+*   Exit :  R1 -> next available byte after result
+*
+DSPNUM   EQU   *
+         LR    R15,R1              Save msg line position
+         MVC   TWRK(8),=X'4020202020202120'
+         LA    R1,TWRK+7           -> last digit area
+         LR    R3,R1               Save a copy
+         EDMK  TWRK(8),DBLE+4      Edit the number
+         SR    R3,R1               Compute number's length
+         EX    R3,DSPMVC           Move number to msg line
+         LA    R1,1(R3,R15)        Compute next msg line byte
+         BR    R14
+DSPMVC   MVC   0(0,R15),0(R1)      executed instr
+*
+*-- Format the RECFM value
+*   Entry:  Field 'RECFM' contains the record format bits
+*   Exit :  R1 -> next available byte after result
+*
+DSPRECFM EQU   *
+         MVI   0(R1),C'?'        Assume unknown RECFM              v130
+         TM    RECFM+1,X'03'     Using shortened variable formats? v130
+         BNZ   DSPV              Yes, start with V                 v130
+         TM    RECFM,DCBRECF     FIXED?
+         BZ    *+8
+         MVI   0(R1),C'F'
+         TM    RECFM,DCBRECV     VARIABLE?
+         BZ    *+8
+*
+DSPV     EQU   *                                                   v130
+         MVI   0(R1),C'V'
+         TM    RECFM,DCBRECU     UNDEFINED?
+         BNO   *+8
+         MVI   0(R1),C'U'
+         LA    R1,1(,R1)
+*
+         TM    RECFM,DCBRECBR    BLOCKED?
+         BZ    *+12
+         MVI   0(R1),C'B'
+         LA    R1,1(,R1)
+*
+         TM    RECFM,DCBRECSB    SPANNED?
+         BZ    *+12
+         MVI   0(R1),C'S'
+         LA    R1,1(,R1)
+         TM    RECFM,DCBRECTO    TRACK OVERFLOW?
+         BZ    *+12
+         MVI   0(R1),C'T'
+         LA    R1,1(,R1)
+*
+         TM    RECFM,DCBRECCA    ASA CONTROL CHAR?
+         BZ    *+12
+         MVI   0(R1),C'A'
+         LA    R1,1(,R1)
+         TM    RECFM,DCBRECCM    MACHINE CONTROL CHAR?
+         BZ    *+12
+         MVI   0(R1),C'M'
+         LA    R1,1(,R1)
+         BR    R14
+*
+*-- Format the DSORG value
+*   Entry:  Field 'DSORG' contains the organization bits
+*   Exit :  R1 -> next available byte after result
+*
+DSPORG   EQU   *
+         MVC   0(2,R1),=C'? '    Assume unknown DSORG
+         CLC   DSORG,=X'4000'    DSORG=PS?
+         BNE   *+10
+         MVC   0(2,R1),=C'PS'
+         CLC   DSORG,=X'0200'    DSORG=PO?
+         BNE   *+10
+         MVC   0(2,R1),=C'PO'
+         CLC   DSORG,=X'0008'    DSORG=VS?
+         BNE   *+10
+         MVC   0(2,R1),=C'VS'
+         LA    R1,2(,R1)         -> next available byte
+         BR    R14
+*
+DNUM900  EQU   *                ** Here if file not found
+         LH    R1,TAGID            Get the file number
+         CVD   R1,DBLE             Convert file #
+         UNPK  TWRK(4),DBLE        Add zones
+         OI    TWRK+3,X'F0'        Fix sign
+         MVC   MTEXT,BLANKS        Clear work area
+         MVC   MTEXT(L'NJE027E),NJE027E Move msg
+         MVC   MTEXT+14(4),TWRK    Insert file number
+         LA    R1,L'NJE027E        Length of message
+         BAL   R14,ISSUE000        Go stack the message
+*
+*
+DNUM990  EQU   *
+         LA    R2,NCB1             -> NCB area
+         NSIO  TYPE=CLOSE,         Close spool dataset                 x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         DROP  R6                  TAG
+         B     XITCMH00            Command function completed
+*
+*
+*-- RESET filenum      Format:  RESET ##,dest=node.userid          v120
+*                      Alt:     E ##,d=node.userid                 v120
+*
+*     Entry:  R2 -> comma at end of file num                       v120
+*     Entry:  R3 = file number                                     v120
+*
+ENUM000  EQU   *                                                   v120
+         TM    NJFL1,NJF1AUTH          Is user cmd authorized?     v120
+         BZ    NOTAUTH                 Not auth for command        v120
+         LA    R4,1(,R2)               Skip over the comma         v120
+         CLC   =C'DEST=',0(R4)         Look for keyword            v120
+         BE    ENUM010                 Got it                      v120
+         CLC   =C'D=',0(R4)            Look for keyword            v120
+         BE    ENUM020                 Got it                      v120
+         B     ENUM910                 Invalid command format      v120
+*
+ENUM010  EQU   *                                                   v120
+         LA    R4,5(,R4)               Skip over DEST=             v120
+         B     ENUM030                                             v120
+*
+ENUM020  EQU   *                                                   v120
+         LA    R4,2(,R4)               Skip over D=                v120
+*
+ENUM030  EQU   *                                                   v120
+         XC    TRTAB,TRTAB             Set up translate table      v120
+         MVI   TRTAB+C'.',X'FF'        Search for '.' chars        v120
+*
+         LA    R1,0(,R1)               Clear high order byte       v120
+         TRT   0(18,R4),NONBLANK       Look for first char         v120
+         BZ    ENUM910                 Invalid, nothing after '='  v120
+         LR    R4,R1                   -> start of node id         v120
+         TRT   0(18,R1),TRTAB          Look for '.'                v120
+         BZ    ENUM910                 Invalid                     v120
+         LA    R2,1(,R1)               -> position just past delim v120
+         SR    R1,R4                   Compute node name length    v120
+         BNP   ENUM910                 Exit if invalid             v120
+         CH    R1,=H'8'                More than 8 char?           v120
+         BH    ENUM910                 It is invalid               v120
+*
+         MVC   DESTNODE,BLANKS         Init receiving field        v120
+         BCTR  R1,0                    Adjust for execute          v120
+         EX    R1,MVCNODE              Move nodename               v120
+*MVCNODE MVC   DESTNODE(0),0(R4)                                   v120
+*
+         LR    R4,R2                   -> start of userid          v120
+         TRT   0(9,R2),BLANK           Look for blank              v120
+         BZ    ENUM910                 Invalid                     v120
+         SR    R1,R4                   Compute userid length       v120
+         BNP   ENUM910                 Exit if invalid             v120
+         CH    R1,=H'8'                More than 8 char?           v120
+         BH    ENUM910                 It is invalid               v120
+*
+         MVC   DESTUSER,BLANKS         Init receiving field        v120
+         BCTR  R1,0                    Adjust for execute          v120
+         EX    R1,MVCUSER              Move nodename               v120
+*MVCUSER MVC   DESTUSER(0),0(R4)                                   v120
+*
+*-- Check for local node or *                                      v120
+*
+ENUM050  EQU   *                                                   v120
+         CLC   DESTNODE,LCLNODE        Reset to local node?        v211
+         BE    ENUM100                 Yes, allow it               v120
+         CLC   DESTNODE,=CL8'*'        Using * for local node?     v120
+         BNE   ENUM060                 No, go validate             v120
+         MVC   DESTNODE,LCLNODE        Replace with local node namev211
+         B     ENUM100                 Use local node              v120
+*
+*-- Ensure Link or Route exists for new node name                  v120
+*
+ENUM060  EQU   *                                                   v120
+         MVC   CMDNODE,DESTNODE        Copy desired new link name  v120
+         LA    R1,CMDNODE              -> Link name to find        v120
+         BAL   R14,FLNK000             Find the link name in table v120
+         BZ    ENUM070                 Link doesnt exist; route?   v211
+         TM    LFLAG-LINKTABL(R2),LCONNECT Is link connected?      v220
+         BO    ENUM100                 Yes, use it                 v211
+*
+ENUM070  EQU   *                                                   v211
+         BAL   R14,RLNK000             Check for matching route    v120
+*        BZ    CMDE059                 No match, unknown link name v120
+         BZ    AB111                   No match, unknown link name v120
+         MVC   CMDNODE,0(R1)           Temp set route name         v211
+*
+*-- Ok, update the directory entry                                 v120
+*
+ENUM100  EQU   *                                                   v120
+         XC    NCB1,NCB1               Init NCB                    v120
+         LA    R2,NCB1                 -> NCB area                 v120
+         USING NCB,R2                                              v120
+*
+         NSIO  TYPE=OPEN,              Open spool file             v120x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15                 Any errors?                 v120
+         BZ    ENUM120                 No                          v120
+         BAL   R14,FMT000              Display error               v120
+         B     U0039                   Abend on VSAM error         v120
+AB111 EQU *
+  LR R3,R1
+  ABEND 111,DUMP
+*
+ENUM120  EQU   *                                                   v120
+         LA    R6,TDATA                -> tag data area            v120
+         USING TAG,R6                                              v120
+         STH   R3,TAGID                Set file # to find          v120
+         MVC   TAGTOVM,DESTUSER        Userid to update            v120
+         MVC   TAGTOLOC,DESTNODE       Nodeid to update            v120
+*
+         NSIO  TYPE=UDIR,              Update directory entry      v120x
+               NCB=(R2),                                           v120x
+               TAG=(R6),               Where to place tag data     v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15                 Any errors?                 v120
+         BZ    ENUM140                                             v120
+         CLC   NCBRTNCD(2),=AL1(12,4)  Was file id not found?      v120
+         BE    ENUM900                 Yes                         v120
+         BAL   R14,FMT000              Otherwise, display error    v120
+         B     U0039                   Abend on VSAM error         v120
+*
+*-- Close the spool and then post the main NJE38 task that a "new" v120
+*-- file has arrived in the spool so it can queue it to the proper v120
+*-- link.                                                          v120
+*
+ENUM140  EQU   *                                                   v120
+         LA    R2,NCB1                 -> NCB area                 v120
+         NSIO  TYPE=CLOSE,             Close spool dataset         v120x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         DROP  R6                      TAG                         v120
+*
+         CLC   DESTNODE,LCLNODE        Did reset to local node?    v211
+         BE    ENUM160                 Y, no WRE and POST required v120
+*
+         BAL   R14,GTW000              Get WRE                     v220
+         LR    R4,R1                   -> WRE                      v120
+         USING WRE,R4                                              v120
+         MVI   WRESP,2                 Save subpool                v220
+         MVI   WRETYPE,WRENEW          "New file in spool" WRE     v120
+         MVC   WRELINK,CMDNODE         Set destination node        v211
+         MVC   WREUSER,DESTUSER        Set destination userid      v120
+*
+         SPKA  0                                                   v220
+         L     R6,CSABLK               -> CSA comm area            v211
+         USING NJ38CSA,R6                                          v120
+*
+         LM    R0,R1,NJ38SWAP          Get first WRE ptr, sync counv120
+ENUM150  EQU   *                                                   v120
+         ST    R0,WRENEXT              First WRE becomes next      v120
+         LA    R5,1(,R1)               Incr synchronization count  v120
+         CDS   R0,R4,NJ38SWAP          Update CSA WRE anchor, sync v120
+         BC    7,ENUM150               Gotta try again             v120
+*
+         LA    R7,NJ38ECB              -> NJE38 external WRE ECB   v120
+         DROP  R6                      NJ38CSA                     v120
+         DROP  R4                      WRE                         v120
+*                                      WRE will be Q'd to main taskv120
+         POST  (7)                     Post the main task WRE ECB  v120
+*
+         SPKA  X'80'                   Back to user key            v120
+*
+*-- Issue response that the file was requeued                      v120
+*
+ENUM160  EQU   *                                                   v120
+         LA    R6,TDATA                                            v120
+         USING TAG,R6                                              v120
+         LH    R1,TAGID                Get the file number         v120
+         CVD   R1,DBLE                 Convert file #              v120
+         UNPK  TWRK(4),DBLE            Add zones                   v120
+         OI    TWRK+3,X'F0'            Fix sign                    v120
+         MVC   MTEXT,BLANKS            Clear work area             v120
+         MVC   MTEXT(L'NJE029I),NJE029I Move msg                   v120
+         MVC   MTEXT+13(4),TWRK        Insert file number          v120
+         LA    R1,MTEXT+L'NJE029I      -> end of msg               v120
+         MVC   0(8,R1),DESTNODE        Move in new node name       v120
+         TRT   0(9,R1),BLANK           Look for end of node name   v120
+         MVI   0(R1),C'('                                          v120
+         MVC   1(8,R1),DESTUSER        Move in new userid          v120
+         TRT   1(9,R1),BLANK           Look for end of user name   v120
+         MVI   0(R1),C')'                                          v120
+         LA    R1,1(,R1)               Skip over paren             v120
+         LA    R0,MTEXT                -> start of msg             v120
+         SR    R1,R0                   Compute length of msg       v120
+         BAL   R14,ISSUE000            Go stack the message        v120
+         B     XITCMH00                Exit                        v120
+*
+*
+MVCNODE  MVC   DESTNODE(0),0(R4)       executed instr              v120
+MVCUSER  MVC   DESTUSER(0),0(R4)       executed instr              v120
+*
+*
+*-- ENUMxxx Error Exits                                            v120
+*
+         USING TAG,R6                                              v120
+ENUM900  EQU   *                ** Here if file not found          v120
+         LH    R1,TAGID            Get the file number             v120
+         CVD   R1,DBLE             Convert file #                  v120
+         UNPK  TWRK(4),DBLE        Add zones                       v120
+         OI    TWRK+3,X'F0'        Fix sign                        v120
+         MVC   MTEXT,BLANKS        Clear work area                 v120
+         MVC   MTEXT(L'NJE027E),NJE027E Move msg                   v120
+         MVC   MTEXT+14(4),TWRK    Insert file number              v120
+         LA    R1,L'NJE027E        Length of message               v120
+         BAL   R14,ISSUE000        Go stack the message            v120
+         B     ENUM990             Exit                            v120
+*
+ENUM910  EQU   *                ** Here if cmd fmt invalid         v120
+         MVC   MTEXT(L'NJE028E),NJE028E Move msg                   v120
+         LA    R1,L'NJE028E        Length of message               v120
+         BAL   R14,ISSUE000        Go stack the message            v120
+         B     ENUM990                                             v120
+*
+ENUM990  EQU   *                                                   v120
+         LA    R2,NCB1             -> NCB area                     v120
+         NSIO  TYPE=CLOSE,         Close spool dataset             v120x
+               NCB=(R2),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         DROP  R6                  TAG                             v120
+         B     XITCMH00            Command function completed      v120
+*
+*-- Exit command processing
+*
+*
+XITCMH00 EQU   *
+         SR    R15,R15             Set RC=0
+*
+XITCMH   EQU   *
+         L     R13,4(,R13)         -> prev s.a.
+         ST    R15,16(,R13)        Set RC
+         LM    R14,R12,12(R13)     Reload callers regs
+         BR    R14                 Return with RC
+*
+         LTORG
+*
+*-- D #### response models:
+*
+NJE026I  DC    C'NJE026I  File status for node '
+N026A  DC C'File  Origin   Origin    Dest     Dest'
+N026B  DC C' ID   Node     Userid    Node     Userid    CL  Records'
+N026C  DC C'xxxx  xxxxxxxx xxxxxxxx  xxxxxxxx xxxxxxxx  c x,xxx,xxx'
+N026D  DC C'Tagged name: '
+N026E  DC C'Attributes: '
+N026F  DC C'Origin DSN='
+*           01234567890123456789012345678901234567890123456789012345678
+*              901234567890123456789
+NJE027E  DC    C'NJE027E  File(xxxx) does not exist'  used by E ### too
+*
+*
+*-- E #### response models:
+NJE028E  DC    C'NJE028E RESET invalid; command format is RESET #,D=nodx
+               e.userid'                                           v120
+NJE029I  DC    C'NJE029I File(xxxx) requeued to ' node(user)       v120
+*
+* Example Response for flat PUNCH data
+*
+*    Attributes: 80/F/PS
+*
+* Example Response for flat PRINT data
+*
+*    Attributes: 132/F/PS
+*
+* Example Response for NETDATA, sent from a VM system (source code):
+*
+*    Attributes: 24400/80/FB/PS
+*
+* Example Response for NETDATA, sent from a MVS system (PDS LOADLIB):
+*
+*    Attributes: 6144/U/PO  DIRBLKS=5
+*    DSN=HERC01.COB.LOAD
+*
+*
+*********************
+*  N J E C M E      *               NJECME determines if NETDATA
+*                   *               exists in a spool file and
+*  Examine NETDATA  *               examines the INMR02 control
+*                   *               record for attributes.
+*********************               Entire CSECT added             v110
+*
+NJECME   CSECT
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECME'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+*
+         STM   R14,R12,12(R13)         Save Regs
+         LR    R12,R15                 Base
+         USING NJECME,R12
+         USING NJEWK,R10
+         ST    R13,CMESA+4             SAVE prv S.A. ADDR
+         LA    R1,CMESA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+*
+         LA    R0,2                    # of bytes to get
+         BAL   R14,GETBYTES            Get length and desc of segment
+*
+         TM    1(R1),X'20'             Is this a control record?
+         BZ    XITCME04                No, its not NETDATA
+*
+         SR    R0,R0
+         IC    R0,0(,R1)               Get segment length byte
+         S     R0,=F'2'                Less 2 we already retrieved
+         BAL   R14,GETBYTES            Get control record
+*
+         CLC   0(6,R1),INMR01          NETDATA?
+         BNE   XITCME04                Not NETDATA
+*
+         LA    R0,2                    # of bytes to get
+         BAL   R14,GETBYTES            Get length and desc of segment
+*
+         TM    1(R1),X'20'             Is this a control record?
+         BZ    XITCME04                No, its not NETDATA
+*
+         SR    R0,R0
+         IC    R0,0(,R1)               Get segment length byte
+         S     R0,=F'2'                Less 2 we already retrieved
+         LR    R3,R0                   Copy length of control record
+         BAL   R14,GETBYTES            Get control record
+*
+         CLC   0(6,R1),INMR02          NETDATA?
+         BNE   XITCME04                Not NETDATA
+*
+         LA    R15,10                  Len of "INMR02"+file number word
+         AR    R1,R15                  Skip over those fields
+*
+CTL000   EQU   *
+         SR    R3,R15                  Reduce remaining length
+         BNP   XITCME00                Done with control record
+*
+*-- Look for supported keys
+*
+         CLC   0(2,R1),INMUTILN        Utility name?
+         BE    UTL000                  Y
+         CLC   0(2,R1),INMSIZE         File size?
+         BE    FSZ000                  Y
+         CLC   0(2,R1),INMDSORG        DSORG?
+         BE    DSG000                  Y
+         CLC   0(2,R1),INMBLKSZ        BLKSIZE?
+         BE    BLK000                  Y
+         CLC   0(2,R1),INMLRECL        LRECL?
+         BE    LRL000                  Y
+         CLC   0(2,R1),INMRECFM        RECFM?
+         BE    RFM000                  Y
+         CLC   0(2,R1),INMFFM          File mode number?
+         BE    FFM000                  Y
+         CLC   0(2,R1),INMDIR          # directory blocks?
+         BE    DIR000                  Y
+         CLC   0(2,R1),INMDSNAM        DSNAME?
+         BE    DSN000                  Y
+*
+*-- Skip over unsupported/unrecognized keys
+*
+         LA    R1,2(,R1)               Skip over unrecognized key
+         LA    R15,2                   Remaining length adjust
+         SR    R0,R0                   Clear for IC
+         ICM   R0,3,0(R1)              Get # value
+         LA    R1,2(,R1)               Skip over # value
+         LA    R15,2(,R15)             Remaining length adjust
+         BZ    CTL000                  # was 0; no lengths
+         SR    R14,R14                 Clear for ICM
+*
+CTL020   EQU   *
+         ICM   R14,3,0(R1)             Get length field
+         LA    R1,2(R14,R1)            Skip over length and data
+         LA    R15,2(R14,R15)          Remaining length adjust
+         BCT   R0,CTL020               Do next len/data field pair
+         B     CTL000                  Resume
+*
+*-- Handle keys we support
+*
+*- Utility name
+UTL000   EQU   *                       Get utility name
+         MVC   UTLNAME,BLANKS          Init receiving field
+         LA    R6,UTLNAME              -> receiving field
+         B     KEY000                  Go handle the key
+*
+*- File size
+FSZ000   EQU   *                       File size
+         MVC   FSIZELEN,4(R1)          Save length of file size value
+         LA    R6,FILESIZE             -> receiving field
+         B     KEY000                  Go handle the key
+*
+*- DSORG
+DSG000   EQU   *                       DSORG
+         LA    R6,DSORG                -> receiving field
+         B     KEY000                  Go handle the key
+*- BLKSIZE
+BLK000   EQU   *                       BLKSIZE
+         LA    R6,BLKSIZE              -> receiving field
+         B     KEY000                  Go handle the key
+*
+*- LRECL
+LRL000   EQU   *                       LRECL
+         LA    R6,LRECL                -> receiving field
+         B     KEY000                  Go handle the key
+*
+*- RECFM
+RFM000   EQU   *                       RECFM
+         LA    R6,RECFM                -> receiving field
+         B     KEY000                  Go handle the key
+*
+*- # directory blocks
+DIR000   EQU   *                       File size
+         MVC   DIRBLKLN,4(R1)          Save length of dirblk siz value
+         LA    R6,DIRBLKS              -> receiving field
+         B     KEY000                  Go handle the key
+*
+*- FFM
+FFM000   EQU   *                       File mode number
+         LA    R6,FFM                  -> receiving field
+         B     KEY000                  Go handle the key
+*
+*- DSNAME
+DSN000   EQU   *                       DSNAME
+         MVC   DSNAME,BLANKS           Init receiving field
+         LA    R6,DSNAME               -> receiving field
+         LA    R1,2(,R1)               Skip over key
+         LA    R15,2                   Remaining length adjust
+         SR    R0,R0                   Clear for IC
+         ICM   R0,3,0(R1)              Get # value
+         LA    R1,2(,R1)               Skip over # value
+         LA    R15,2(,R15)             Remaining length adjust
+         BZ    CTL000                  # was 0; no lengths
+         SR    R14,R14                 Clear for ICM
+*
+DSN020   EQU   *
+         ICM   R14,3,0(R1)             Get length field
+         BCT   R14,DSN030              Adjust for execute
+         MVC   0(0,R6),2(R1)           executed instr
+DSN030   EX    R14,*-6                 Move name to receiving field
+         LA    R1,3(R14,R1)            Skip over length and data
+         LA    R15,3(R14,R15)          Remaining length adjust
+         LA    R6,1(R14,R6)            Bump to next qualifier area
+         MVI   0(R6),C'.'              Add qualifier dot
+         LA    R6,1(,R6)               -> next qualifier area
+         BCT   R0,DSN020               Do next len/data field pair
+         BCTR  R6,0                    -> last byte of DSNAME
+         MVI   0(R6),C' '              Remove trailing dot
+         BCTR  R6,0                    -> prior to trailing '.'
+         LA    R0,DSNAME               -> start of DSNAME
+         SR    R6,R0                   Compute DSN length
+         STH   R6,DSNAMELN             Save it
+         B     CTL000                  get next key
+*
+*-- Common routine to break part key/#/len/data elements that have #=1
+*
+KEY000   EQU   *
+         LA    R1,4(,R1)               Skip over key, #
+         LA    R15,4                   Remaining length accum
+         SR    R5,R5                   Clear for IC
+         ICM   R5,3,0(R1)              Get length of name
+         BCT   R5,KEY010               Adjust for execute
+         MVC   0(0,R6),2(R1)           executed instr
+KEY010   EX    R5,*-6                  Move name to receiving field
+         LA    R1,3(R5,R1)             -> next text unit key
+         LA    R15,3(R5,R15)           Accum length adjustment
+         B     CTL000                  Get next key
+*
+*
+*
+GETBYTES EQU   *
+         ST    R14,SV14GB              Save return addr
+         L     R5,GBREM                Get # bytes remaining in rec buf
+         LA    R1,BUFF                 Point to getbytes buffer
+         ST    R1,GBPOS                Set starting position
+         LR    R8,R0                   Requested amount to R8
+*
+*
+GB010    EQU   *
+         LTR   R5,R5                   Any bytes left in phy record?
+         BP    GB040                   Yes, use them first
+*
+         LA    R2,NCB1                 -> active NCB for spool file
+         NSIO  TYPE=GET,               TAG data contains file #        x
+               NCB=(R2),               Get a spool file record         x
+               AREA=REC,               -> where to place record        x
+               EODAD=XITCME04,         if EOF, NETDATA isnt valid  v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15                 Any errors?
+         BZ    GB020                   No
+         BAL   R14,FMT000              Display error
+         B     U0039                   And abend
+*
+GB020    EQU   *
+         LA    R5,80                   Num bytes read
+         LA    R1,REC                  -> input buffer
+*
+GB030    EQU   *
+         ST    R1,GBRPS                Reset start of record position
+*
+GB040    EQU   *
+         LR    R7,R8                   Assume requested amt avail
+         LR    R15,R8                  Same
+*
+         CR    R5,R8                   Have more than we need?
+         BH    GB050                   Yes, just move requested
+         LR    R7,R5                   Else move entire rec
+         LR    R15,R5                  Same
+*
+GB050    EQU   *
+         LR    R0,R7                   Save copy of length to move
+         L     R14,GBPOS               -> GB buffer position
+         L     R6,GBRPS                -> input record curr position
+         MVCL  R14,R6                  Move
+*
+         ST    R14,GBPOS               New GB position
+         ST    R6,GBRPS                New phys record curr position
+*
+         SR    R5,R0                   Reduce bytes left in phy record
+         SR    R8,R0                   Reduce requested amt
+         BP    GB010                   We need more, go get it
+*
+         ST    R5,GBREM                Remember whats left in phy rec
+*
+         LA    R1,BUFF                 Point to the requested bytes
+         L     R14,SV14GB              Load  return addr
+         BR    R14                     Return from getbytes
+*
+         LTORG
+*
+INMR01   DC    C'INMR01'               Control record
+INMR02   DC    C'INMR02'               Control record
+*
+*- Keys
+INMUTILN DC    X'1028'                 Utility name
+INMSIZE  DC    X'102C'                 File size in bytes
+INMDSORG DC    X'003C'                 DSORG
+INMLRECL DC    X'0042'                 LRECL
+INMBLKSZ DC    X'0030'                 BLKSIZE
+INMRECFM DC    X'0049'                 RECFM
+INMDSNAM DC    X'0002'                 DSNAME
+INMDIR   DC    X'000C'                 # directory blocks
+INMFFM   DC    X'102D'                 File mode number
+*
+*
+*
+*-- Exit NETDATA examination processing
+*
+*
+XITCME00 EQU   *
+         SR    R15,R15             Set RC=0; NETDATA info filled
+         B     XITCME
+*
+XITCME04 EQU   *
+         LA    R15,4               Set RC=4; File contains no NETDATA
+*
+XITCME   EQU   *
+         L     R13,4(,R13)         -> prev s.a.
+         ST    R15,16(,R13)        Set RC
+         LM    R14,R12,12(R13)     Reload callers regs
+         BR    R14                 Return with RC
+*
+         LTORG
+*
+*
+*
+*
+*
+ACTLINE  DSECT                     Display Active line format
+REGION   DS    CL4' '
+         DS    CL2' '
+JOBNAME  DS    CL8' '
+         DS    CL2' '
+STEPNAME DS    CL8' '
+ACTLINSZ EQU   *-ACTLINE
+*
+****  Main work area common
+****  to all NJExxx CSECTs.
+*
+NJEWK    DSECT
+NJEEYE   DS    CL4'NJEW'           Eyecatcher
+NJEWKLEN DS    F                   Getmain size of this area
+*
+DBLE     DS    D                   Work area
+TWRK     DS    2D                  Work area
+*
+         NJEPARMS                  Passed parameter list           v220
+*
+*
+RESPNODE DS    CL8                 Respond to node
+RESPID   DS    CL8                 Respond to userid
+COMMAND  DS    CL8                 Command (START, DRAIN, etc).
+CMDNODE  DS    CL8                 Link id name target of command/msg
+CMDUID   DS    CL8                 User id name target of msg
+DESTNODE DS    CL8                 destination node                v120
+DESTUSER DS    CL8                 destination userid              v120
+*
+SV14     DS    A                   R14 save area
+SVR14R   DS    A                   R14 save area                   v220
+SVR14I   DS    A                   R14 save area                   v220
+SV23     DS    2A                  R2,R3 save area
+NCB1     DS    XL48                NCB
+MTEXT    DS    CL120               Message text work area
+MWORK    DS    CL120               Message text work area
+WTOMSG   DS    CL132
+CMDAREA  DS    CL120               Copy of CMDTEXT
+*
+TYPPRT   EQU   X'40'                PRT dev                        v110
+TYPPUN   EQU   X'80'                PUN dev                        v110
+TDATA    DS    0XL108              Tag data area
+BLNKDASH DS    0CL256              Special TRT area
+ASIDTAB  DS    24CL24              Space for D ACT 24 regions info
+*
+TARGET   DS    X                   Code for who gets the cmd response
+TGTUSER  EQU   0                    remote user
+TGTCONS  EQU   4                    MVS system console
+*
+NJFL1    DS    X                   Flag bits
+NJF1MULT EQU   X'80'   1... ....    Multi-file cancel command
+NJF1CNCL EQU   X'40'   .1.. ....    A file was deleted by command
+NJF1DATH EQU   X'20'   ..1. ....    At least 1 AUTH user displayed
+NJF1NYET EQU   X'10'   ...1 ....    No usable NETDATA found in filev110
+NJF1VSER EQU   X'02'   .... ..1.    NETSPOOL VSAM error occurred
+NJF1AUTH EQU   X'01'   .... ...1    CMD issuer is cmd authorized
+*
+*
+SV14GB   DS    A                      R14 save area                v110
+GBREM    DC    F'0'                   # bytes remaining in phys recv110
+GBPOS    DS    A                      -> cur position in BUFF      v110
+GBRPS    DS    A                      -> cur position in phys rec  v110
+*                                                                  v110
+UTLNAME  DS    CL8                    Utility name                 v110
+FILESIZE DS    2F                     File size in bytes           v110
+DIRBLKS  DS    2F                     #directory blocks            v110
+BLKSIZE  DS    F                      BLKSIZE                      v110
+LRECL    DS    F                      LRECL                        v110
+RECFM    DS    XL2                    RECFM                        v110
+DSORG    DS    XL2                    DSORG                        v110
+FFM      DS    C                      File mode number             v110
+         DS    X                      available                    v110
+DIRBLKLN DS    H                      Length of dir blks value     v110
+FSIZELEN DS    H                      Length of file size value    v110
+DSNAMELN DS    H                      Length of DSNAME             v110
+DSNAME   DS    CL44                   DSNAME                       v110
+*
+REC      DS    CL80                   Physical record              v110
+TRTAB    DS    0CL256                 Translate table              v120
+BUFF     DS    CL256                  GB buffer containing key datav110
+*
+NJESA    DS    18F                     NJECMX OS save area
+CMCSA    DS    18F                     NJECMC OS save area         v110
+CMGSA    DS    18F                     NJECMG OS save area         v110
+CMHSA    DS    18F                     NJECMH OS save area         v110
+CMESA    DS    18F                     NJECME OS save area         v110
+BALRSAVE DS    16F                     Local rtns register save
+*
+         DS    0D                      Force doubleword size
+NJEWKSZ  EQU   *-NJEWK
+*
+*
+*-- System DSECTs
+*
+         CVT   DSECT=YES,PREFIX=NO
+         IHAASVT
+         IHAASCB
+*
+CSCB     DSECT
+         IEECHAIN                      MAP FOR A CSCB
+         IEESMCA
+         IEFZB4D0
+         IEFZB4D2
+         DCBD  DSORG=PS,DEVD=DA
+*
+         COPY  LINKTABL
+         COPY  RTE
+         COPY  AUTHLIST
+         COPY  TAG
+         COPY  NETSPOOL
+*
+*-- NJE38 DSECTs
+*
+         NJEWRE                                                    v220
+         NJERUSER                                                  v220
+         NJETRACE TYPE=DSECT                                       v220
+*
+         END   NJECMX
+*

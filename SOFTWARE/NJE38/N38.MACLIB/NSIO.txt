@@ -1,0 +1,170 @@
+         MACRO                                                          MAC00010
+&L       NSIO  &TYPE=,                                                 XMAC00020
+               &NCB=NCB,                                               XMAC00030
+               &TAG=,                                                  XMAC00040
+               &EODAD=,                                                XMAC00050
+               &AREALEN=,                                              XMAC00060
+               &AREA=,                                                 XMAC00070
+               &RECLEN=,                                           v210XMAC00080
+               &ENTRY=                                             v210 MAC00080
+.*
+.* Change log:
+.*
+.* 10 AUG 20 - Add alternate entry point via ENTRY=                v210
+.* 21 May 20 - Add update directory entry functionality            v120
+.*
+.*                                                                      MAC00100
+         LCLA  &OFFREQ                                                  MAC00110
+         LCLA  &OFFTAG                                                  MAC00120
+         LCLA  &OFFEOD                                                  MAC00130
+         LCLA  &OFFARL                                                  MAC00140
+         LCLA  &OFFARA                                                  MAC00150
+         LCLA  &OFFRCL                                                  MAC00160
+         LCLA  &NSIZE                                                   MAC00180
+         LCLA  &REQ                                                     MAC00190
+         LCLC  &W                                                       MAC00200
+.*                                                                      MAC00210
+.* Offsets within NCB block                                             MAC00220
+&OFFREQ  SETA  9                       Offset of NCBREQ                 MAC00230
+&OFFTAG  SETA  16                      Offset of NCBTAG                 MAC00240
+&OFFEOD  SETA  20                      Offset of NCBEODAD               MAC00250
+&OFFARL  SETA  24                      Offset of NCBAREAL               MAC00260
+&OFFARA  SETA  28                      Offset of NCBAREA                MAC00270
+&OFFRCL  SETA  32                      Offset of NCBRECLN               MAC00280
+*                                                                       MAC00300
+.* Assembled size of NCB DSECT                                          MAC00310
+&NSIZE   SETA  48                      Size of an NCB                   MAC00320
+.*                                                                      MAC00330
+         AIF   (T'&NCB NE 'O').NCB1                                     MAC00340
+         MNOTE 8,'NCB= PARAMETER REQUIRED'                              MAC00350
+         AGO   .TYPE                                                    MAC00360
+.*                                                                      MAC00370
+.NCB1    ANOP                                                           MAC00380
+         AIF   ('&NCB'(1,1) EQ '(').NCB1R                               MAC00390
+&L       LA    1,&NCB                  -> NCB                           MAC00400
+         AGO   .TYPE                                                    MAC00410
+.NCB1R   ANOP                                                           MAC00420
+&W       SETC  '&NCB'(2,K'&NCB-2)                                       MAC00430
+&L       LR    1,&W                    -> NCB                           MAC00440
+.*                                                                      MAC00450
+.ISTYPE  ANOP                                                           MAC00460
+         AIF   (T'&TYPE NE 'O').TYPE                                    MAC00470
+         MNOTE 8,'TYPE= PARAMETER REQUIRED'                             MAC00480
+         MEXIT                                                          MAC00490
+.*                                                                      MAC00500
+.TYPE    ANOP                                                           MAC00510
+         AIF   ('&TYPE' EQ 'OPEN').OPEN                                 MAC00520
+         AIF   ('&TYPE' EQ 'CLOSE').CLOSE                               MAC00530
+         AIF   ('&TYPE' EQ 'PUT').PUT                                   MAC00540
+         AIF   ('&TYPE' EQ 'GET').GET                                   MAC00550
+         AIF   ('&TYPE' EQ 'PURGE').PURGE                               MAC00560
+         AIF   ('&TYPE' EQ 'FIND').FIND                                 MAC00570
+         AIF   ('&TYPE' EQ 'CONTENTS').CONTENT                          MAC00580
+         AIF   ('&TYPE' EQ 'UDIR').UDIR                            v120 MAC00570
+         MNOTE 8,'TYPE=&TYPE IS NOT A VALID FUNCTION TYPE'              MAC00590
+         MEXIT                                                          MAC00600
+.*                                                                      MAC00610
+.OPEN    ANOP                                                           MAC00620
+&REQ     SETA  1                                                        MAC00630
+         XC    0(&NSIZE,1),0(1)        Initialize NCB                   MAC00640
+         MVC   0(4,1),=CL4'NCB'        Set NCB identifier               MAC00650
+         AGO   .SETREQ                                                  MAC00660
+.*                                                                      MAC00670
+.CLOSE   ANOP                                                           MAC00680
+&REQ     SETA  2                                                        MAC00690
+         AGO   .SETREQ                                                  MAC00700
+.*                                                                      MAC00710
+.PUT     ANOP                                                           MAC00720
+&REQ     SETA  3                                                        MAC00730
+         AGO   .SETREQ                                                  MAC00740
+.*                                                                      MAC00750
+.GET     ANOP                                                           MAC00760
+&REQ     SETA  4                                                        MAC00770
+         AGO   .SETREQ                                                  MAC00780
+.*                                                                      MAC00790
+.PURGE   ANOP                                                           MAC00800
+&REQ     SETA  5                                                        MAC00810
+         AGO   .SETREQ                                                  MAC00820
+.*                                                                      MAC00830
+.FIND    ANOP                                                           MAC00840
+&REQ     SETA  6                                                        MAC00850
+         AGO   .SETREQ                                                  MAC00860
+.*                                                                      MAC00870
+.CONTENT ANOP                                                           MAC00880
+&REQ     SETA  7                                                        MAC00890
+         AGO   .SETREQ                                             v120 MAC00860
+.*                                                                      MAC00830
+.UDIR    ANOP                                                      v120 MAC00840
+&REQ     SETA  8                                                   v120 MAC00850
+.*                                                                      MAC00900
+.SETREQ  ANOP                                                           MAC00910
+         MVI   &OFFREQ.(1),&REQ        Set NCBREQ type                  MAC00920
+.*                                                                      MAC00930
+.TAG     ANOP                                                           MAC00940
+         AIF   (T'&TAG EQ 'O').EODAD                                    MAC00950
+         AIF   ('&TAG'(1,1) EQ '(').TAG1R                               MAC00960
+         LA    0,&TAG                  -> TAG data                      MAC00970
+         ST    0,&OFFTAG.(,1)          Store in NCB                     MAC00980
+         AGO   .EODAD                                                   MAC00990
+.TAG1R   ANOP                                                           MAC01000
+&W       SETC  '&TAG'(2,K'&TAG-2)                                       MAC01010
+         ST    &W,&OFFTAG.(,1)         Store tag ptr in NCB             MAC01020
+.*                                                                      MAC01030
+.EODAD   ANOP                                                           MAC01040
+         AIF   (T'&EODAD EQ 'O').AREALEN                                MAC01050
+         AIF   ('&EODAD'(1,1) EQ '(').EODAD1R                           MAC01060
+         LA    0,&EODAD                -> End of data routine           MAC01070
+         ST    0,&OFFEOD.(,1)          Store in NCB                     MAC01080
+         AGO   .AREALEN                                                 MAC01090
+.EODAD1R ANOP                                                           MAC01100
+&W       SETC  '&EODAD'(2,K'&EODAD-2)                                   MAC01110
+         ST    &W,&OFFEOD.(,1)         Set EODAD address in NCB         MAC01120
+.*                                                                      MAC01130
+.AREALEN ANOP                                                           MAC01140
+         AIF   (T'&AREALEN EQ 'O').AREA                                 MAC01150
+         AIF   ('&AREALEN'(1,1) EQ '(').AREAL1R                         MAC01160
+         MVC   &OFFARL.(4,1),=A(&AREALEN) Set area length value in NCB  MAC01170
+         AGO   .AREA                                                    MAC01180
+.AREAL1R ANOP                                                           MAC01190
+&W       SETC  '&AREALEN'(2,K'&AREALEN-2)                               MAC01200
+         ST    &W,&OFFARL.(,1)         Set area length in NCB           MAC01210
+.*                                                                      MAC01220
+.AREA    ANOP                                                           MAC01230
+         AIF   (T'&AREA EQ 'O').RECLEN                                  MAC01240
+         AIF   ('&AREA'(1,1) EQ '(').AREA1R                             MAC01250
+         LA    0,&AREA                 -> Record buffer area            MAC01260
+         ST    0,&OFFARA.(,1)          Store in NCB                     MAC01270
+         AGO   .RECLEN                                                  MAC01280
+.AREA1R  ANOP                                                           MAC01290
+&W       SETC  '&AREA'(2,K'&AREA-2)                                     MAC01300
+         ST    &W,&OFFARA.(,1)         Set area address in NCB          MAC01310
+.*                                                                      MAC01320
+.RECLEN  ANOP                                                           MAC01330
+         AIF   (T'&RECLEN EQ 'O').ENTRY                            v210 MAC01340
+         AIF   ('&RECLEN'(1,1) EQ '(').REC1R                            MAC01350
+         MVC   &OFFRCL.(2,1),=Y(&RECLEN) Set record length in NCB       MAC01360
+         AGO   .ENTRY                                              v210 MAC01370
+.REC1R   ANOP                                                           MAC01380
+&W       SETC  '&RECLEN'(2,K'&RECLEN-2)                                 MAC01390
+         STH   &W,&OFFRCL.(,1)         Set record length in NCB         MAC01400
+.*                                                                      MAC01500
+.ENTRY   ANOP                                                           MAC01510
+         AIF   (T'&ENTRY EQ 'O').VCON                              v210
+         AIF   ('&ENTRY'(1,1) EQ '(').ENT1R                        v210 MAC01350
+         L     15,&ENTRY               Load NJESPOOL entry addr    v210
+         AGO   .LAUNCH                                             v210
+.*                                                                      MAC01500
+.ENT1R   ANOP                                                      v210 MAC01510
+&W       SETC  '&ENTRY'(2,K'&ENTRY-2)                              v210 MAC01390
+         AIF   ('&W' EQ '15').LAUNCH                               v210 MAC01350
+         LR    15,&W                   Entry addr to R15           v210 MAC01400
+         AGO   .LAUNCH                                             v210
+.*
+.VCON    ANOP                                                      v210
+         L     15,=V(NJESPOOL)
+.*
+.LAUNCH  ANOP                                                      v210
+         BALR  14,15
+.*
+.MEND    ANOP                                                      v210 MAC01510
+         MEND                                                           MAC01520

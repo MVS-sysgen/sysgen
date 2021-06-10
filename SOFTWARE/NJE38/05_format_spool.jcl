@@ -1,0 +1,58 @@
+//NJE38FIN JOB (TSO),
+//             'Assemble NJE38',
+//             CLASS=A,
+//             MSGCLASS=A,
+//             MSGLEVEL=(1,1),
+//             USER=IBMUSER,
+//             PASSWORD=SYS1
+//*
+//* FORMAT THE NJE38 NETSPOOL DATASET
+//*
+//* VERIFY THE NJE38 AUTHLIB AND NETSPOOL DATASET NAMES.
+//*
+//*
+//FMT      EXEC PGM=NJEFMT
+//STEPLIB  DD DISP=SHR,DSN=SYSGEN.NJE38.AUTHLIB
+//SYSPRINT DD SYSOUT=*
+//SYSUDUMP DD SYSOUT=*
+//NETSPOOL DD DISP=OLD,DSN=SYSGEN.NJE38.NETSPOOL
+//*
+//* CREATE THE NJE38 CONFIGURATION PDS AND LOAD THE EXAMPLE
+//* CONFIGURATION MEMBER.
+//*
+//NJECFG   PROC CONFIG='SYSGEN.NJE38.CONFIG'
+//*
+//COPY     EXEC PGM=IEBGENER
+//SYSPRINT DD SYSOUT=*
+//SYSIN    DD DUMMY
+//SYSUT1   DD *
+*
+* NJE38 EXAMPLE CONFIGURATION FILE
+*
+*-- Local parameters
+*
+LOCAL MVSA     DEFUSER IBMUSER
+*
+*-- Physical links to remote nodes
+*
+LINK  MVSB     LINE 090   AUTO YES   BUFF 1012
+*
+*-- Routes to indirect nodes
+*
+*ROUTE nodeid   TO linkid
+*
+*
+*-- Authorized users
+*
+*     Userid   AT Node
+*     -------- -- --------
+AUTH  HMVS01   AT MVSA
+AUTH  HMVS01   AT MVSB
+*
+//SYSUT2   DD DSN=&CONFIG(CONFIG00),DISP=(NEW,CATLG),
+//            DCB=(BLKSIZE=3120,LRECL=80,RECFM=FB,DSORG=PO),
+//            UNIT=SYSDA,SPACE=(3120,(10,5,5))
+//         PEND
+//*
+//RUN      EXEC NJECFG
+//*

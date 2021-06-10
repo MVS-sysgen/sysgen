@@ -1,0 +1,555 @@
+*
+*
+*-- NJE38 - TSO Command Module
+*
+*
+*   This program is invoked by TSO users wishing to enter commands
+*   or messages to NJE38 or remote nodes.
+*
+*   This module must reside in SYS1.CMDLIB or equivalent and be
+*   available to TSO
+*
+*
+* Change log:
+*
+* 10 Dec 20 - Support for registered users and message queuing     v220
+* 01 Oct 20 - Put ENQ existence check in common module             v210
+* 10 Jul 20 - Switch to PUTLINE to support batch mode              v200
+* 10 Jul 20 - Use default config userid if running batch + no ACEE v200
+* 02 Jun 20 - Get TSO userid from TIOT if there is no ACEE.        v130
+*
+*
+         REGEQU
+NJE38    CSECT
+         NJEVER
+         STM   R14,R12,12(R13)         SAVE CMS REGS
+         LR    R12,R15                 BASE
+         USING NJE38,R12               ADDRESS IT
+*
+         LR    R8,R1                   Save entry parms            v200
+*
+         GETMAIN RU,                   GET LOCAL STG AREA              X
+               LV=NJEXSZ
+         LR    R10,R1
+         LR    R1,R0                   COPY LENGTH
+         LR    R2,R0                   COPY LENGTH
+         LR    R0,R10                  -> NEW STG AREA
+         SR    R15,R15                 SET PAD
+         MVCL  R0,R14                  CLEAR THE PAGE
+*
+         USING NJEXWK,R10
+         ST    R13,NJESA+4             SAVE PRV S.A. ADDR
+         LA    R1,NJESA                -> MY SAVE AREA
+         ST    R1,8(,R13)              PLUG IT INTO PRIOR SA
+         LR    R13,R1
+         ST    R8,CPARMS               Save entry parms
+*
+INIT000  EQU   *
+         MVC   NJEEYE,=CL4'NJEX'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area
+         MVI   MTEXT,C' '              Init cmd buffer receiving field
+         MVC   MTEXT+1(255),MTEXT      Pad it
+*
+         TESTAUTH FCTN=1               Are we authorized on entry?
+         LTR   R15,R15                 Check result
+         BNZ   INIT010                 Branch if not authorized
+         OI    FLAGS1,FLG1APF          Indicate authorized on entry
+*
+INIT010  EQU   *
+         L     R2,PSATOLD-PSA(0)       -> my TCB                   v130
+         L     R2,TCBTIO-TCB(R2)       -> my TIOT                  v130
+         LA    R4,TIOCNJOB-IEFTIOT(R2) -> TIOT jobname             v220
+*
+         L     R2,PSAAOLD-PSA(0)       -> my ASCB
+         L     R6,ASCBTSB-ASCB(,R2)    -> TSB (or 0)               v200
+         L     R2,ASCBASXB-ASCB(,R2)   -> my ASXB
+         ICM   R2,15,ASXBSENV-ASXB(R2) -> my ACEE                  v130
+         BZ    INIT015                 Exit if no ACEE             v130
+*
+         USING ACEE,R2                                             v130
+         CLI   ACEEUSRL,X'00'          No userid available?        v130
+         BE    INIT015                 Exit if unavail             v130
+         CLI   ACEEUSR,X'00'           Userid not formed correctly?v130
+         BE    INIT015                 Exit if unavail             v130
+         LA    R3,ACEEUSR              -> Userid                   v130
+         OI    FLAGS1,FLG1ACEE         Indicate security enabled   v200
+         CLC   ACEEUSR,=CL8'STC'       Is this a started task?     v220
+         BNE   INIT015                 No, use ACEEUSR id          v220
+         LR    R3,R4                   Make the TIOT jobname the idv220
+         DROP  R2                      ACEE                        v130
+*
+INIT015  EQU   *                                                   v130
+         MVC   USERID,0(R3)            Respond to userid for commands
+         MVC   ORIGID,0(R3)            Origin id of this WRE
+         CLC   USERID,=CL8'HERC01'     Special access id?
+         BE    INIT020                 Yes
+         CLC   USERID,=CL8'HERC02'     Special access id?
+         BNE   INIT030                 No
+*
+INIT020  EQU   *
+         OI    FLAGS1,FLG1AUSR         Indicate special authorized usrs
+         B     INIT040
+*
+INIT030  EQU   *
+         TM    FLAGS1,FLG1APF          Authorized at entry?
+         BZ    ERR006
+*
+INIT040  EQU   *
+         BAL   R2,CHK000               See if NJE38 is active      v210
+         BNZ   ERR001                  No                          v210
+         ST    R1,CSABLK               Save CSABLK addr            v210
+         MVC   LCLNODE,NJ38NODE-NJ38CSA(R1)  Save off lcl node namev210
+         MVC   DEFUSER,NJ38DUSR-NJ38CSA(R1)  Save off default id   v210
+*
+         LA    R6,0(,R6)               Clear high order byte       v200
+         LTR   R6,R6                   Was there a TSB address?    v200
+         BNZ   PARM000                 Yes. Running in TSO userid  v200
+         TM    FLAGS1,FLG1ACEE         Valid ACEE found?           v200
+         BO    PARM000                 Yes, userid already set     v200
+         MVC   USERID,DEFUSER          No, Use default userid      v200
+         MVC   ORIGID,DEFUSER          Origin id of this WRE       v200
+*
+PARM000  EQU   *
+         L     R8,CPARMS               -> entry parms              v200
+         L     R8,0(,R8)               -> command buffer           v200
+         LH    R1,0(,R8)               Get length of cmd buffer
+         LH    R2,2(,R8)               Get offset to params
+         SR    R1,R2                   Less offset
+         C     R1,=F'5'                Determine if no params entered
+         BL    ERR002                  None were entered
+*
+         S     R1,=F'4'                Adjust for len overhead
+         C     R1,=F'120'              Over max size allowed?
+         BL    *+8                     No
+         LA    R1,120                  Force to len 120
+*
+         LA    R2,4(R2,R8)             -> first parameter byte
+         BCTR  R1,0                    Adjust for execute
+         EX    R1,MVPRM                Move it to our buffer
+         LA    R5,MTEXT+1(R1)          -> end of cmd buffer
+*
+         TRT   MTEXT,NONBLANK          Look for first char
+         BZ    ERR003                  Invalid command format
+         LR    R3,R1                   -> first char
+         TRT   0(120,R3),BLANK         Look for end of 1st param
+         BZ    ERR003                  Invalid
+         LR    R4,R1                   Copy -> to the blank
+*
+         SR    R1,R3                   Compute 1st parm length
+         BNP   ERR003                  Invalid command format
+         C     R1,=F'8'                More than 8 char?
+         BH    ERR003                  Invalid command format
+         MVC   KEYWD,BLANKS            Init receiving field
+         BCTR  R1,0                    Adjust for execute
+         EX    R1,MVKEY                Save off and upprcase param
+*
+         MVI   REQTYPE,WRECMD          Assume this is a command request
+         MVI   REQCODE,X'B0'           Assume this is a command request
+         CLC   KEYWD,=CL8'CMD'         is this the CMD command?
+         BE    PARM100                 Y, additional parsing needed
+*
+         CLC   KEYWD,=CL8'MSG'         is this the MSG command?
+         BE    PARM200                 Y, additional parsing needed
+         CLC   KEYWD,=CL8'M'           is this the MSG command?
+         BE    PARM200                 Y, additional parsing needed
+*
+*-- Here if command is for the local node
+*
+         MVC   NODEID,LCLNODE          Use local node id
+*
+PARM020  EQU   *
+         LR    R4,R3                   -> start of cmd txt
+         SR    R5,R4                   Compute len of cmd text portion
+         B     SND000
+*
+*-- Here if a specific node name specified
+*
+PARM100  EQU   *
+         TRT   0(120,R4),NONBLANK      Look for first char of nodeid
+         BZ    ERR004                  Invalid nodeid
+         LR    R3,R1                   -> first char
+         TRT   0(120,R3),BLANK         Look for end of param
+         BZ    ERR004                  Invalid
+         LR    R4,R1                   Copy -> to the blank
+*
+         SR    R1,R3                   Compute parm length
+         BNP   ERR004                  Invalid command format
+         C     R1,=F'8'                More than 8 char?
+         BH    ERR004                  Invalid command format
+         MVC   NODEID,BLANKS           Init receiving field
+         BCTR  R1,0                    Adjust for execute
+         EX    R1,MVNOD                Save off and upprcase node id
+*
+         TRT   0(120,R4),NONBLANK      Look for first char of next
+         BZ    ERR003                  Something wrong with command txt
+         LR    R4,R1                   -> start of remaining cmd txt
+         SR    R5,R4                   Compute len of cmd text portion
+         B     SND000
+*
+*-- Here for msg processing
+*
+PARM200  EQU   *
+         TRT   0(120,R4),NONBLANK      Look for first char of nodeid
+         BZ    ERR004                  Invalid nodeid
+         LR    R3,R1                   -> first char
+         TRT   0(120,R3),BLANK         Look for end of param
+         BZ    ERR004                  Invalid
+         LR    R4,R1                   Copy -> to the blank
+*
+         SR    R1,R3                   Compute parm length
+         BNP   ERR004                  Invalid command format
+         C     R1,=F'8'                More than 8 char?
+         BH    ERR004                  Invalid command format
+         MVC   NODEID,BLANKS           Init receiving field
+         BCTR  R1,0                    Adjust for execute
+         EX    R1,MVNOD                Save off and upprcase node id
+*
+         TRT   0(120,R4),NONBLANK      Look for first char of userid
+         BZ    ERR005                  Invalid userid
+         LR    R3,R1                   -> first char
+         TRT   0(120,R3),BLANK         Look for end of param
+         BZ    ERR005                  Invalid
+         LR    R4,R1                   Copy -> to the blank
+*
+         SR    R1,R3                   Compute parm length
+         BNP   ERR005                  Invalid command format
+         C     R1,=F'8'                More than 8 char?
+         BH    ERR005                  Invalid command format
+         MVC   USERID,BLANKS           Init receiving field
+         BCTR  R1,0                    Adjust for execute
+         EX    R1,MVUSR                Save off and upprcase user id
+*
+         TRT   0(120,R4),NONBLANK      Look for first char of next
+         BZ    ERR003                  Something wrong with command txt
+         LR    R4,R1                   -> start of remaining cmd txt
+         SR    R5,R4                   Compute len of cmd text portion
+*
+         CLC   NODEID,=CL8'*'          Sending msg to local user?
+         BE    PARM210                 Yes
+         CLC   NODEID,LCLNODE          Sending msg to local user?
+         BNE   PARM220                 No
+*
+PARM210  EQU   *
+         LA    R15,USERID              ->
+         BAL   R14,USR800              Check if user logged on
+*        BZ    ERR007                  He isnt; skip sending msg
+   BC    0,ERR007  SPECIAL
+*
+PARM220  EQU   *
+         MVI   REQTYPE,WREMSG          This is a message WRE
+         MVI   REQCODE,X'B1'           This is a message request
+         B     SND000
+*
+MVPRM    MVC   MTEXT(0),0(R2)
+MVKEY    OC    KEYWD(0),0(R3)
+MVNOD    OC    NODEID(0),0(R3)
+MVUSR    OC    USERID(0),0(R3)
+*
+SND000   EQU   *
+         CLC   NODEID,=CL8'*'          Using * for node name?
+         BNE   SND010                  No
+         MVC   NODEID,LCLNODE          Yes, use local node name
+*
+SND010   EQU   *
+         TM    FLAGS1,FLG1APF          Authorized at entry?
+         BO    SND020                  Y, Don't need Auth SVC
+         SR    0,0                     Use authorization SVC
+         LA    1,1                      For HERC01/HERC02 only
+         SVC   244                     Get authorized
+*
+SND020   EQU   *
+         MODESET KEY=ZERO,MODE=SUP
+*
+         GETMAIN RU,LV=WRESIZE,SP=241                              v220
+         LR    R8,R1               -> WRE
+         USING WRE,R8
+         XC    0(WRESIZE,R8),0(R8)                                 v220
+         MVI   WRESP,241           Set subpool                     v220
+         MVC   WRECODE,REQCODE     Set type of request to NJE hdrs
+         MVC   WRETYPE,REQTYPE     CMD or MSG
+         MVC   WRELINK,NODEID      Set target node to send CMD/MSG to
+         MVC   WREUSER,USERID      CMD: Set userid to recv response
+*                                  MSG: Set userid to send msg to
+         MVC   WREORIG,ORIGID      MSG: Set userid to receive response
+*
+         MVC   WRETXT,BLANKS       Init receiving field
+         STC   R5,WRETXTLN         Set text portion length
+         CLI   WRETYPE,WREMSG      Is this a message?
+         BE    SND090              Yes, dont uppercase it
+         EX    R5,MVCMD            Move and uppercase cmd text to WRE
+         B     PST000
+*
+SND090   EQU   *
+         EX    R5,MVMSG            Move msg text to WRE
+         B     PST000
+*
+MVCMD    OC    WRETXT(0),0(R4)     Executed
+MVMSG    MVC   WRETXT(0),0(R4)     Executed
+*
+*
+PST000   EQU   *
+         L     R4,CSABLK           Get CSABLK ptr
+         USING NJ38CSA,R4
+         LM    R0,R1,NJ38SWAP      Get first WRE ptr, sync count
+*
+PST020   EQU   *
+         ST    R0,WRENEXT          First WRE becomes next
+         LA    R9,1(,R1)           Incr synchronization count
+         CDS   R0,R8,NJ38SWAP      Update LINK WRE anchor, sync
+         BC    7,PST020            Gotta try again
+*
+         L     R7,NJ38ASCB     -> NJE38's ASCB
+         LA    R6,NJ38ECB      -> NJE38 external comm ecb
+         DROP  R4                  NJ38CSA
+         DROP  R8                  WRE
+*
+         MVC   MACLIST(POSTL),POST    Move macro mode
+         POST  (6),            Post NJE38's external ECB               x
+               ASCB=(7),                                               x
+               ERRET=PST080,                                           x
+               ECBKEY=0,                                               x
+               MF=(E,MACLIST)
+*
+PST080   EQU   *
+         MODESET KEY=NZERO
+*
+         TM    FLAGS1,FLG1APF          Authorized at entry?
+         BO    PST090                  Y, Don't need Auth SVC
+         SR    0,0                     Use authorization SVC
+         SR    1,1                      For HERC01/HERC02 only
+         SVC   244                     Get un-authorized
+*
+PST090   EQU   *
+         B     EXIT00          Done                                v200
+*
+*
+*-- Get status of NJE38
+*
+*-- Entry: R1=0 (no spool dsn needed), or, R1-> 44-char spool DSN area
+*-- Exit:  RC=0  NJE38 is active; R1-> NJE38 CSA block
+*--        RC<>0 NJE is not active.
+*
+CHK000   EQU   *
+         SR    R1,R1                   Dont return spool DSN       v210
+         L     R15,=V(NJESYS)          -> ENQ finder               v210
+         BALR  R14,R15                 Check if NJE38 already act  v210
+         LTR   R15,R15                 Set CC (RC=0 NJE38 active)  v210
+         BR    R2                      Return w/ CSA ptr in R1     v210
+*
+*-- Search CSCB chain to see if TSO user is logged on
+*-- Entry:  R15->8-byte padded field containing TSO userid to find
+*-- Exit:  CC=0  user was not logged on
+*--        CC<>0 user is logged on
+*
+USR800   EQU   *
+         CLC   =CL8'OP',0(R15)     Is the userid the operator?
+         BE    USR890              Yes, let it thru
+         L     R1,16               Get CVT ptr
+         USING CVT,R1
+         L     R1,CVTASCBH         -> highest prty ASCB
+         USING ASCB,R1
+*
+USR810   EQU   *
+         L     R2,ASCBCSCB         -> CSCB
+         USING CSCB,R2
+         LTR   R2,R2               Is there a CSCB?
+         BZ    USR840              No, get next ASCB
+*
+USR820   EQU   *
+         CLC   CHKEY,=XL8'00'      Jobname zeroed?
+         BE    USR830              Y, skip this CSCB
+         CLC   CHKEY,=CL8' '       Jobname is blank?
+         BE    USR830              Y, skip this CSCB
+         CLC   CHKEY,0(R15)        Is this the userid?
+         BE    USR890              Yes
+USR830   EQU   *
+         L     R2,CHPTR            -> next CSCB
+         LA    R2,0(,R2)           Clear high order
+         LTR   R2,R2               Last CSCB?
+         BNZ   USR820              No
+         BR    R14                 Return with CC=0 (not found)
+*
+USR840   EQU   *
+         L     R1,ASCBFWDP         -> next ASCB
+         LTR   R1,R1               last one?
+         BNZ   USR810              No
+         BR    R14                 Return with CC=0 (not found)
+*
+USR890   EQU   *
+         LTR   R14,R14             Set CC=non zero (userid found)
+         BR    R14                 Return to caller
+*
+         DROP  R1                  ASCB
+         DROP  R2                  CSCB
+*
+*-- Write a single line to terminal
+*
+*-- Entry: R2 -> output msg (RDW+msg text)
+*-- Exit:  R15 = RC from PUTLINE
+*
+PUTLINE  EQU   *
+         ST    R14,SV14LN              Save return
+         XC    PUTECB,PUTECB           Clear PUTLINE ECB
+         L     R15,CPARMS              -> command input CPPL
+         USING CPPL,R15
+         LA    R1,IOPLAREA             -> IOPL
+         USING IOPL,R1
+         MVC   IOPLUPT,CPPLUPT         Set UPT ptr
+         MVC   IOPLECT,CPPLECT         Set ECT ptr
+         DROP  R15                     CPPL
+*
+         MVC   TWRK(PBL),PB            Move macro model
+         PUTLINE PARM=TWRK,            Write a line                    x
+               ECB=PUTECB,                                             x
+               OUTPUT=((R2),TERM,SINGLE,DATA),                         x
+               MF=(E,(1))
+         DROP  R1                      IOPL
+         L     R14,SV14LN              Load return
+         BR    R14
+*
+ERR001   EQU   *
+         LA    R2,MSG001                                           v200
+         B     ERRPUT
+*
+ERR002   EQU   *
+         LA    R2,MSG002                                           v200
+         B     ERRPUT
+*
+ERR003   EQU   *
+         LA    R2,MSG003                                           v200
+         B     ERRPUT
+*
+ERR004   EQU   *
+         LA    R2,MSG004                                           v200
+         B     ERRPUT
+*
+ERR005   EQU   *
+         LA    R2,MSG005                                           v200
+         B     ERRPUT
+*
+ERR006   EQU   *
+         LA    R2,MSG006                                           v200
+         B     ERRPUT
+*
+ERR007   EQU   *
+         LA    R2,MSG007                                           v200
+*
+ERRPUT   EQU   *                                                   v200
+         BAL   R14,PUTLINE             Issue msg                   v200
+         LA    R15,8                   Set RC                      v200
+         B     QUIT000                 And exit                    v200
+*
+EXIT00   EQU   *                                                   v200
+         SR    R15,R15                 RC=0                        v200
+*
+QUIT000  EQU   *
+         LR    R1,R10                  -> NJEFWK work area
+         L     R13,4(,R13)             -> CALLER'S SA
+         ST    R15,16(,R13)            Set RC                      v200
+         FREEMAIN RU,                  Free the work area              X
+               LV=NJEXSZ,                                              X
+               A=(1)
+*
+         LM    R14,R12,12(R13)         RELOAD SYSTEM'S REGS
+         BR    R14                     Return
+*
+         LTORG
+*
+*
+NJE38Q   DC    CL8'NJE38'
+NJERCON  DC    CL8'NJEINIT'
+BLANKS   DC    CL120' '
+HEXTRAN  DC    CL16'0123456789ABCDEF'
+BLANK    DC    64X'00',X'FF',191X'00'
+NONBLANK DC    64X'FF',X'00',191X'FF'
+*
+MSG001   DC    Y(L'MSG001T+4,0)                                    v200
+MSG001T  DC    C'NJE38 is not active'                              v200
+*
+MSG002   DC    Y(L'MSG002T+4,0)                                    v200
+MSG002T  DC    C'No parameters entered'                            v200
+*
+MSG003   DC    Y(L'MSG003T+4,0)                                    v200
+MSG003T  DC    C'Invalid command format or missing text'           v200
+*
+MSG004   DC    Y(L'MSG004T+4,0)                                    v200
+MSG004T  DC    C'Invalid nodeid'                                   v200
+*
+MSG005   DC    Y(L'MSG005T+4,0)                                    v200
+MSG005T  DC    C'Invalid userid'                                   v200
+*
+MSG006   DC    Y(L'MSG006T+4,0)                                    v200
+MSG006T  DC    C'The NJE38 command is not APF-authorized'          v200
+*
+MSG007   DC    Y(L'MSG007T+4,0)                                    v200
+MSG007T  DC    C'User is not logged on'                            v200
+*
+POST     POST  0,ASCB=0,ERRET=0,MF=L
+POSTL    EQU   *-POST
+PB       PUTLINE MF=L                                              v200
+PBL      EQU   *-PB                                                v200
+*
+*
+NJEXWK   DSECT
+NJEEYE   DS    CL4'NJEX'               EYECATCHER
+NJEWKLEN DS    F                       SIZE OF WORK AREA
+*
+NJESA    DS    18F
+BALRSAVE DS    16F
+LCLNODE  DS    CL8                     Local node name
+DEFUSER  DS    CL8                     Default userid from config  v200
+NODEID   DS    CL8                     Destination node name
+USERID   DS    CL8                     Destination user name
+ORIGID   DS    CL8                     Originating user of msg
+KEYWD    DS    CL8                     1st parameter keyword
+DBLE     DS    D
+TWRK     DS    XL16
+MACLIST  DS    XL128
+IOPLAREA DS    4A                      IOPL for PUTLINE            v200
+SV14     DS    F                       R14 save area
+SV14LN   DS    F                       R14 save area               v200
+PUTECB   DS    F                       ECB for PUTLINE             v200
+CSABLK   DS    A                       -> NJE38 CSA block
+CPARMS   DS    A                       TSO command entry parms     v200
+*
+REQTYPE  DS    X                       WRE type (CMD/MSG)
+REQCODE  DS    X                       XJE request type (CMD/MSG)
+FLAGS1   DS    X
+FLG1APF  EQU   X'80'      1... ....    APF authorized on entry
+FLG1AUSR EQU   X'40'      .1.. ....    Current user is HERC01 or HERC02
+FLG1ACEE EQU   X'20'      ..1. ....    Valid ACEE found            v200
+*                         ...x xxxx    Available
+*
+MTEXT    DS    CL256
+         DS    0D                      Force doubleword boundary
+NJEXSZ   EQU   *-NJEXWK                Size of work area
+*
+*
+*-- System DSECTs
+*
+*
+         CVT   DSECT=YES,LIST=YES
+         IHAPSA
+         IHAASCB
+         IHAASXB
+CSCB     DSECT
+         IEECHAIN                      MAP FOR A CSCB
+         IKJTCB                                                    v130
+IEFTIOT  DSECT                                                     v130
+         IEFTIOT1                                                  v130
+         IKJUPT                                                    v200
+         IKJCPPL                                                   v200
+         IKJIOPL                                                   v200
+*
+ACEE     DSECT                         Maps a portion of ACEE in MVS3.8
+ACEEEYE  DS    CL4'ACEE'
+         DS    16X
+ACEEUSRL DS    X                       Length of userid
+ACEEUSR  DS    CL8                     Userid
+*
+         COPY  NETSPOOL
+*
+*-- NJE38 DSECTs
+*
+         NJEWRE                                                    v220
+         END   NJE38

@@ -1,0 +1,2088 @@
+*
+*
+*-- NJE38 - "Spool" Services
+*
+*
+*   Called by NJEINIT and NJEDRV for spool-like services
+*
+*
+*
+* Change log:
+*
+* 23 Jul 20 - Make CONTENTS return spool full percentage           v200
+* 21 Jul 20 - Only part of record buffer area was FREEMAINed       v200
+* 01 Jun 20 - Exclusive control error because ENDREQ not issued    v130
+*              on CONTENTS function against an empty spool.        v130
+* 21 May 20 - Add update directory entry functionality             v120
+* 08 May 20 - RC 12 errors need error addr in NCBMACAD             v110
+*
+*
+* NJESPOOL - Provide a spooling mechanism "access method" for use by
+*            NJE38 to hold data files queued for transmission, or to
+*            hold data files that have been received via transmission
+*            but not yet retrieved by the destination user.
+*
+* The main goal of NJESPOOL is to provide a simple way to read and
+* write files by the NJE line driver without the line driver having
+* to know the vagaries of i/o, record formats, directories, and so on.
+* NJESPOOL does the heavier lifting and spool management under the
+* covers and unknown to the line driver.
+*
+* The spool dataset, "NETSPOOL", is a VSAM RRDS-type dataset.  All
+* blocks in the dataset are one control interval in size.  The CI size
+* must be 4096, which gives a usable record size of 4089 bytes.  The
+* NETSPOOL internal format is based on these sizes.
+*
+* NETSPOOL contains a directory which describes the data files
+* present within.  There are two directories; one is the current
+* directory which describes the true state of NETSPOOL, the other is
+* the current-minus-1 diectory, which is the state of NETSPOOL just
+* prior to the very last directory update.  When new data files are
+* added or removed from NETSPOOL, the current directory is copied onto
+* current-minus-1 and then the addition or deletion is applied.  This
+* then becomes the current directory and the directory that was most
+* recently current becomes current-minus-1.  Thus the directories
+* alternate back and forth.  The first block of each directory are
+* blocks 2 and 3, respectively.  If the directory size expands to
+* additional blocks, they can be anywhere in the dataset, but the
+* very first block of either directory is ALWAYS 2 or 3.
+*
+* Block #1 contains a fullword pointer that contains the block number
+* of whichever directory is current.  Thus, it will contain a 2 or 3.
+* Alternating directories ensures that in the event of a failure while
+* adding or deleting a data file, the changes do not clobber the
+* current directory.  Only when those updates complete successfully
+* is the block 1 pointer to the new current directory updated.
+*
+*
+* The format of the NETSPOOL dataset is very simple.
+*  Block 1    - contains the block # of the current directory block and
+*               a few other items.
+*  Blocks 2-3 - contain the 1st directory block for the current
+*               and current-minus-1 directories.
+*  Blocks 4-7 - contains the free space bit map.
+*  Blocks 8-n - data blocks available for data files or directory blks.
+*
+* The free space bitmap is simply a 4-block long (4089 * 4 = 16356
+* bytes) string of bits that represent whether a given CI in the
+* dataset is used or available.  Upon initial formatting, the blocks
+* 1-7 are marked as used.  The rest of the data blocks are free until
+* the last block number that is physically present in the VSAM RRDS
+* dataset.  The maximum number of blocks supported by this scheme is
+* 130,848.  This is 873 cylinders of 3380 DASD space, for example.
+* For VSAM RRDS NETSPOOL sizes of fewer cylinders, blocks higher than
+* the highest available physical block number are marked as used out
+* to the end of the bitmap so they will never be allocated.
+*
+*
+* ACCESSING NETSPOOL VIA PROGRAMMING
+*
+* You may access the NETSPOOL dataset via programming the same way
+* that the NJE line driver and NJE38 utilities do:  via a NETSPOOL
+* CONTROL BLOCK (NCB) and the NSIO macro.
+*
+* The NCB is a small control block that is something akin to a VSAM
+* RPL.  It simply contains information about the file being read or
+* written and contains pointers to the user buffer, and file
+* attributes.
+*
+* The NSIO macro is used to open or close the NETSPOOL dataset.  It is
+* also used to read or write data records, and obtain directory
+* information.
+*
+* The NCB and the NSIO macro are used together and provide the
+* functions for spool access:
+*
+*  NSIO  TYPE=OPEN      - Opens the NETSPOOL dataset for i/o
+*             CLOSE     - Closes NETSPOOL and updates directory
+*             PUT       - Writes a single record to the spool
+*             GET       - Reads a single record from the spool
+*             PURGE     - Deletes a data file from the spool
+*             FIND      - Locates a data file by file number
+*             CONTENTS  - Returns the current directory contents
+*             UDIR      - Update a directory entry                 v120
+*
+*  All NSIO macros must specify the NCB that it is associated with.
+*  The spool is not opened for "input" or for "output" in the
+*  traditional sense.  Rather, the first TYPE=GET or TYPE=PUT
+*  issued establishes the mode.  Once the mode is established you
+*  may not change from PUT to GET, or GET to PUT, without first
+*  closing the spool and re-opening.  The PURGE, FIND, and CONTENTS
+*  functions do not establish any mode, and can be used any time
+*  the spool is open.
+*
+*  If you need to open the spool file by two or more tasks or modes
+*  simultaneously, use multiple NCBs.
+*
+*  VSAM errors are returned via the NCBRTNCD and NCBERRCD fields which
+*  are analagous to the VSAM RPLRTNCD and RPLERRCD fields. If an
+*  actual VSAM error occurs, NCBRTNCD will be set to 8 and the NCBERRCD
+*  field contains the actual VSAM RPLERRCD value.  If NCBRTNCD is 12,
+*  the error code value is an internal value used by NJESPOOL.  These
+*  are:
+*
+*  NCBRTNCD=X'0C'  Internal NJESPOOL error
+*  NCBERRCD=X'01'  Invalid function code (not open, close, get, etc).
+*           X'02'  VSAM RRDS ACB is not open
+*           X'03'  NETSPOOL dataset is full
+*           X'04'  File # not found in directory (TYPE=FIND/PURGE)
+*           X'05'  GET attempted in PUT mode, or,
+*                    PUT attempted in GET mode
+*           X'06'  No files in directory  (TYPE=CONTENTS)
+*
+* Refer to the utilities NJ38XMIT and NJ38RECV for examples using
+* NCB and NSIO to access the spool.
+*
+         PRINT GEN                                                      NJE00030
+         REGEQU                        REGISTER EQUATES                 NJE00040
+*
+* NETSPOOL Internal values
+*
+ALLOCBLK EQU   4                       Starting BLK# of allocation map
+ALLOCNUM EQU   4                       Number of allocation map blocks
+*
+*
+NJESPOOL CSECT                                                          NJE00020
+         NJEVER
+         STM   R14,R12,12(R13)         SAVE CMS REGS                    NJE00050
+         LR    R12,R15                 BASE                             NJE00060
+         USING NJESPOOL,R12            ADDRESS IT                       NJE00070
+         LTR   R9,R1                   NCB ptr to R9
+         BZ    EXIT16                  Exit if no ptr
+         USING NCB,R9
+         CLC   NCBEYE,=CL4'NCB'        Is it an NCB?
+         BNE   EXIT16                  Exit if not
+         XC    NCBRTNCD(2),NCBRTNCD    Clear prior error codes
+         CLI   NCBREQ,NCBOPEN          Is this an OPEN function?
+         BE    INIT000                 Yes, ignore token
+         L     R10,NCBTKN              Get caller token
+         CLC   0(4,R10),=CL4'NSPL'     Token point to NSPL work area?
+         BE    INIT010                 Yes, looks good
+         B     EXIT16                  Exit if token invalid
+*
+*
+INIT000  EQU   *
+         GETMAIN RU,                   Get local stg area              X
+               LV=4096,                                                X
+               BNDRY=PAGE
+         LR    R10,R1
+         ST    R10,NCBTKN              Set area addr as token
+         LR    R1,R0                   Copy length
+         LR    R2,R0                   Copy length
+         LR    R0,R10                  -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the page
+*
+         USING NJEWK,R10
+         MVC   NJEEYE,=CL4'NSPL'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area in area
+*
+INIT010  EQU   *
+         USING NJEWK,R10
+         ST    R13,NJESA+4             SAVE prv S.A. ADDR               NJE00080
+         LA    R1,NJESA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         L     R11,=A(NJECMN)          -> common csect
+         ST    R11,ANJECMN             Save addr
+         USING NJECMN,R11
+*
+*
+INIT100  EQU   *
+         LA    R14,*                   -> location of error source v110
+         SR    R1,R1                   Clear for IC
+         IC    R1,NCBREQ               Get request type
+         SLL   R1,2                    Multiply by 4 to make index
+         C     R1,=A(INIT120-INIT110)  Size of branch table
+         BH    ERR1201                 Exit if req type invalid
+         B     INIT110(R1)             Branch to requested function
+*
+INIT110  B     ERR1201              00 Invalid function
+         B     OPN000               01 Open NETSPOOL dataset
+         B     CLS000               02 Close NETSPOOL dataset
+         B     PUT000               03 Write a logical record
+         B     GET000               04 Read a logical record
+         B     PUR000               05 Purge a file from NETSPOOL
+         B     FID000               06 Locate a file by file id
+         B     CON000               07 Get a list of files in NETSPOOL
+         B     UDR000               08 Update directory entry      v120
+*
+INIT120  EQU   *                       Must mark end of branch table
+*
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *                                                    NJE00920
+*  OPEN DATASET    *                                                    NJE00920
+*  NCBREQ = X'01'  *                                                    NJE00920
+*                  *                                                    NJE00920
+********************                                                    NJE00920
+*                                                                       NJE00920
+*
+*- Get storage for NETSPOOL block
+*
+OPN000   EQU   *
+         GETMAIN RU,                   Get stg for NETSPOOL blocks     X
+               LV=3*4096,                                              X
+               BNDRY=PAGE
+         ST    R1,BLOCK                This is the VSAM AREA
+         LR    R3,R1                   R3 for now
+         LA    R2,4089(,R1)            -> end of BLOCK record size
+         ST    R2,BLOCKEND             Save it
+         A     R1,=F'4096'             -> 2nd page
+         ST    R1,PTRBUF               This is an internal rec'd buffer
+         ST    R1,PTRPOS               Save also as internal write pos
+         LA    R2,4084(,R1)            -> end of ptr part of PTRBUF
+         ST    R2,PTRBUFEN             Save it (bytes 4084-4089 special
+         A     R1,=F'4096'             -> 2nd page
+         ST    R1,BUFF                 This is an internal rec'd buffer
+         ST    R1,PUTPOS               Save also as internal write pos
+         LA    R1,4089(,R1)            -> end of BUFF record size
+         ST    R1,BUFFEND              Save it
+         XC    PTRBLK,PTRBLK           Initialize
+         XC    NEWBLK,NEWBLK           Initialize
+         XC    PUTCNT,PUTCNT           Initialize (to be placed in TAG)
+         XC    GETCNT,GETCNT           Initialize (only used for debug)
+*
+         GENCB BLK=ACB,                                                x
+               DDNAME=NETSPOOL,                                        x
+               MACRF=(OUT,KEY,DIR),                                    x
+               MF=(G,MACLIST)
+         STM   R0,R1,ACBL              Save len, addr
+*
+         LA    R4,KEY                  -> block number argument
+         GENCB BLK=RPL,                                                x
+               ACB=(*,ACB),                                            x
+               AREA=(R3),              -> block area                   x
+               AREALEN=4089,                                           x
+               RECLEN=4089,                                            x
+               ARG=(R4),                                               x
+               OPTCD=(KEY,DIR,MVE,UPD),                                x
+               MF=(G,MACLIST)
+         STM   R0,R1,RPLL              Save len, addr
+*
+         BAL   R14,ENQ000              Get exclusive control
+*
+         L     R7,ACB                  -> ACB
+         MVC   MACLIST(OPENL),OPEN     Move macro model
+         OPEN  ((R7)),                 Open NETSPOOL                   x
+               MF=(E,MACLIST)
+*
+         BAL   R14,CHKOC               Check open/close result
+         BNZ   EXIT08                  Exit with VSAM error
+         OI    NJFL1,NJF1OACB          Indic ACB open
+*
+*-- Get NETSPOOL directory block ptr from block 1; determine if
+*-- NETSPOOL has been formatted.
+*
+OPN040   EQU   *
+         MVC   KEY,=F'1'
+         L     R7,RPL
+         GET   RPL=(R7)
+         BAL   R14,CHKRPL              Check RPL result
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         ENDREQ RPL=(R7)               Cancel the update request
+         BAL   R14,CHKRPL              Check RPL result
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         BAL   R14,DEQ000              Release control
+         B     EXIT00                  Otherwise OPEN is complete
+*                                                                       NJE00920
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *                                                    NJE00920
+*  CLOSE DATASET   *                                                    NJE00920
+*  NCBREQ = X'02'  *                                                    NJE00920
+*                  *                                                    NJE00920
+********************                                                    NJE00920
+*                                                                       NJE00920
+CLS000   EQU   *
+         SR    R5,R5                   Clear possible RC
+         TM    NJFL1,NJF1OACB          Is ACB open?
+         BZ    CLS090                  No
+         BAL   R14,ENQ000              Get exclusive control
+*
+         TM    NJFL1,NJF1PUT           Processing PUTs against file?
+         BZ    CLS050                  N, skip close related PUT funcs.
+*
+         CLC   NCBTAG,=A(0)            Is tag data present?
+         BE    CLS050                  0, Cant write a directory
+*
+         TM    NJFL1,NJF1WPND          Is physical write pending?
+         BZ    CLS030                  No
+         NI    NJFL1,255-NJF1WPND      No physical write pending
+*
+         MVC   KEY,NEWBLK              Prep for update of blk to write
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get the block for update
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         L     R3,PUTPOS               -> logical record position
+         LA    R3,2(,R3)               Account for FFFF EOF marker
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R2,BUFF                 -> buffer to write out
+         SR    R3,R2                   Compute length to write out
+         MVCL  R0,R2                   Move data and pad remaining
+*
+         PUT   RPL=(R7)                Update the physical block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+*
+CLS030   EQU   *
+         NC    PTRBLK,PTRBLK           Is ptr block write pending?
+         BZ    CLS040
+         MVC   KEY,PTRBLK              Prep for update of blk to write
+         XC    PTRBLK,PTRBLK           Clear block number for recursion
+         OI    NJFL1,NJF1DPND          Indic directory add pending
+*
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get the block for update
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         L     R3,PTRPOS               -> ptr record position
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R2,PTRBUF               -> buffer to write out
+         SR    R3,R2                   Compute length to write out
+         MVCL  R0,R2                   Move data and pad remaining
+*
+         PUT   RPL=(R7)                Update the physical block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+*
+CLS040   EQU   *
+         TM    NJFL1,NJF1DPND          Directory add pending?
+         BZ    CLS050                  No
+         NI    NJFL1,255-NJF1DPND      Remove directory add pending
+*
+         L     R1,NCBTAG               -> tag data
+         USING TAG,R1
+         MVC   TAGRECNM,PUTCNT         Save # records actually written
+         DROP  R1
+*
+         LA    R0,DIRADD               Add directory entry function
+         L     R15,=A(NJEDIR)          Call directory mgmt
+         BALR  R14,R15                 File to add is in NCB
+         LR    R5,R15                  Any RC to R5
+*
+CLS050   EQU   *
+         L     R7,ACB                  -> ACB
+         MVC   MACLIST(CLOSEL),CLOSE   Move close list
+         CLOSE ((R7)),                 Close the ACB                   x
+               MF=(E,MACLIST)
+*
+         NI    NJFL1,255-NJF1OACB      ACB now closed
+         BAL   R14,DEQ000              Release control
+*
+CLS090   EQU   *
+         L     R1,BLOCK                -> NETSPOOL record areas
+         FREEMAIN RU,LV=3*4096,A=(1)   Release it                  v200
+*
+         LM    R0,R1,RPLL
+         FREEMAIN RU,LV=(0),A=(1)
+*
+         LM    R0,R1,ACBL
+         FREEMAIN RU,LV=(0),A=(1)
+*
+         XC    NCBTKN,NCBTKN           Clear token
+         B     QUIT000                 Exit with RC in R5
+*                                                                       NJE00920
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *   Write a logical record (not a physical block)    NJE00920
+*  PUT             *                                                    NJE00920
+*  NCBREQ = X'03'  *   No ENQ is required when writing the physical     NJE00920
+*                  *   blocks as these blocks are allocated exclusively NJE00920
+********************   to the calling task.                             NJE00920
+*                                                                       NJE00920
+PUT000   EQU   *
+         LA    R14,*                   -> location of error source v110
+         TM    NJFL1,NJF1OACB          Is ACB open?
+         BZ    ERR1202                 No
+         TM    NJFL1,NJF1GET           Processing GETs against file?
+         BO    ERR1205                 Yes, cant do PUT now
+         OI    NJFL1,NJF1PUT           Indicate PUT in progress
+*
+         NC    PTRBLK,PTRBLK           Do we have a ptr block?
+         BNZ   PUT020                  Yes
+         BAL   R14,GETBLK              Allocate a new physical block
+         BNZ   EXIT08                  Exit with VSAM error
+         LTR   R0,R0                   Is there a block number?
+         BZ    ERR1203                 NETSPOOL dataset full
+         ST    R0,PTRBLK               Save block number of ptr blk
+         ST    R0,INITBLK              Save first block # used in PUT
+         L     R0,PTRBUF               -> ptr block area
+         LA    R1,4089                 Size of physical block
+         LR    R3,R1                   Compute length to write out
+         MVCL  R0,R2                   Clear the ptr block
+         MVC   PTRPOS,PTRBUF           Set write position in block
+*
+         BAL   R14,GETBLK              Allocate a new physical block
+         BNZ   EXIT08                  Exit with VSAM error
+         LTR   R0,R0                   Is there a block number?
+         BZ    ERR1203                 NETSPOOL dataset full
+         ST    R0,NEWBLK               Save allocated blk #
+         MVC   PUTPOS,BUFF             Set write position in block
+         L     R1,PTRPOS               Get current ptr block position
+         ST    R0,0(,R1)               Save new blk# in ptr block
+         LA    R1,4(,R1)               Next ptr block slot
+         ST    R1,PTRPOS               Update position
+*
+PUT020   EQU   *
+         L     R3,PUTPOS               Get current position
+         L     R1,BUFFEND              -> end of buffer
+         SR    R1,R3                   Determine remaining space in blk
+         LH    R4,NCBRECLN             Get size of record to write
+         LA    R2,2+2(,R4)             Add in overhead
+*                                       +2 for length halfword
+*                                       +2 for next block marker
+         CR    R1,R2                   Is there room to add record?
+         BL    PUT100                  No, better get another block
+*
+         L     R15,NCBAREA              -> to logical record
+         BCT   R4,*+10                 Adjust len for execute
+PUTREC   MVC   2(0,R3),0(R15)
+         EX    R4,PUTREC               Move record to block
+         LA    R4,1+2(,R4)             Get record len + overhead
+*                                       +1 to get back true length
+*                                       +2 for length halfword itself
+         STCM  R4,3,0(R3)              Store the length
+*
+         TM    NCBFL1,NCBPUN           Is this PUN type data?
+         BO    PUT050                  Y, no special action
+         TM    2(R3),X'03'             Is carriage ctl an immediate?
+         BO    PUT060                  Y, Don't count these records
+*
+PUT050   EQU   *
+         L     R1,PUTCNT               Get count of records written
+         LA    R1,1(,R1)               Bump it
+         ST    R1,PUTCNT               Update count
+*
+PUT060   EQU   *
+         AR    R3,R4                   Compute next avail byte in blk
+         MVC   0(2,R3),=X'FFFF'        Set current EOF marker in case
+*                                       we write no more records
+         ST    R3,PUTPOS               Save write position for next
+*                                       record; would overwrite the
+*                                       FFFF marker on next PUT.
+         OI    NJFL1,NJF1WPND          Indicate physical write req'd
+         B     EXIT00
+*
+PUT100   EQU   *
+         L     R5,NEWBLK               Get current blk # we need to wrt
+         BAL   R14,GETBLK              Allocate a new physical block
+         BNZ   EXIT08                  Exit with VSAM error
+         LTR   R0,R0                   Is there a block number?
+         BZ    ERR1203                 NETSPOOL dataset full
+         ST    R0,NEWBLK               Save newly allocated blk #
+         MVC   0(2,R3),=X'FFFE'        Insert ptr indic for next blk
+         LA    R3,2(,R3)               -> next write position
+*
+         ST    R5,KEY                  Prep for update of blk to write
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get the block for update
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R2,BUFF                 -> buffer to write out
+         SR    R3,R2                   Compute length to write out
+         MVCL  R0,R2                   Move data and pad remaining
+*
+         PUT   RPL=(R7)                Update the physical block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         MVC   PUTPOS,BUFF             Reset write position in new blk
+         NI    NJFL1,255-NJF1WPND      No physical write pending
+*
+*-- Now ensure newly allocated block is also pointed to by ptr block
+*
+         L     R3,PTRPOS               Get current ptr block position
+         MVC   0(4,R3),NEWBLK          Save new blk# in ptr block
+         LA    R3,4(,R3)               Next ptr block slot
+         C     R3,PTRBUFEN             Is ptr block full?
+         BNL   PUT200                  Yes
+         ST    R3,PTRPOS               Update position
+         B     PUT020                  Now retry to add next logical
+*
+*-- Here if we need another ptr block  (chain them together)
+*
+PUT200   EQU   *
+         L     R5,PTRBLK               Get current blk # we need to wrt
+         BAL   R14,GETBLK              Allocate a new phys ptr block
+         BNZ   EXIT08                  Exit with VSAM error
+         LTR   R0,R0                   Is there a block number?
+         BZ    ERR1203                 NETSPOOL dataset full
+         ST    R0,PTRBLK               Save newly allocated blk #
+         ST    R0,0(,R3)               Insert ptr to next ptr blk in
+*                                       full ptr block
+         MVI   0(R3),X'FE'             Indic "ptr to next ptr blk" and
+*                                       not ptr to a data block
+         LA    R3,4(,R3)               -> next write position
+*
+         ST    R5,KEY                  Prep for update of blk to write
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get the block for update
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R2,PTRBUF               -> buffer to write out
+         SR    R3,R2                   Compute length to write out
+         MVCL  R0,R2                   Move data and pad remaining
+*
+         PUT   RPL=(R7)                Update the physical block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         L     R0,PTRBUF               -> ptr block area
+         LA    R1,4089                 Size of physical block
+         LR    R3,R1                   Compute length to write out
+         MVCL  R0,R2                   Clear the ptr block
+         MVC   PTRPOS,PTRBUF           Reset ptr position in new blk
+         B     PUT020                  Now retry to add next logical
+*                                                                       NJE00200
+*
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *   Read a logical record (not a physical block)     NJE00920
+*  GET             *                                                    NJE00920
+*  NCBREQ = X'04'  *   No ENQ is required when reading the physical     NJE00920
+*                  *   blocks as these blocks are allocated exclusively NJE00920
+********************   to the calling task.  The file id to read must   NJE00920
+*                      be in NSID in the tag data pointed to by NCBTAG
+*                                                                       NJE00920
+GET000   EQU   *
+         LA    R14,*                   -> location of error source v110
+         TM    NJFL1,NJF1OACB          Is ACB open?
+         BZ    ERR1202                 No
+         TM    NJFL1,NJF1PUT           Processing PUTs against file?
+         BO    ERR1205                 Yes, cant do GET now
+         OI    NJFL1,NJF1GET           Indicate GET in progress
+*
+         L     R7,RPL                  -> RPL
+         NC    PTRBLK,PTRBLK           Do we have a ptr block in prog?
+         BNZ   GET060                  Yes, read next logical rec
+*
+         LA    R0,DIRLOC               Locate file function
+         L     R15,=A(NJEDIR)          Call directory mgmt
+         BALR  R14,R15                 File id is in tag field TAGID
+*
+         LTR   R15,R15                 Was file found?
+         BZ    GET010                  Yes
+         C     R15,=F'12'              Errors processing directory?
+         BL    EXIT08                  Exit here if 4 or 8=VSAM errors
+         B     EXIT12                  All others Exit12
+*
+GET010   EQU   *
+         MODCB RPL=(R7),                                               x
+               OPTCD=(KEY,DIR,MVE,NUP), No update needed on GETs       x
+               MF=(G,MACLIST)
+*
+         L     R3,NCBTAG               -> tag data
+         USING TAG,R3
+         MVC   GETLIM,TAGRECNM         Save off # of records in file
+         DROP  R3
+*
+         L     R3,INITBLK              Get 1st block # of file
+*
+GET020   EQU   *                    ** Get a ptr block
+         ST    R3,KEY                  Set block retrieval key
+         GET   RPL=(R7)                Get the ptr block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         ST    R3,PTRBLK               Save ptr blk #
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,PTRBUF              -> buffer containing repl dir
+         LR    R15,R1                  Copy length
+         MVCL  R14,R0                  Put ptr data in ptrbuf
+*
+         L     R4,PTRBUF               -> ptr block ptrs
+         ST    R4,PTRPOS               Maintain ptr position
+*
+GET030   EQU   *
+         C     R4,PTRBUFEN             Out of ptrs this block?
+         BL    GET040                  No
+*
+*                                   ** Here if ptr block chains to
+*                                       another ptr block
+         CLI   0(R4),X'FE'             ptr to ptrblk indicator?
+         BNE   GET200         EOF      No, done with ptrs
+         SR    R3,R3                   Clear for IC
+         ICM   R3,7,1(R4)              Get ptr to next ptr block
+         ST    R3,KEY                  Set up for retrieval
+         B     GET020                  Go get it
+*
+GET040   EQU   *
+         ICM   R2,15,0(R4)             Get a data block #
+         BZ    GET200         EOF      Done with ptrs
+*
+         ST    R2,KEY                  Set block retrieval key
+         GET   RPL=(R7)                Get the ptr block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   EXIT08                  Exit with VSAM error
+*
+         L     R5,BLOCK                -> VSAM i/o area
+         ST    R5,GETPOS               Maintain read position
+*
+GET060   EQU   *
+         L     R5,GETPOS               -> next logical record to read
+         CLC   0(2,R5),=X'FFFF'        Is this end of file?
+         BE    GET200                  Yes
+         CLC   0(2,R5),=X'FFFE'        Skip to next ptr indication?
+         BE    GET100                  Yes
+*
+         SR    R14,R14                 Clear for IC
+         ICM   R14,3,0(R5)             Get the record length
+         BCTR  R14,0                   Reduce length of length
+         BCTR  R14,0                   Reduce length of length
+         STH   R14,NCBRECLN            Return length to caller
+*
+         L     R15,NCBAREA              -> to caller's record buffer
+         BCT   R14,*+10                Adjust len for execute
+GETREC   MVC   0(0,R15),2(R5)
+         EX    R14,GETREC              Move record to user area
+         LA    R5,1+2(R14,R5)          Get record len + overhead
+*                                       +1 to get back true length
+*                                       +2 for length halfword itself
+         ST    R5,GETPOS               Save read position
+         L     R1,GETCNT               Get count of records read
+         LA    R1,1(,R1)               Bump it
+         ST    R1,GETCNT               Update count for debug purposes
+         B     EXIT00                  Exit with record in NCBAREA
+*
+GET100   EQU   *
+         L     R4,PTRPOS               Get ptr position
+         LA    R4,4(,R4)               -> next ptr field
+         ST    R4,PTRPOS               Maintain ptr position
+         B     GET030                  Go process next ptr
+*
+GET200   EQU   *
+         MVI   NCBERRCD,X'04'          Indicate EOF
+         B     EXIT08
+*                                                                       NJE00920
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *   Delete a file from the NETSPOOL dataset          NJE00920
+*  PURGE           *                                                    NJE00920
+*  NCBREQ = X'05'  *                                                    NJE00920
+*                  *                                                    NJE00920
+********************                                                    NJE00920
+*                                                                       NJE00920
+PUR000   EQU   *
+         LA    R14,*                   -> location of error source v110
+         TM    NJFL1,NJF1OACB          Is ACB open?
+         BZ    ERR1202                 No
+*
+         LA    R0,DIRDEL               Del file function
+         L     R15,=A(NJEDIR)          Call directory mgmt
+         BALR  R14,R15                 File to del is in NCB  ???
+         LR    R5,R15                  Any RC to R5
+         B     QUIT000
+*
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *   Locate a file in the directory by file id        NJE00920
+*  LOCATE          *                                                    NJE00920
+*  NCBREQ = X'06'  *                                                    NJE00920
+*                  *                                                    NJE00920
+********************                                                    NJE00920
+*                                                                       NJE00920
+FID000   EQU   *
+         LA    R14,*                   -> location of error source v110
+         TM    NJFL1,NJF1OACB          Is ACB open?
+         BZ    ERR1202                 No
+*
+         LA    R0,DIRLOC               Locate file function
+         L     R15,=A(NJEDIR)          Call directory mgmt
+         BALR  R14,R15                 File id is in tag field TAGID
+         LR    R5,R15                  Any RC to R5
+         B     QUIT000
+*
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *   Return a list of files in NETSPOOL dataset       NJE00920
+*  CONTENTS        *                                                    NJE00920
+*  NCBREQ = X'07'  *                                                    NJE00920
+*                  *                                                    NJE00920
+********************                                                    NJE00920
+*                                                                       NJE00920
+CON000   EQU   *
+         LA    R14,*                   -> location of error source v110
+         TM    NJFL1,NJF1OACB          Is ACB open?
+         BZ    ERR1202                 No
+*
+         LA    R0,DIRLST               List files function
+         L     R15,=A(NJEDIR)          Call directory mgmt
+         BALR  R14,R15
+         LR    R5,R15                  Any RC to R5
+         B     QUIT000
+*
+*                                                                       NJE00920
+********************                                                    NJE00920
+*                  *   Update a directory entry by file id         v120 NJE00920
+*  UDIR            *                                                    NJE00920
+*  NCBREQ = X'08'  *                                                    NJE00920
+*                  *                                                    NJE00920
+********************                                                    NJE00920
+*                                                                       NJE00920
+UDR000   EQU   *                                                   v120
+         LA    R14,*                   -> location of error source v120
+         TM    NJFL1,NJF1OACB          Is ACB open?                v120
+         BZ    ERR1202                 No                          v120
+*                                                                  v120
+         LA    R0,DIRUPD               Update dir  function        v120
+         L     R15,=A(NJEDIR)          Call directory mgmt         v120
+         BALR  R14,R15                                             v120
+         LR    R5,R15                  Any RC to R5                v120
+         B     QUIT000                                             v120
+*
+*
+ERR1201  EQU   *                       Invalid NCBREQ function code
+         MVI   NCBERRCD,X'01'          Set error code
+         B     EXIT12
+*
+ERR1202  EQU   *                       ACB is not open
+         MVI   NCBERRCD,X'02'          Set error code
+         B     EXIT12
+*
+ERR1203  EQU   *                       NETSPOOL dataset is full
+         MVI   NCBERRCD,X'03'          Set error code
+         B     EXIT12
+*
+ERR1204  EQU   *                       File # not found in directory
+         MVI   NCBERRCD,X'04'          Set error code
+         B     EXIT12
+*
+ERR1205  EQU   *                       GET attempted in PUT mode, or,
+*                                      PUT attempted in GET mode
+         MVI   NCBERRCD,X'05'          Set error code
+         B     EXIT12
+*
+ERR1206  EQU   *                       No files in directory  (NCBCON)
+         MVI   NCBERRCD,X'06'          Set error code
+         B     EXIT12
+*
+*                                                                       NJE00200
+* Exit points                                                           NJE00200
+*                                                                       NJE00200
+*                                                                       NJE00200
+*                                                                       NJE00200
+EXIT00   EQU   *                                                        NJE00210
+         SR    R5,R5                   Set RC=0
+         B     QUIT000
+*
+* Exit04 reasons:
+*   All VSAM OPEN/CLOSE and RPL errors.
+*
+EXIT04   EQU   *                                                        NJE00210
+         LA    R5,4                    Set RC=4
+         B     QUIT000
+*
+* Exit08 reasons:
+*   All VSAM OPEN/CLOSE and RPL errors.
+*
+EXIT08   EQU   *                                                        NJE00210
+         C     R15,=F'4'               Is is really RC 4?
+         BE    EXIT04                  Reflect the truth
+         LA    R5,8                    Set RC=8
+         B     QUIT000
+*
+* Exit12 reasons:
+*   NETSPOOL dataset is full (no available blocks)
+*   NCBREQ contains invalid/unsupported function code
+*   File is not open
+*   File # is not found in directory
+*   GET issued during PUT activity
+*   PUT issued during GET activity
+*
+EXIT12   EQU   *                                                        NJE00210
+         ST    R14,NCBMACAD            Save error address          v110
+         LA    R5,12                   Set RC=12
+         B     QUIT000
+*
+* Exit16 reasons:
+*   R1 = zero on entry
+*   R1 doesnt point to NCB  ('NCB ' in 1st four bytes)
+*   NCBTKN is zero but NCBREQ is not NCBOPEN
+*   NCBTKN doesnt point to area containing 'NSPL'
+*
+EXIT16   EQU   *                                                        NJE00210
+         L     R13,4(,R13)             -> caller's sa                   NJE00210
+         LA    R5,16                   Set RC=16
+         B     QUIT090
+*
+QUIT000  EQU   *
+         STC   R5,NCBRTNCD             Set R15 return code
+         BAL   R14,DEQ000              Remove any ENQ
+         L     R13,4(,R13)             -> caller's sa                   NJE00210
+         CLC   NCBREQ(3),=AL1(NCBGET,8,4)   EOF on a NCBGET function?
+         BNE   QUIT020                 No
+         ICM   R15,15,NCBEODAD         Get EODAD address
+         BZ    QUIT020                 If none, let 8,4 rtn cd pass
+         ST    R15,12(,R13)            Set R14 return to EODAD address
+         XC    NCBRTNCD(2),NCBRTNCD    Remove EOF error indicators
+         SR    R5,R5                   Set RC=0
+*
+QUIT020  EQU   *
+         CLI   NCBREQ,NCBCLOSE         Is this a close request?
+         BNE   QUIT090                 No. Exit without free stgs
+*
+         LR    R1,R10                  -> NJEWK main work area page
+         FREEMAIN RU,                                                  x
+               LV=4096,                                                x
+               A=(1)
+*
+QUIT090  EQU   *
+         ST    R5,16(,R13)             Set RC in R15
+         LM    R14,R12,12(R13)         Reload callers's regs            NJE00220
+         BR    R14                     Return                           NJE00240
+*                                                                       NJE00250
+         LTORG                                                          NJE00280
+*
+*
+OPEN     OPEN  0,MF=L
+OPENL    EQU   *-OPEN
+CLOSE    CLOSE 0,MF=L
+CLOSEL   EQU   *-CLOSE
+*
+*
+         DROP  R12
+*
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E C M N      *               NJECMN hosts small routines and     NJE00920
+*                   *               frequently used constants           NJE00920
+*  Common routines  *                                                   NJE00920
+*  and constants    *               via base register 11                NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+NJECMN   CSECT                                                          NJE00020
+         DC    A(0)                 No branch around constants
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECMN'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         USING NJECMN,R11
+         USING NJEWK,R10
+*
+*-- Check result of VSAM OPEN or CLOSE macro
+*
+CHKOC    EQU   *
+         LTR   R15,R15                 Did request succeed?
+         BZR   R14                     Yes return
+         ST    R14,NCBMACAD            Save addr of failing macro
+         STC   R15,NCBRTNCD            Set return code
+         MVC   NCBERRCD,ACBERFLG-IFGACB(R7) error code
+         BR    R14                     Return with VSAM error
+*
+*-- Check result of VSAM RPL macros
+*
+CHKRPL   EQU   *
+         LTR   R15,R15                 Did request succeed?
+         BZR   R14                     Yes return
+         ST    R14,NCBMACAD            Save addr of failing macro
+         STC   R15,NCBRTNCD            Set return code
+         MVC   NCBERRCD,RPLERRCD-IFGRPL(R7) error code
+         BR    R14                     Return with VSAM error
+*
+*
+ENQ000   EQU   *
+         TM    NJFL1,NJF1ENQ           Is ENQ active?
+         BOR   R14                     Return if so
+*
+         ST    R14,SV14                Save return addr
+         ENQ   (NJE38Q,NJEDSN,E,44,SYSTEM),                            X
+               RET=NONE
+*
+         OI    NJFL1,NJF1ENQ           ENQ active
+         L     R14,SV14                Reload return addr
+         BR    R14                     Return
+*
+*
+DEQ000   EQU   *
+         TM    NJFL1,NJF1ENQ           Is ENQ active?
+         BZR   R14                     Return if not
+*
+         ST    R14,SV14                Save return addr
+         DEQ   (NJE38Q,NJEDSN,44,SYSTEM),                              X
+               RET=NONE
+         NI    NJFL1,255-NJF1ENQ       ENQ off
+         L     R14,SV14                Reload return addr
+         BR    R14                     Return
+*                                                                       NJE00200
+*                                                                       NJE00200
+*-- ADDBLK / GETBLK routines                                            NJE00200
+*                                                                       NJE00200
+*-- Allocate a new physical block.  Scan the allocation map for a free  NJE00200
+*-- block and mark it as taken, and return the new block number to the  NJE00200
+*-- caller.
+*
+*-- ADDBLK and GETBLK are functionally identical except that ADDBLK
+*-- does not ENQ or DEQ on NETSPOOL; it is assumed that the caller
+*-- already has done that (the DIR functions).
+*
+*-- Uses R14-R4,R7.   R1-R4 are preserved across call
+*                                                                       NJE00200
+*-- Entry: None                                                         NJE00200
+*                                                                       NJE00200
+*-- Exit:  R15 = 0 if ok, else RC from VSAM macro.                      NJE00200
+*          R0  = block # of new block.  If R0=0, no blocks available.   NJE00200
+*                                                                       NJE00200
+ADDBLK   EQU   *
+         ST    R14,SV14GB              Save return addr
+         STM   R1,R4,SVGB              Save caller's regs
+         BAL   R14,GETB000             Go allocate the block
+         LTR   R15,R15                 VSAM RC in R15, set CC
+         LR    R0,R4                   Return block # in R0
+         LM    R1,R4,SVGB              Load caller's regs
+         L     R14,SV14GB              Load return addr
+         BR    R14                     Return
+*                                                                       NJE00200
+GETBLK   EQU   *
+         ST    R14,SV14GB              Save return addr
+         STM   R1,R4,SVGB              Save caller's regs
+         BAL   R14,ENQ000              Get exclusive control
+         BAL   R14,GETB000             Go allocate the block
+         LR    R3,R15                  Save R15 across DEQ
+         BAL   R14,DEQ000              Release control
+         LTR   R15,R3                  Return VSAM RC in R15, set CC
+         LR    R0,R4                   Return block # in R0
+         LM    R1,R4,SVGB              Load caller's regs
+         L     R14,SV14GB              Load return addr
+         BR    R14                     Return
+*
+GETB000  EQU   *
+         ST    R14,SV14B0              Save return addr
+         LA    R2,ALLOCNUM             Get # of alloc map blocks
+         LA    R3,ALLOCBLK             Get 1st alloc map block #
+         LA    R4,1                    Starting relative block #
+*
+GETB010  EQU   *
+         ST    R3,KEY                  Set retrieval key
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   GETB090                 Exit with VSAM error
+*
+         L     R14,BLOCK               -> allocation map
+         LA    R15,4089                # of entries in map
+         L     R1,=X'FF000000'         Set pad char=X'FF'
+         CLCL  R14,R0                  Look for a non-FF entry
+         BE    GETB030       all FFs:  We're full up in this block
+*
+         LR    R1,R14                  Copy ptr to map byte
+         S     R1,BLOCK                Compute offset from start
+         SLL   R1,3                    Each map byte is 8 records
+         AR    R4,R1                   Adjust relative block number for
+*                                       byte position we located
+         ICM   R1,8,0(R14)             Get map byte with the free bit
+         LA    R2,X'80'                Create possible opposing bit
+*
+GETB020  EQU   *
+         SR    R0,R0                   Clear for shift use
+         SLDL  R0,1                    Shift off one bit into R0
+         LTR   R0,R0                   Is this the zero bit?
+         BZ    GETB040                 Yes
+         SRL   R2,1                    Next opposing bit position
+         LA    R4,1(,R4)               Compute next rel blk #
+         B     GETB020                 Find that 0 bit
+*
+GETB030  EQU   *
+         LA    R4,4089(,R4)            Incr starting relative block #
+         LA    R3,1(,R3)               Next map block key
+         BCT   R2,GETB010              Read next map block
+*
+         ENDREQ RPL=(R7)               No update
+         SR    R4,R4                   Return no block #: ALL FULL
+         SR    R15,R15                 No VSAM errors
+         B     GETB090                 Done
+*
+SETMAP   OI    0(R14),X'00'            Executed instr
+*
+GETB040  EQU   *
+         EX    R2,SETMAP               Set the bit in allocation map
+*
+         PUT   RPL=(R7)                Update the allocation map
+         BAL   R14,CHKRPL              Deal with errors
+*
+GETB090  EQU   *
+         L     R14,SV14B0              Load return addr
+         BR    R14                     Return
+*
+*
+         LTORG
+*
+WTOMSG   WTO   '                                                       x
+                                             ',MF=L
+WTOMSGL  EQU   *-WTOMSG
+*
+ENQ      ENQ   (0),MF=L
+ENQL     EQU   *-ENQ
+*
+DEQ      DEQ   (0),MF=L
+DEQL     EQU   *-DEQ
+*
+         DS    0D
+NJE38Q   DC    CL8'NJE38'
+NJEDSN   DC    CL44'NJE38.NETSPOOL'
+*
+BLANKS   DC    CL120' '
+NONBLANK DC    64X'FF',X'00',191X'FF'   TR Table to locate nonblank
+BLANK    DC    64X'00',X'FF',100X'00'   TR Table to locate blanks
+TRTAB$   DC    91X'00',X'FF',164X'00'   TR Table to locate '$'
+HEXTRAN  DC    CL16'0123456789ABCDEF'  Translate table
+*                                                                       NJE00920
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*                   *                                                   NJE00920
+*  N J E D I R      *                                                   NJE00920
+*                   *                                                   NJE00920
+*  Directory        *                                                   NJE00920
+*  Management       *                                                   NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+*
+NJEDIR   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEDIR'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R13)         SAVE CMS REGS                    NJE00050
+         LR    R12,R15                 BASE                             NJE00060
+         USING NJEDIR,R12              ADDRESS IT                       NJE00070
+         USING NJEWK,R10
+         USING NCB,R9
+*
+         ST    R13,NJEDIRSA+4          SAVE prv S.A. ADDR               NJE00080
+         LA    R1,NJEDIRSA             -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         L     R11,=A(NJECMN)          -> common csect
+         ST    R11,ANJECMN             Save addr
+         USING NJECMN,R11
+*
+DIRADD   EQU   0                       Add new file to directory
+DIRDEL   EQU   4                       Purge a file from directory
+DIRLOC   EQU   8                       Locate a file by ID
+DIRLST   EQU   12                      List directory contents
+DIRUPD   EQU   16                      Update directory entry      v120
+*
+         LR    R2,R0                   Copy entry code
+         B     *+4(R2)                 Branch into branch table
+         B     ADD000               0  Add a new directory entry
+         B     DEL000               4  Delete a directory entry
+         B     LOC000               8  Locate a file by ID
+         B     LST000               C  List directory contents
+         B     UPD000              10  Update directory entry      v120
+*
+ADD000   EQU   *
+         LA    R0,(10000/8)+1          Byte size of 10,000 bits
+         ST    R0,SPLIDLEN             Save the length
+         GETMAIN RU,                   Get stg for spool id bitmap     x
+               LV=(0)
+         ST    R1,SPLIDMAP             Save stg addr
+         LR    R0,R1                   Copy starting addr
+         L     R1,SPLIDLEN             Get the length
+         SR    R15,R15                 Set pad char
+         MVCL  R0,R14                  Initialize the map
+*
+         BAL   R14,ENQ000              Get exclusivity
+*
+         MVC   KEY,=F'1'               Get the first block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         L     R2,BLOCK                -> blk #1 in stg
+         USING BLKONE,R2
+         MVC   SPLID,SPLNUM            Save the last assigned id #
+         L     R2,DIRBLK               Get blk# of current directory
+         DROP  R2
+         LA    R3,1                    Load XOR counterpart
+         XR    R3,R2                   Compute alternate directry blk#
+*
+*-- R2 = starting block number of current directory
+*-- R3 = starting block number of replacement directory
+*
+*
+         ST    R2,KEY                  Get a current dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,BUFF                -> buffer to place block
+         LR    R15,R1                  Copy length
+         MVCL  R14,R0                  Move data
+*
+         ST    R3,KEY                  Get a replacement dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+*-- Copy all of the directory entries in the current directory over
+*-- to the (new) replacement directory (where we will eventually add
+*-- a new directory entry).  Along the way, build a bit map of all
+*-- of the spool file numbers that are in use (they're in the
+*-- directory entries) so that we can assign a new unique file # to
+*-- the new file in its new directory entry.
+*
+         L     R4,BUFF                 -> current directory
+         L     R5,BLOCK                -> replacement directory
+         L     R8,NSRECNM-NSDIR(,R4)   Get # directory entries current
+         LA    R1,1(,R8)               +1 for new dir ent to be added
+         ST    R1,NSRECNM-NSDIR(,R4)   Store (will get copied to repl)
+         ST    R3,NSBLK-NSDIR(,R4)     Store starting blk of dir (will
+*                                       get copied to replacement dir)
+*
+ADD050   EQU   *
+         CLC   NSLEN-NSDIR(,R4),=X'FFFE'   Ptr to next block?
+         BE    ADD100                  yes
+         MVC   0(NSDIRLN,R5),0(R4)     Copy existing dir entry to repl
+*
+         LH    R7,NSID-NSDIR(,R4)      Get file id # for this file
+         SR    R6,R6                   Clear for divide
+         D     R6,=F'8'                Get byte offset remainder bits
+*
+         A     R7,SPLIDMAP             -> byte containing bit for
+*                                       this file #
+         LA    R1,X'80'                Create a bit
+         SRL   R1,0(R6)                Adjust to bit for this file #
+         EX    R1,SPLSET               Set the bit in the spool id map
+*
+         LA    R4,NSDIRLN(,R4)         -> next current dir entry
+         LA    R5,NSDIRLN(,R5)         -> next replacement dir entry
+         BCT   R8,ADD050               Keep copying dir entries
+         B     ADD200                  Go add the new dir entry
+*
+SPLSET   OI    0(R7),X'00'             Executed instr
+*
+*
+*-- Here if the directory continues onto another block.  Get these
+*-- blocks, and continue processing individual entries.
+*
+ADD100   EQU   *
+         L     R7,RPL                  -> RPL
+         PUT   RPL=(R7)                Update the replacement block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         CLC   NSLEN-NSDIR(,R5),=X'FFFE' Repl dir ptr to next block?
+         BNE   ADD190                  No; we need to add a block
+*
+ADD120   EQU   *
+         ICM   R2,15,2(R4)             Get ptr to next current dir blk
+         ICM   R3,15,2(R5)             Get ptr to next repl dir blk
+*
+         ST    R2,KEY                  Get next current dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,BUFF                -> buffer to place block
+         LR    R15,R1                  Copy length
+         MVCL  R14,R0                  Move data
+*
+         ST    R3,KEY                  Get next replacement dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         L     R4,BUFF                 -> current directory
+         L     R5,BLOCK                -> replacement directory
+         B     ADD050                  Continue processing
+*
+ADD190   EQU   *
+         L     R3,KEY                  Get current blk # we just wrote
+*
+         BAL   R14,ADDBLK              Allocate a new physical block
+         BNZ   ADD900                  Exit with VSAM error
+         LTR   R6,R0                   Is there a block number?
+         BZ    ADD910                  No, NETSPOOL dataset full   v130
+*
+         ST    R3,KEY                  Gotta update blk again with ptr
+         GET   RPL=(R7)                Get the physical block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         MVC   0(2,R5),=X'FFFE'        Insert ptr indic for next blk
+         STCM  R6,15,2(R5)             Insert next block #
+         B     ADD100                  Now go jump to next dir blks
+*
+*-- Here when all current directory entries have been copied to the
+*-- new (replacement) directory.  Add the new directory entry for
+*-- the file just written out via PUT actions.
+*
+ADD200   EQU   *
+         L     R1,BLOCKEND             -> end of buffer
+         SR    R1,R5                   Determine remaining space in blk
+         LA    R4,NSDIRLN              Get size of directory entry
+         LA    R4,2+4(,R4)             Add in overhead
+*                                       +2 for n block marker
+*                                       +4 for next block ptr
+         CR    R1,R4                   Is there room to add entry?
+         BL    ADD300                  No, better get another block
+*
+         USING NSDIR,R5
+         XC    NSDIR(NSDIRLN),NSDIR    Init new entry
+         MVC   NSLEN,=Y(NSDIRLN)       Set entry length
+         MVC   NSBLK,INITBLK           Set starting blk# of the file
+         L     R6,NCBTAG               -> TAG block for file
+         USING TAG,R6
+         MVC   NSINLOC(TAGUSELN),TAGINLOC  Tag data to dir entry
+*
+         L     R1,SPLID                Get last assigned file id #
+         L     R0,=F'10000'            10,000 possible spool ids
+*
+ADD250   EQU   *
+         LA    R15,1(,R1)              Choose next number
+         C     R15,=F'10000'           At the limit?
+         BL    *+8                     No
+         LA    R15,1                   Reset to 1
+         LR    R1,R15                  Save next possible number
+*
+         SR    R14,R14                 Clear for divide
+         D     R14,=F'8'               Get byte offset remainder bits
+*
+         A     R15,SPLIDMAP            -> byte containing bit for
+*                                       this spool id #
+         LA    R7,X'80'                Create a bit
+         SRL   R7,0(R14)               Adjust to bit for this id #
+         EX    R7,TMBIT                Check bit status in the bitmap
+         BZ    ADD260                  Spool id not in use. take it
+         BCT   R0,ADD250               Else try next number
+         SR    R1,R1                   Otherwise use id=0000
+         B     ADD260
+*
+TMBIT    TM    0(R15),X'00'            Executed instr
+*
+*
+*
+ADD260   EQU   *
+         ST    R1,SPLID                Save newly assigned spool id
+         STCM  R1,3,NSID               Assign the file id # to file
+         STCM  R1,3,NCBFID             Also put it in the NCB
+         STCM  R1,3,TAGID              Also, put it in the tag data
+         DROP  R5,R6                   NSDIR,TAG
+*
+         LA    R4,NSDIRLN(,R5)         Skip past entry just added
+         L     R5,BLOCKEND             -> end of block
+         SR    R5,R4                   Compute length remaining in blk
+         SR    R15,R15                 Set pad
+         MVCL  R4,R14                  Clear to end of block
+*
+         L     R7,RPL                  -> RPL
+         PUT   RPL=(R7)                Update final replacement block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+*-- Now update block 1 to activate the replacement directory
+*
+         MVC   KEY,=F'1'               Get the first block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         L     R1,BLOCK                -> blk #1 in stg
+         USING BLKONE,R1
+         L     R2,DIRBLK               Get blk# of current directory
+         LA    R3,1                    Load XOR counterpart
+         XR    R3,R2                   Compute alternate directry blk#
+         ST    R3,DIRBLK               Plug in alternate
+         MVC   SPLNUM,SPLID            Save last assigned spool id
+         DROP  R1
+*
+         L     R7,RPL                  -> RPL
+         PUT   RPL=(R7)                Update block 1
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+         B     XITDIR                  Exit with RC=0
+*
+*-- Here if there is no room in a directory block to add the new
+*-- file's directory entry.  An additional block will be allocated and
+*-- chained to the directory entries.
+*
+ADD300   EQU   *
+         L     R7,RPL                  -> RPL
+         PUT   RPL=(R7)                Write back the dir block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+         L     R4,KEY                  Get current blk # we just wrote
+*
+         BAL   R14,ADDBLK              Allocate a new physical block
+         BNZ   ADD900                  Exit with VSAM error
+         LTR   R6,R0                   Is there a block number?
+         BZ    ADD910                  No, NETSPOOL dataset full   v130
+*
+         ST    R4,KEY                  Gotta update blk again with ptr
+         GET   RPL=(R7)                Get the physical block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         MVC   0(2,R5),=X'FFFE'        Insert ptr indic for next blk
+         STCM  R6,15,2(R5)             Insert next block #
+*
+         L     R7,RPL                  -> RPL
+         PUT   RPL=(R7)                Write back the dir block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         ST    R6,KEY                  Now point to newly obtained blk
+         GET   RPL=(R7)                Get the physical block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   ADD900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         SR    R3,R3                   Pad
+         MVCL  R0,R2                   Clear it
+*
+         L     R5,BLOCK                -> new block stg
+         B     ADD200                  Try again to add new dir entry
+*
+ADD900   EQU   *                       VSAM Error return
+*                                       Error codes in NCB already
+         B     XITDIR                  Exit with RC in R15
+*
+ADD910   EQU   *                       No space in NETSPOOL
+         MVC   NCBRTNCD(2),=X'0C03'    Set to 12,3 code
+         LA    R14,*                   -> location of error source v110
+         ST    R14,NCBMACAD            Store into NCB              v110
+         LA    R15,12                  Set RC
+         B     XITDIR                  Return that notice
+*
+*
+*
+*
+*
+DEL000   EQU   *
+         GETMAIN RU,                   Get stg for alloc bitmap        x
+               LV=16384
+         STM   R0,R1,SPLIDLEN          Save len,addr
+*
+         L     R7,RPL                  -> RPL
+         MODCB RPL=(R7),                                               x
+               OPTCD=(KEY,DIR,MVE,UPD), Update mode                    x
+               MF=(G,MACLIST)
+*
+         BAL   R14,ENQ000              Get exclusivity
+*
+         LA    R2,ALLOCNUM             Get # of alloc map blocks
+         LA    R3,ALLOCBLK             Get 1st alloc map block #
+         L     R4,SPLIDMAP             -> receiving stg area
+*
+DEL020   EQU   *
+         ST    R3,KEY                  Set retrieval key
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R14,BLOCK               -> block just read
+         LA    R15,4089                # of bytes in block
+         LR    R5,R15                  Copy len
+         MVCL  R4,R14                  Move alloc bitmap to stg area
+*
+         LA    R3,1(,R3)               Next block number of alloc map
+         BCT   R2,DEL020               Go read them all
+*
+         MVC   KEY,=F'1'               Get the first block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R2,BLOCK                -> blk #1 in stg
+         USING BLKONE,R2
+         L     R2,DIRBLK               Get blk# of current directory
+         LA    R3,1                    Load XOR counterpart
+         XR    R3,R2                   Compute alternate directry blk#
+         DROP  R2
+*
+*-- R2 = starting block number of current directory
+*-- R3 = starting block number of replacement directory
+*
+*
+         ST    R2,KEY                  Get a current dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,BUFF                -> buffer to place block
+         LR    R15,R1                  Copy length
+         MVCL  R14,R0                  Move data
+*
+         ST    R3,KEY                  Get a replacement dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,PTRBUF              -> buffer to place block
+         LR    R15,R1                  Copy length
+         MVCL  R14,R0                  Move data
+*
+*-- Current directory is in BUFF
+*-- Replacement directory will be in PTRBUF
+*
+*
+*-- Copy all of the directory entries in the current directory over
+*-- to the (new) replacement directory (where we will eventually delete
+*-- a directory entry).  Along the way, look for the entry to be
+*-- purged.
+*
+         L     R4,BUFF                 -> current directory
+         L     R5,PTRBUF               -> replacement directory
+         L     R8,NSRECNM-NSDIR(,R4)   Get # directory entries current
+         LR    R1,R8                   Copy count
+         BCTR  R1,0                    Reduce for to-be-deleted file
+         ST    R1,NSRECNM-NSDIR(,R4)   Store (will get copied to repl)
+         ST    R3,NSBLK-NSDIR(,R4)     Store starting blk of dir (will
+*                                       get copied to replacement dir)
+         L     R6,NCBTAG               -> TAG data
+         LH    R6,TAGID-TAG(,R6)       Get file id number
+         XC    INITBLK,INITBLK         Clear file's starting blk #
+*
+DEL050   EQU   *
+         CLC   NSLEN-NSDIR(,R4),=X'FFFE'   Ptr to next block?
+         BE    DEL100                  yes
+         CH    R6,NSID-NSDIR(,R4)      Is this the file to be purged?
+         BE    DEL070
+         CLC   NSLEN-NSDIR(,R5),=X'FFFE'   Ptr to next block?
+         BE    DEL120                  yes
+         MVC   0(NSDIRLN,R5),0(R4)     Copy existing dir entry to repl
+         LA    R5,NSDIRLN(,R5)         -> next replacement dir entry
+*
+DEL060   EQU   *
+         LA    R4,NSDIRLN(,R4)         -> next current dir entry
+         BCT   R8,DEL050               Keep copying dir entries
+         B     DEL200                  Done with copy
+*
+DEL070   EQU   *
+         MVC   INITBLK,NSBLK-NSDIR(R4) Save starting block # of file
+         B     DEL060                  Continue copy
+*
+*
+*-- Get next current dir block (move it to BUFF)
+*
+DEL100   EQU   *
+         ICM   R2,15,2(R4)             Get ptr to next current dir blk
+*
+         ST    R2,KEY                  Get next current dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,BUFF                -> buffer to place block
+         LR    R15,R1                  Copy length
+         MVCL  R14,R0                  Move data
+         L     R4,BUFF                 -> current directory
+         B     DEL050                  Continue with copy
+*
+*-- Get next replacement dir block
+*--  1. Write back the replacement we've been copying to (from PTRBUF)
+*--  2. Get next block
+*--  3. Move it to PTFBUF
+*
+DEL120   EQU   *
+         ST    R3,KEY                  Set blk# of repl dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get the block for update
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,PTRBUF              -> buffer containing repl dir
+         LR    R15,R1                  Copy length
+         MVCL  R0,R14                  Move data to i/o buffer
+*
+         L     R7,RPL                  -> RPL
+         PUT   RPL=(R7)                Update the replacement block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         ICM   R3,15,2(R5)             Get ptr to next current dir blk
+*
+         ST    R3,KEY                  Get next current dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,PTRBUF              -> buffer to place block
+         LR    R15,R1                  Copy length
+         MVCL  R14,R0                  Move data
+         L     R5,PTRBUF               -> replacement directory
+         B     DEL050                  Continue with copy
+*
+*-- Fix up the last replacement dir block
+*
+DEL200   EQU   *
+         L     R1,PTRBUF               -> start of buffer
+         LA    R15,4088(,R1)           -> end of that buffer - 1
+*
+DEL210   EQU   *
+         CR    R1,R15                  Past end of buffer?
+         BH    DEL230                  Y, done searching
+         CLC   0(2,R1),=X'FFFE'        Left over pointer indicator?
+         BE    DEL220                  Yes
+         LA    R1,NSDIRLN(,R1)         Next dir entry position
+         B     DEL210
+*
+DEL220   EQU   *
+         ICM   R7,15,2(R1)             Pick up the left over block #
+         BAL   R14,FREBLK              Go free the block in R7
+*
+DEL230   EQU   *
+         LR    R0,R5                   -> end of used part of ptrbuf
+         L     R1,PTRBUF               -> start of buffer
+         LA    R1,4089(,R1)            -> end of that buffer
+         SR    R1,R5                   Compute length to clear
+         SR    R15,R15                 Compute length to write out
+         MVCL  R0,R14                  Clear to end of block
+*
+         ST    R3,KEY                  Set blk# of repl dir block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Re-get for update
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R0,BLOCK                -> VSAM i/o area
+         LA    R1,4089                 Size of physical block
+         L     R14,PTRBUF              -> buffer containing repl dir
+         LR    R15,R1                  Copy length
+         MVCL  R0,R14                  Move repl data to i/o buffer
+*
+         PUT   RPL=(R7)                Update the last repl block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+*-- DEL300 is used to free all of the blocks used by the file itself
+*
+DEL300   EQU   *
+         ICM   R7,15,INITBLK           Get 1st block # of deleted file
+         BZ    DEL910                  If 0, file # wasn't found
+*
+DEL310   EQU   *
+         ST    R7,KEY                  Set block retreival key
+         BAL   R14,FREBLK              Mark the block as free in bitmap
+*
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get the ptr block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R4,BLOCK                -> ptr block ptrs
+         LA    R5,4084(,R4)            -> end of ptr block ptrs
+*
+DEL330   EQU   *
+         ICM   R7,15,0(R4)             Get a block #
+         BZ    DEL350                  Done with ptrs
+         BAL   R14,FREBLK              Free the block
+         LA    R4,4(,R4)               -> next ptr field
+         CR    R4,R5                   At end of ptr block?
+         BL    DEL330
+*                                   ** Here if ptr block chains to
+*                                       another ptr block
+         CLI   0(R4),X'FE'             Ptr to ptr blk indicator?
+         BNE   DEL350                  No, we've processed last ptr
+         SR    R7,R7                   Clear for IC
+         ICM   R7,7,1(R4)              Get ptr to next ptr block
+         B     DEL310
+*
+*-- Write back the allocation map
+*
+DEL350   EQU   *
+         LA    R2,ALLOCNUM             Get # of alloc map blocks
+         LA    R3,ALLOCBLK             Get 1st alloc map block #
+         L     R4,SPLIDMAP             -> map stg area
+*
+DEL360   EQU   *
+         ST    R3,KEY                  Set retrieval key
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R14,BLOCK               -> block just read
+         LA    R15,4089                # of bytes in block
+         LR    R5,R15                  Copy len
+         MVCL  R14,R4                  Move alloc bitmap to i/o buffer
+*
+         PUT   RPL=(R7)                Put the map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         LA    R3,1(,R3)               Next block number of alloc map
+         BCT   R2,DEL360               Go read them all
+*
+*-- Now update block 1 to activate the replacement directory
+*
+DEL400   EQU   *
+         MVC   KEY,=F'1'               Get the first block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+*
+         L     R1,BLOCK                -> blk #1 in stg
+         USING BLKONE,R1
+         L     R2,DIRBLK               Get blk# of current directory
+         LA    R3,1                    Load XOR counterpart
+         XR    R3,R2                   Compute alternate directry blk#
+         ST    R3,DIRBLK               Plug in alternate
+         DROP  R1
+*
+         L     R7,RPL                  -> RPL
+         PUT   RPL=(R7)                Update block 1
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   DEL900                  Exit with VSAM error
+         B     XITDIR                  Exit with RC=0
+*
+DEL900   EQU   *                       VSAM Error return
+*                                       Error codes in NCB already
+         B     XITDIR                  Exit with RC in R15
+*
+DEL910   EQU   *                    ** Here if directry entry not found
+         MVC   NCBRTNCD(2),=X'0C04'    Set to 12,4 code
+         LA    R14,*                   -> location of error source v110
+         ST    R14,NCBMACAD            Store into NCB              v110
+         LA    R15,12                  Set RC
+         B     XITDIR                  Exit with RC in R15
+*
+*-- Free a block (mark it available in the allocation bitmap)
+*
+*-- Entry: R7 = block #
+*
+FREBLK   EQU   *
+         BCTR  R7,0                    Make blk # relative to 0
+         SR    R6,R6                   Clear for divide
+         D     R6,=F'8'                Get byte offset remainder bits
+*
+         A     R7,SPLIDMAP             -> byte containing bit for
+*                                       this block
+         LA    R1,X'80'                Create a bit
+         SRL   R1,0(R6)                Adjust to bit for this blk #
+         LA    R0,X'FF'                Create AND mask
+         XR    R1,R0                   Compute mask to turn a bit off
+         EX    R1,FREBIT               Turn off the bit in the bitmap
+         BR    R14                     Return
+*
+FREBIT   NI    0(R7),X'00'             Executed instr
+*
+*
+*
+* LOC000 - FIND a file by id in the directory.                     v120
+* UPD000 - UDIR update a directory entry for a specific file.      v120
+*
+*
+*-- UDIR functionality only updates the destination node id and    v120
+*--      destination user id within the directory entry from       v120
+*--      the TAG data supplied by the caller.  No other directory  v120
+*--      fields are altered.                                       v120
+*
+*
+LOC000   EQU   *
+UPD000   EQU   *                                                   v120
+         BAL   R14,ENQ000              Get exclusivity
+*
+         MVC   KEY,=F'1'               Get the first block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   LOC900                  Exit with VSAM error
+*
+         L     R2,BLOCK                -> blk #1 in stg
+         USING BLKONE,R2
+         L     R2,DIRBLK               Get blk# of current directory
+         DROP  R2
+*
+*
+         ST    R2,KEY                  Get a current dir block
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   LOC900                  Exit with VSAM error
+*
+*
+         L     R4,BLOCK                -> current directory
+         USING NSDIR,R4
+         L     R8,NSRECNM              Get # directory entries current
+*
+         L     R6,NCBTAG               -> TAG data
+         USING TAG,R6
+         XC    INITBLK,INITBLK         Clear file's starting blk #
+*
+LOC050   EQU   *
+         CLC   NSLEN,=X'FFFE'          Ptr to next block?
+         BNE   LOC060                  No
+*
+         ICM   R2,15,2(R4)             Get ptr to next current dir blk
+         ST    R2,KEY                  Get next current dir block
+*
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   LOC900                  Exit with VSAM error
+         L     R4,BLOCK                -> next directory block
+*
+LOC060   EQU   *
+         CLC   TAGID,NSID              Is this the file we need?
+         BE    LOC070
+*
+         LA    R4,NSDIRLN(,R4)         -> next current dir entry
+         BCT   R8,LOC050               Keep looking
+         B     LOC100                  Done with search
+*
+LOC070   EQU   *
+         CLI   NCBREQ,NCBUDIR          Is this UDIR function?      v120
+         BE    UPD100                  Yes                         v120
+*
+         MVC   INITBLK,NSBLK           Save starting block # of file
+         MVC   TAGINLOC(TAGUSELN),NSINLOC  Return the tag data to callr
+*
+*
+LOC100   EQU   *
+         ENDREQ RPL=(R7)               Release the get-for-update
+*
+         NC    INITBLK,INITBLK         Did we find a file?
+         BZ    LOC910                  No, exit with not found error
+         SR    R15,R15                 Set RC to 0
+         B     XITDIR
+*
+*
+UPD100   EQU   *                                                   v120
+         MVC   NSTOLOC,TAGTOLOC        Update destination node id  v120
+         MVC   NSTOVM,TAGTOVM          Update destination user id  v120
+         MVC   TAGINLOC(TAGUSELN),NSINLOC  Rtrn tag data to caller v120
+         MVC   INITBLK,NSBLK           Save file's startinblock #  v120
+*
+         PUT   RPL=(R7)                Update the directory        v120
+         BAL   R14,CHKRPL              Deal with errors            v120
+         BNZ   LOC900                  Exit if VSAM error          v120
+         B     XITDIR
+*
+         DROP  R6                      TAG                         v120
+         DROP  R4                      NSDIR                       v120
+*
+*
+LOC900   EQU   *                       VSAM Error return
+*                                       Error codes in NCB already
+         B     XITDIR                  Exit with RC in R15
+*
+LOC910   EQU   *                    ** Here if directry entry not found
+         MVC   NCBRTNCD(2),=X'0C04'    Set to 12,4 code
+         LA    R14,*                   -> location of error source v110
+         ST    R14,NCBMACAD            Store into NCB              v110
+         LA    R15,12                  Set RC
+         B     XITDIR                  Exit with RC in R15
+*
+*
+*
+*
+*
+LST000   EQU   *
+         XC    LISTLEN,LISTLEN         Ensure no stray len
+         XC    LISTADDR,LISTADDR       Ensure no stray address
+         BAL   R14,ENQ000              Get exclusivity
+*
+         MVC   KEY,=F'1'               Get the first block
+         L     R7,RPL                  -> RPL
+         GET   RPL=(R7)                Get a map block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   LST900                  Exit with VSAM error
+*
+         L     R2,BLOCK                -> blk #1 in stg
+         USING BLKONE,R2
+         L     R3,ALMBLK               Get blk# of alloc map       v200
+         L     R8,MAXBLK               Get blk# in dataset         v200
+         L     R2,DIRBLK               Get blk# of current directory
+         DROP  R2
+*
+*-- Compute spool percentage full from alloc map                   v200
+*
+         SR    R5,R5                   Init blks used counter      v200
+         LR    R6,R8                   Copy max blocks in dataset  v200
+         SRL   R6,3     divide by 8    # map bytes represent'g blksv200
+*
+LST010   EQU   *                                                   v200
+         ST    R3,KEY                  Get a block of map          v200
+         L     R7,RPL                  -> RPL                      v200
+         GET   RPL=(R7)                Get a map block             v200
+         BAL   R14,CHKRPL              Deal with errors            v200
+         BNZ   LST900                  Exit with VSAM error        v200
+*                                                                  v200
+         SR    R0,R0                   Clear for IC work           v200
+         L     R15,BLOCK               -> record                   v200
+         LA    R14,4089                # bytes to process          v200
+*
+LST020   EQU   *                                                   v200
+         CLI   0(R15),X'00'            Map byte unallocated?       v200
+         BE    LST050                  Dont count any              v200
+         CLI   0(R15),X'FF'            Map byte fully allocated?   v200
+         BE    LST060                  Yes, count 8 blocks         v200
+         LA    R4,8                    # bits in a byte            v200
+         IC    R0,0(,R15)              Get a map byte              v200
+*
+LST030   EQU   *                                                   v200
+         SR    R1,R1                   Clear for shift             v200
+         SRDL  R0,1                    Move a bit into R1          v200
+         LTR   R1,R1                   Was the bit=1?              v200
+         BZ    LST040                  No, dont count it           v200
+         LA    R5,1(,R5)               Count the block bit         v200
+*
+LST040   EQU   *                                                   v200
+         BCT   R4,LST030               Scan whole byte             v200
+*
+LST050   EQU   *                                                   v200
+         BCT   R6,LST070               # map bytes remaining to scnv200
+         B     LST080                  Done counting               v200
+*
+LST060   EQU   *                                                   v200
+         LA    R5,8(,R5)               All 8 blocks allocated      v200
+         B     LST050                  Decr remaining and continue v200
+*
+LST070   EQU   *                                                   v200
+         LA    R15,1(,R15)             -> next map byte            v200
+         BCT   R14,LST020              Keep scanning               v200
+         LA    R3,1(,R3)               Bump alloc map block number v200
+         B     LST010                  Get another map block       v200
+*
+LST080   EQU   *                                                   v200
+         MH    R5,=Y(100)              Blocks used: prep for % calcv200
+         SR    R4,R4                   Clear for divide            v200
+         DR    R4,R8                   Compute % full              v200
+         AR    R4,R4                   Double remainder            v200
+         CR    R4,R8                   Do we need to round up?     v200
+         BL    LST090                  No                          v200
+         LA    R5,1(,R5)               Round up percent full       v200
+*
+LST090   EQU   *                                                   v200
+         STH   R5,NCBPCT               Return % full in NCB        v200
+*
+*-- Retrieve directory contents                                    v200
+*
+LST100   EQU   *
+         ST    R2,KEY                  Get a current dir block
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   LST900                  Exit with VSAM error
+*
+*
+         L     R4,BLOCK                -> current directory
+         USING NSDIR,R4
+         L     R8,NSRECNM              Get # directory entries
+         BCTR  R8,0                    Less 1 for directory itself
+         STCM  R8,3,NCBRECCT           Set entries count in NCB
+         LTR   R8,R8                   Were there any entries?
+         BZ    LST910                  No
+         SR    R0,R0                   Clear for multiply
+         LA    R1,NSDIRLN              Length of directory entry
+         MR    R0,R8                   Compute size of area needed
+         LR    R0,R1                   Copy size to r0
+         GETMAIN RU,                   Get stg area to hold entries    x
+               LV=(0)
+         STM   R0,R1,LISTLEN
+         LR    R5,R1                   -> where to place entries
+         LA    R4,NSDIRLN(,R4)         Skip over directory's own entry
+*
+*
+LST150   EQU   *                                                   v200
+         CLC   NSLEN,=X'FFFE'          Ptr to next block?
+         BNE   LST160                  No                          v200
+*
+         ICM   R2,15,2(R4)             Get ptr to next current dir blk
+         ST    R2,KEY                  Get next current dir block
+*
+         GET   RPL=(R7)                Get a block
+         BAL   R14,CHKRPL              Deal with errors
+         BNZ   LST900                  Exit with VSAM error
+         L     R4,BLOCK                -> next directory block
+*
+LST160   EQU   *                                                   v200
+         MVC   0(NSDIRLN,R5),0(R4)     Move directory entry to stg area
+         LA    R4,NSDIRLN(,R4)         -> next dir entry
+         LA    R5,NSDIRLN(,R5)         -> next stg area slot
+         BCT   R8,LST150               Keep loading                v200
+*
+         DROP  R4                      NSDIR
+*
+*
+LST200   EQU   *                                                   v200
+         ENDREQ RPL=(R7)               Release the get-for-update
+*
+         MVC   NCBAREA,LISTADDR        Return list stg addr
+         MVC   NCBAREAL,LISTLEN        Return list stg len
+         MVC   NCBRECLN,=Y(NSDIRLN)    Return size of each dir entry
+         SR    R15,R15                 Set RC to 0
+         B     XITDIR
+*
+*
+LST900   EQU   *                       VSAM Error return
+*                                       Error codes in NCB already
+         LM    R0,R1,LISTLEN           Get stg area len, addr
+         LTR   R0,R0                   Is there an area?
+         BZ    XITDIR                  No
+         FREEMAIN RU,LV=(0),A=(1)      Else free it
+         SR    R15,R15                 Clear for RC
+         IC    R15,NCBRTNCD            Reinsert RC
+         B     XITDIR                  Exit with RC in R15
+*
+LST910   EQU   *                    ** Here if no files queued
+         ENDREQ RPL=(R7)               Release the get-for-update  v130
+         XC    NCBAREA,NCBAREA         No directory list obtained  v110
+         MVC   NCBRTNCD(2),=X'0C06'    Set to 12,6 code
+         LA    R15,12                  Set RC
+         LA    R14,*                   -> location of error source v110
+         ST    R14,NCBMACAD            Store into NCB              v110
+         B     XITDIR                  Exit with RC in R15
+*
+*
+XITDIR   EQU   *
+         LR    R5,R15                  Any RC value to R5
+         BAL   R14,DEQ000              Release the ENQ
+*
+         ICM   R1,15,SPLIDMAP          Get spool id bitmap stg addr
+         BZ    XITDIR10                Don't have a map
+         L     R0,SPLIDLEN             Size of bitmap
+         FREEMAIN RU,LV=(0),A=(1)      Free the bitmap
+         XC    SPLIDMAP,SPLIDMAP       Clear unsed ptr
+*
+XITDIR10 EQU   *
+         L     R13,4(,R13)             -> caller's sa                   NJE00210
+*
+         ST    R5,16(,R13)             Set RC in R15
+         LM    R14,R12,12(R13)         Reload callers's regs            NJE00220
+         BR    R14                     Return                           NJE00240
+*                                                                       NJE00290
+         LTORG
+         DROP  R12
+*                                                                       NJE00290
+****  Main work area common                                             NJE00290
+****  to all NJExxx CSECTs.                                             NJE00290
+*                                                                       NJE00290
+NJEWK    DSECT
+NJEEYE   DS    CL4'NSPL'           Eyecatcher
+NJEWKLEN DS    F                   Getmain size of this area
+NSOWN    DS    A                   -> TCB of caller
+ANJECMN  DS    A                   -> NJECNM common csect               NJE00320
+*
+DBLE     DS    D                   Work area                            NJE00310
+TWRK     DS    2D                  Work area
+*
+MACLIST  DS    XL160               Macro expansion area
+*
+SV14     DS    A                   R14 save area
+SV14GB   DS    A                   R14 save area
+SV14B0   DS    A                   R14 save area
+SVGB     DS    4F                  R1-R4 save area
+SPLIDLEN DS    F                   Length of spool id bitmap stg
+SPLIDMAP DS    A                   -> Spool file id bitmap
+SPLID    DS    F                   Last assigned spool id number
+LISTLEN  DS    F                   Length of contents stg area
+LISTADDR DS    A                   -> directory contents stg area
+*
+BLOCK    DS    A                   -> buffer for NETSPOOL VSAM i/o
+BLOCKEND DS    A                   -> end of BLOCK (BLOCK+4089)
+PTRBUF   DS    A                   -> buffer for NJESPOOL ptr use
+PTRBUFEN DS    A                   -> end of PTRBUF (PTRBUF+4089)
+BUFF     DS    A                   -> buffer for NJESPOOL use
+BUFFEND  DS    A                   -> end of BUFF (BUFF+4089)
+*
+*
+INITBLK  DS    F                   Blk # of first block to be written
+*                                   for a new file
+PTRBLK   DS    F                   Blk # of current phys record for
+*                                   pointer block (NCBGET/NCTPUT)
+NEWBLK   DS    F                   Blk # of current phys record for
+*                                   logical i/o (NCBGET/NCTPUT)
+PUTPOS   DS    A                   Current write position in BUFF (next
+*                                   available write position)
+GETPOS   DS    A                   Current read position in BLOCK (next
+*                                   available read position)
+PTRPOS   DS    A                   Current write position in PTRBUF
+*                                   (next available write position)
+PUTCNT   DS    F                   Number of logical records written
+GETCNT   DS    F                   Number of logical records read
+GETLIM   DS    F                   Max logical records in GET file
+*
+KEY      DS    F                   Relative block number key
+ACBL     DS    F                   ACB length
+ACB      DS    A                   -> ACB
+RPLL     DS    F                   RPL length
+RPL      DS    A                   -> RPL
+*
+NJFL1    DS    X                   Flag bits
+NJF1OACB EQU   X'80'  1... ....     NETSPOOL ACB is open
+NJF1ENQ  EQU   X'40'  .1.. ....     Exclusive control of NETSPOOL
+NJF1WPND EQU   X'20'  ..1. ....     Physical write is pending
+NJF1DPND EQU   X'10'  ...1 ....     Directory add is pending
+NJF1PUT  EQU   X'02'  .... ..1.     Processing PUTs to file
+NJF1GET  EQU   X'01'  .... ...1     Processing GETs from file
+*                     .... xx..     Available
+*
+NJFL2    DS    X                   Flag bits
+NJFL3    DS    X                   Flag bits
+NJFL4    DS    X                   Flag bits
+*
+*
+*
+*
+NJESA    DS    18F                     NJESPOOL OS save area            NJE00300
+NJEDIRSA DS    18F                     NJEDIR   OS save area            NJE00300
+*
+         DS    0D                      Force doubleword size
+NJEWKSZ  EQU   *-NJEWK
+*                                                                       NJE00930
+*
+BLKONE   DSECT                      ** Maps block #1 in NETSPOOL
+DIRBLK   DS    F                       Block number of current directry
+ALMBLK   DS    F                       Block number of allocation map
+MAXBLK   DS    F                       Highest block number in NETSPOOL
+SPLNUM   DS    F                       Last assigned spool file #
+BLKONESZ EQU   *-BLKONE                Size of dsect
+*                                                                       NJE00930
+*
+TYPPRT   EQU   X'40'                PRT dev
+TYPPUN   EQU   X'80'                PUN dev
+         COPY  NETSPOOL
+         COPY  TAG
+*
+         IFGACB
+         IFGRPL
+*
+         END   NJESPOOL                                                 NJE01000

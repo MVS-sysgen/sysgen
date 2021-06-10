@@ -1,0 +1,241 @@
+*
+*
+*-- NJE38 - Message modules carried over from VM/370 RSCS
+*
+*
+*   Used by DMTXJE for message formatting
+*   Invoked by DMTXJE via the MSGX macro
+*
+*
+*
+         MACRO
+&LABEL   MDEF  &MNUM,&RCOD,&SCOD,&TEXT
+         LCLC  &VRCOD,&VSCOD,&NDX
+         AIF   (T'&MNUM EQ 'O').MERR1
+         AIF   (T'&TEXT EQ 'O').MERR2
+&VRCOD   SETC  '0'
+&VSCOD   SETC  '0'
+         AIF   (T'&RCOD EQ 'O').RTOK
+&VRCOD   SETC  '&RCOD'
+.RTOK    AIF   (T'&SCOD EQ 'O').STOK
+&VSCOD   SETC  '&SCOD'
+.STOK    ANOP
+&NDX     SETC  '&SYSNDX'(2,3)
+&LABEL   DC    A(MSG&NDX)
+         DC    H'&MNUM',AL1(&VRCOD),AL1(&VSCOD),AL1(L'MTXT&NDX)
+MTXT&NDX DC    C&TEXT
+MSG&NDX  DC    0F'0'
+         MEXIT
+.MERR1   MNOTE 16,'MSG NUMBER NOT SPECIFIED'
+         MEXIT
+.MERR2   MNOTE 16,'MSG TEXT NOT SPECIFIED'
+         MEXIT
+         MEND
+         EJECT
+*.
+* MODULE NAME -
+*
+*        DMTMSG
+*
+* FUNCTION -
+*
+*        THIS MODULE CONTAINS NO EXECUTABLE CODE AND CONTAINS
+*        ONLY A LIST OF ERROR MSGS TO BE USED EXTERNALLY BY
+*        DMTMGX
+*
+* ATTRIBUTES -
+*
+*        REUSABLE
+*
+* ENTRY POINTS -
+*
+*
+*        DMTMSG - MESSAGE TABLE
+*
+*.
+         EJECT
+DMTMSG   CSECT
+         SPACE 2
+*        MESSAGE ROUTING CODE EQUATES
+         SPACE
+RSS      EQU   X'80'               RSS OPERATOR CONSOLE
+ORIG     EQU   X'40'               'ORIGINATING' LINK ID
+VMID     EQU   X'20'               VIRTUAL MACHINE USER ID
+CP       EQU   X'10'               LOCAL CP OPERATOR
+         SPACE 2
+         PRINT ON,GEN
+         SPACE 1
+         MDEF  000,RSS+CP,,'I RSCS (REL $, LEV $, $) READY'    @VA08219
+         MDEF  001,RSS,,'I Free storage = $ pages'
+         MDEF  002,RSS,,'I Link $ deactivated'
+         MDEF  003,RSS,,'I Link $ executing:  $$$$$$$$$$$$$$$$$$$$$$$$$x
+               $$$$$$$$$$$$$$$'
+         MDEF  004,RSS,,'I Location $ executing: $$$$$$$$$$$$$$$$$$$$$$x
+               $$$$$$$$$$$$$$$$$$$$$$'                         hrc016dt
+         MDEF  005,RSS,,'I Location $($) executing: $$$$$$$$$$$$$$$$$$$x
+               $$$$$$$$$$$$$$$$$$$'                            hrc016dt
+         MDEF  070,RSS,,'E i/o error $ SIOCC $ CSW $ $ Sense $ CCW $ $'
+         MDEF  080,RSS,,'E Program check -- link $ deactivated'
+         MDEF  090,RSS+CP,,'T Program check in supervisor -- RSCS shutdx
+               own'
+         MDEF  091,RSS+CP,,'T Initialization failure -- RSCS shutdown' x
+               *  comment continuation  *                      @vm01115
+         MDEF  101,VMID,,'I File $ enqueued on link $'
+         MDEF  102,VMID,,'I File $ pending for link $'
+         MDEF  103,VMID,,'E File $ rejected -- invalid destination addrx
+               ess'
+         MDEF  104,RSS+VMID,,'I File spooled to $ -- org $ ($) $$$ GMT'
+*              *** comment continuation ***                   @va09277
+         MDEF  105,RSS,,'I File $ purged'
+         MDEF  106,RSS,,'I File $ missing -- dequeued from link $'
+         MDEF  107,RSS,,'I $ Pending files for link $ missing'
+         MDEF  108,RSS+CP,,'E System error reading spool file $'
+         MDEF  141,RSS,,'I Line $ ready for connection to link $'
+         MDEF  142,RSS,,'I Link $ line $ connected'
+         MDEF  143,RSS,,'I Link $ line $ disconnected'
+         MDEF  144,RSS,,'I Receiving: file from $ $ for $ $'
+*        MDEF  145,RSS,,'I Received: file from $ $ for $ $'
+         MDEF  145,RSS+VMID,,'I Received: file($) from $ $ for $ $'
+         MDEF  146,RSS,,'I Sending: file $ on link $, rec $'
+         MDEF  147,RSS+VMID,,'I Sent: file $ on link $'
+         MDEF  148,RSS,,'I Active file $ sending resumed on link $'
+         MDEF  149,RSS,,'I Link $ line activity: tot= $; errs= $; tmoutx
+               s= $'
+         MDEF  160,RSS,,'I Line $ disabled for $'
+         MDEF  170,VMID,,'I From $: $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$x
+               $$$$$'
+         MDEF  171,VMID,,'I From $($): $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$x
+               $$$$$$$$'                                       hrc016dt
+         MDEF  172,ORIG,,'I CPQ: $$$$$$$$$$$$$$$$$$$$'         hrc022dt
+         MDEF  190,RSS,,'E Invalid spool block format on file $'
+         MDEF  200,ORIG,,'I RSCS'
+         MDEF  201,ORIG,,'E Invalid command $'
+         MDEF  202,ORIG,,'E Invalid link $'
+         MDEF  203,ORIG,,'E Invalid spool id $'
+         MDEF  204,ORIG,,'E Invalid keyword $'
+         MDEF  205,ORIG,,'E Conflicting keyword $'
+         MDEF  206,ORIG,,'E Invalid option $ $'
+         MDEF  207,ORIG,,'E Conflicting option $ $'
+         MDEF  208,ORIG,,'E Invalid user id $'
+         MDEF  300,ORIG,,'I Accepted by task $'
+         MDEF  301,ORIG,,'E Rejected by task $ -- previous command actix
+               ve'
+         MDEF  302,ORIG,,'E Link $ is not defined'
+         MDEF  303,ORIG,,'E Link $ is not active'
+         MDEF  304,ORIG,,'E Rejected by task $ -- not receiving'
+         MDEF  310,ORIG,,'E Location $ is not defined'         hrc024dt
+         MDEF  495,RSS+CP,,                                            x
+               'T Virtual storage size insufficient for initialization'x
+                                                               hrc025dt
+         MDEF  928,RSS+ORIG,,'E sSorage not available to transmit file x
+               $ ($) on link $ - file held'                    hrc025dt
+         MDEF  510,ORIG,,'I File $ backspaced'
+         MDEF  511,ORIG,,'E No file active on link $'
+         MDEF  520,RSS+ORIG,,'I File $ changed'
+         MDEF  521,RSS+ORIG,,'I File $ held for link $'
+         MDEF  522,RSS+ORIG,,'I File $ released for link $'
+         MDEF  523,RSS+ORIG,,'I Link $ queue reordered'
+         MDEF  524,RSS+ORIG,,'E File $ active -- no action taken'
+         MDEF  525,RSS+ORIG,,'E File $ is for link $ -- no action takenx
+               '
+         MDEF  526,RSS+ORIG,,'E File $ not found -- no action taken'
+         MDEF  530,RSS,,'I Command forwarded on link $'
+         MDEF  540,RSS,,'I New link $ defined'
+         MDEF  541,RSS,,'I Link $ redefined'
+         MDEF  542,RSS,,'E Link $ active -- not redefined'
+         MDEF  543,RSS,,'E Link $ not defined -- link limit reached'
+         MDEF  544,RSS,,'E Link $ not defined -- type not specified'
+         MDEF  550,RSS,,'I Link $ now deleted'
+         MDEF  551,RSS,,'E Link $ active -- not deleted'
+         MDEF  552,RSS,,'E Link $ has a file queue -- not deleted'
+         MDEF  560,RSS,,'I RSCS disconnecting'
+         MDEF  561,RSS,,'E Userid $ not receiving'
+         MDEF  570,RSS+ORIG,,'I Link $ now set to deactivate'
+         MDEF  571,RSS+ORIG,,'E Link $ already set to deactivate'
+         MDEF  580,RSS+ORIG,,'I File $ processing terminated'
+         MDEF  581,ORIG,,'E File $ not active'
+         MDEF  590,RSS+ORIG,,'I Link $ resuming file transfer'
+         MDEF  591,RSS+ORIG,,'E Link $ not in hold status'
+         MDEF  600,ORIG,,'I File $ forwarded spaced'
+         MDEF  610,RSS+ORIG,,'I Link $ to suspend file transmission'
+         MDEF  611,RSS+ORIG,,'I Link $ file transmission suspended'
+         MDEF  612,RSS+ORIG,,'E Link $ already in hold status'
+         MDEF  620,X'00',,'I Message forwarded on link $'
+         MDEF  630,ORIG,,'I $ Now routed through link $'       hrc024dt
+         MDEF  631,ORIG,,'I Indirect routing for $ deactivated'  c024dt
+         MDEF  632,ORIG,,'E $ invalid route specified'         hrc042dt
+         MDEF  633,ORIG,,'E $ not routed -- route limit reached' c024dt
+         MDEF  634,ORIG,,'I No locations routed'               hrc024dt
+         MDEF  636,ORIG,,'I $ routed through link $'           hrc024dt
+         MDEF  637,ORIG,,'E $ not routed'                      hrc024dt
+         MDEF  640,RSS+ORIG,,'I $ File(s) purged on link $'
+         MDEF  651,ORIG,,'I Link $ inactive'
+         MDEF  652,ORIG,,'I Link $ $ $ $ $ $ $ $ $'            hrc031dt
+         MDEF  653,ORIG,,'I Link $ default $ $ $ $ r=$'
+         MDEF  654,ORIG,,'I Link $ q=$ p=$'
+         MDEF  655,ORIG,,'I File $ $ $ cl $ pr $ rec $ $'
+         MDEF  660,ORIG,,'I File $ inactive on link $'
+         MDEF  661,ORIG,,'I File $ active on link $'
+         MDEF  662,ORIG,,'I File $ org $ $ $$$ to $ $'
+         MDEF  663,ORIG,,'I File $ pr $ cl $ co $ $ di $, na $$$'
+         MDEF  664,ORIG,,'E File $ not found'
+         MDEF  670,ORIG,,'I Kink $ $ -- line $ $'              hrc031dt
+         MDEF  671,ORIG,,'I Kink $ inactive'
+         MDEF  672,ORIG,,'I No link active'
+         MDEF  673,ORIG,,'I No link defined'
+         MDEF  700,RSS,,'I Activating link $ $ $ $ $'
+         MDEF  701,RSS,,'E No switched line available -- link $ not actx
+               ivated'
+         MDEF  702,RSS,,'E Line $ is in use by link $ -- link $ not actx
+               ivated'
+         MDEF  703,RSS,,'E Dev $ is not a line port -- link $ not activx
+               ated'
+         MDEF  704,RSS,,'E Line $ cc=3 not operational -- link $ not acx
+               tivated'
+         MDEF  705,RSS,,'E Driver $ not found on disk $ -- link $ not ax
+               ctivated'
+         MDEF  706,RSS,,'E Fatal error loading from $ -- link $ not actx
+               ivated'
+         MDEF  707,RSS,,'E Driver $ file format invalid -- link $ not ax
+               ctivated'
+         MDEF  708,RSS,,'E Virtual storage capacity exceeded -- link $ x
+               not activated'
+         MDEF  709,RSS,,'E Task name $ already in use -- link $ not actx
+               ivated'
+         MDEF  710,RSS,,'E Max ($) active -- link $ not activated'
+         MDEF  750,RSS+ORIG,,'e Link $ already active -- no action takex
+               n'
+         MDEF  751,RSS+ORIG,,'I Link $ already active -- new class(es) x
+               set as requested'
+         MDEF  752,RSS+ORIG,,'I Link $ still active -- drain status resx
+               et'
+         MDEF  801,RSS,,'I Link $ error trace started'
+         MDEF  802,RSS,,'I Link $ trace started'
+         MDEF  803,RSS,,'I Link $ trace ended'
+         MDEF  810,RSS,,'E Link $ trace already active'
+         MDEF  811,RSS,,'E Link $ trace not active'
+         MDEF  901,RSS,,'E Invalid sml mode specified -- link $ not actx
+               ivated'
+         MDEF  902,RSS+ORIG,,                                  @va04614x
+               'E Non-signon card read on link $'              @va04614
+         MDEF  903,RSS+ORIG,,'E Password supplied on link $ is invalid'
+         MDEF  904,ORIG,,'E Signon parameter=$ on link $ invalid'
+         MDEF  905,RSS+ORIG,,'I Signon of link $ complete, buffer size=x
+               $'                                              hrc023dt
+         MDEF  906,RSS,,'E Invalid sml buffer parameter --  link $ not a
+               activated'
+         MDEF  907,ORIG,,'E Signon type parameter missing'     @va03420
+         MDEF  934,ORIG,,'E Id card missing on link $ -- input file purx
+               ged'
+         MDEF  935,RSS+VMID,,'E Link $ in rje mode -- print file $ purgx
+               ed'
+         MDEF  936,RSS+VMID,,'E No remote punch available on link $ -- x
+                file $ purged'
+         MDEF  937,RSS+ORIG,,                                          x
+               'E decompression error on link $  '
+         MDEF  938,RSS+ORIG,,'E Resources not available to receive fileX
+                ($) on link $'                                 HRC025DT
+         MDEF  939,RSS+ORIG,,'E Protocol error in file ($) on link $ --X
+                reason code $'                                 HRC025DT
+MSGEND   DC    F'0'
+         END

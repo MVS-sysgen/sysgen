@@ -1,0 +1,42 @@
+         MACRO                                                          REG00010
+&X       REGEQU                                                         REG00020
+*                                      DEFINES GENERAL REGISTERS        REG00030
+R0       EQU   0                                                        REG00040
+R1       EQU   1                                                        REG00050
+R2       EQU   2                                                        REG00060
+R3       EQU   3                                                        REG00070
+R4       EQU   4                                                        REG00080
+R5       EQU   5                                                        REG00090
+R6       EQU   6                                                        REG00100
+R7       EQU   7                                                        REG00110
+R8       EQU   8                                                        REG00120
+R9       EQU   9                                                        REG00130
+R10      EQU   10                                                       REG00140
+R11      EQU   11                                                       REG00150
+R12      EQU   12                                                       REG00160
+R13      EQU   13                                                       REG00170
+R14      EQU   14                                                       REG00180
+R15      EQU   15                                                       REG00190
+*                                      DEFINES CONTROL REGISTERS        REG00200
+C0       EQU   0                                                        REG00210
+C1       EQU   1                                                        REG00220
+C2       EQU   2                                                        REG00230
+C3       EQU   3                                                        REG00240
+C4       EQU   4                                                        REG00250
+C5       EQU   5                                                        REG00260
+C6       EQU   6                                                        REG00270
+C7       EQU   7                                                        REG00280
+C8       EQU   8                                                        REG00290
+C9       EQU   9                                                        REG00300
+C10      EQU   10                                                       REG00310
+C11      EQU   11                                                       REG00320
+C12      EQU   12                                                       REG00330
+C13      EQU   13                                                       REG00340
+C14      EQU   14                                                       REG00350
+C15      EQU   15                                                       REG00360
+*                                      DEFINES FLOATING PT REGISTERS    REG00370
+F0       EQU   0                                                        REG00380
+F2       EQU   2                                                        REG00390
+F4       EQU   4                                                        REG00400
+F6       EQU   6                                                        REG00410
+         MEND                                                           REG00420

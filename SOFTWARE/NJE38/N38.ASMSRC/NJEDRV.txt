@@ -1,0 +1,3162 @@
+*
+*
+*-- NJE38 - Line Driver Support
+*
+*
+*   Attached by NJEINIT when a link is started.
+*
+*   This module invokes and provides MVS support for the functions of
+*   the DMTXJE RSCS NJE line driver
+*
+* Change log:
+*
+* 15 Feb 21 - Files already at final destination being selected    v221
+*              by broad wildcard routes                            v221
+* 10 Dec 20 - Support for registered users and message queuing     v220
+* 09 Dec 20 - Abend 0C4 in DMTXJE if msg length=0                  v213
+* 04 Dec 20 - Expanded internal trace table support                v212
+* 29 Nov 20 - Use text-based configuration; alternate routes       v211
+* 02 Oct 20 - Use actual length for MGCR SEND cmds                 v210
+* 10 Aug 20 - Use single NJESPOOL load for all STC NJE38 modules.  v210
+* 20 Jul 20 - Improve trace entries for GMSGREQ function (NJEGMQ). v200
+* 01 Jun 20 - FMT000 doesn't format errors from NCB2.              v130
+* 08 May 20 - Last byte of prior cmd appearing in cmd buffer.      v110
+* 08 May 20 - Invalid command ignored if the command is 1 byte.    v110
+* 05 May 20 - Abend SD23 if SVC 34 parmlist >=130 bytes.           v102
+*
+*
+*
+*
+* User abend codes (all should not occur)
+*  U0022 - DMTXJE call to function POSTREQ
+*  U0028 - DMTXJE call to function PMSGREQ
+*  U0039 - Spool VSAM error
+*  U0040 - Unknown request type
+*  U0041 - Unknown MSG number
+*  U0043 - Unknown WRE code
+*  U0044 - Unknown WRE type
+*  U0045 - RQEs exhausted
+*  U0046 - GIVEREQ call from DMTXJE for AXS service inv req type/len
+*  U0047 - GIVEREQ call from DMTXJE for REX service has inv req type
+*  U0048 - more than 8 ECBs in ECBLIST issued from DMTXJE
+*  U0049 - WAIT posted but none of the ECBs have a post bit set
+*
+*
+*
+*
+         MACRO
+&X       TRACE &TYPE=
+&X       STM   R15,R2,16(R13)          R0-R2 restored by trace rtn
+         L     R2,ATRACE               -> trace table
+         L     R15,TRCRTN-TRCCTL(,R2)  -> trace routine
+         BALR  R14,R15                 Go get a new trace entry
+         L     R15,16(,R13)            Restore R15
+         MVI   0(R14),&TYPE            Move in trace type code
+         MEND
+         PRINT GEN                                                      NJE00030
+         REGEQU                        REGISTER EQUATES                 NJE00040
+*
+*
+*
+*
+NJEDRV   CSECT                                                          NJE00020
+         NJEVER
+         STM   R14,R12,12(R13)         SAVE REGS                        NJE00050
+         LR    R12,R15                 BASE                             NJE00060
+         USING NJEDRV,R12              ADDRESS IT                       NJE00070
+         LR    R8,R1                   Save input LINKTABL entry addr
+*
+         GETMAIN RU,                   Get local stg area              X
+               LV=4096,                                                X
+               BNDRY=PAGE
+         LR    R10,R1
+         LR    R1,R0                   Copy length
+         LR    R2,R0                   Copy length
+         LR    R0,R10                  -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the page
+*
+         USING NJEWK,R10
+         ST    R13,NJESA+4             SAVE prv S.A. ADDR               NJE00080
+         LA    R1,NJESA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         MVC   NJEEYE,=CL4'NJEW'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area in area
+         MVC   WTOD(WTODL),WTODMY
+         L     R11,=A(NJECOM)          -> common csect
+         ST    R11,ANJECOM             Save addr
+         USING NJECOM,R11
+*
+         LR    R2,R8                   Copy addr of LINKTABL entry
+         USING LINKTABL,R2
+         L     R8,LPOINTER             -> INITPARM area passed     v211
+         MVC   INITPARM,0(R8)          Move the parms to our stg   v211
+         XC    LPOINTER,LPOINTER       Reinitialize this field
+*
+         ST    R2,XJELINK              Save this task's LINKTABL addr
+         MVC   XJENODE,LINKID          Save linkid of starting link
+         MVC   LACTDRVR,LDEFDRVR
+         MVC   LACTLINE,LDEFLINE
+         MVC   LACTCLS1,LDEFCLS1
+         MVI   LFLAG,LACTIVE           Mark link as active (starting)
+         ST    R10,LNJEW               Save addr of local work area
+         XC    LECB,LECB               Init ECB
+         LA    R1,LECB                 -> notification ECB
+         ST    R1,LINKECBA             Set it as link ecb
+*
+*
+*-- Get stg for message processing
+*
+INIT010  EQU   *
+         GETMAIN RU,BNDRY=PAGE,        Get stg for msg processing      X
+               LV=MSGWKSZ
+         ST    R1,AMSGWK               Save addr of area
+*
+         LR    R4,R1                   Copy addr
+         LR    R1,R0                   Copy length
+         LR    R3,R0                   Copy length
+         LR    R0,R4                   -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the area
+*
+         USING MSGWK,R4
+         MVC   MSGEYE,=CL4'MSGW'       Work area eyecatcher
+         ST    R3,MSGWKLEN             Save size of area in area
+         DROP  R4                      MSGWK
+*                                                                       NJE00100
+*-- Get two pages that will be used for DMTXJE's working stg
+*
+         GETMAIN RU,                   Get local stg area              X
+               LV=8192,                                                X
+               BNDRY=PAGE
+         LR    R9,R1                   -> DMTXJE working stg areas
+         ST    R9,XJESTOR              Save addr locally
+*
+*
+*-- Initialization completed
+*
+         MVC   MACLIST(WTODL),WTOD
+         MVC   MACLIST+4(L'NJE002I),NJE002I   Move msg text
+         MVC   MACLIST+28(8),XJENODE
+         WTO   ,MF=(E,MACLIST)
+*
+*-- Build the text unit address list for the comm line
+*
+         MVC   TXT1,TXT1D               INITIALIZE RETURN DD TXT UNIT
+         MVC   TXT12,TXT12D             INITIALIZE TXT UNIT
+         MVC   TXT4,TXT4D               INITIALIZE TXT UNIT
+         LA    R1,TXT1                  POINT TO TEXT UNIT
+         ST    R1,MACLIST               SET IN ADDRESS LIST
+         LA    R1,TXT12                 POINT TO TEXT UNIT
+         ST    R1,MACLIST+4             SET IN ADDRESS LIST
+         LA    R1,TXT4                  POINT TO TEXT UNIT
+         ST    R1,MACLIST+8             SET IN ADDRESS LIST
+         OI    MACLIST+8,X'80'          SET VL
+*
+         UNPK  DBLE(4),LACTLINE(3)      Convert CUU of line
+         TR    DBLE(3),HEXTRAN-240
+         MVC   UNITCUU,DBLE
+*
+         BAL   R14,DYN000               GO ISSUE SVC 99
+*
+         MVC   INTRDR(DMYIRDRL),DMYIRDR Set up DCB, but dont open yet
+         MVC   LINE1(DMYLINEL),DMYLINE Set up DCB
+         LA    R1,LINE1                 -> DCB
+         MVC   DCBDDNAM-IHADCB(,R1),DDNAME Move DDNAME to DCB
+         MVC   MACLIST(OPENL),OPEN     Move open list
+         OPEN  (LINE1),                Open the comm line              x
+               MF=(E,MACLIST)
+*
+         SR    R0,R0                   No parms                         NJE00150
+         SR    R1,R1                   No parms                         NJE00160
+         LA    R7,VECSET               Replacement vectors              NJE00170
+         LA    R8,XJEWORDS             -> Addr list for XJE to fill     NJE00170
+*
+*-- On entry to DMTXJE:
+*
+*    R0  = length of input parameters or 0
+*    R1 -> input parameters or 0
+*    R2 -> LINKTABL entry
+*    R7 -> SVECTORS list that replaces RSCS functions
+*    R8 -> list of addrs that DMTXJE fills for use here
+*    R9 -> two pages of storage for DMTXJE working storage
+*    R10-> working storage area for NJEINIT
+*    R13-> OS save area
+*
+         L     R15,=V(DMTXJE)          Call RSCS V1 Line Driver         NJE00180
+         BALR  R14,R15                                                  NJE00190
+*
+         DROP  R2                      LINKTABL
+*                                                                       NJE00200
+QUIT     EQU   *                                                        NJE00210
+         MVC   MACLIST(CLOSEL),CLOSE   Move close list
+         CLOSE (LINE1),                                                x
+               MF=(E,MACLIST)
+*
+         LR    R1,R9                   -> DMTXJE's work stg
+         FREEMAIN RU,LV=8192,A=(1)     Release it
+*
+         L     R1,AMSGWK               -> MSGWK area
+         L     R0,MSGWKLEN-MSGWK(,R1)  Get work area length
+         FREEMAIN RU,LV=(0),A=(1)      Release it
+*
+         LR    R1,R10                  -> NJEWK main work area page
+         L     R13,4(,R13)             -> caller's sa                   NJE00210
+         FREEMAIN RU,                                                  x
+               LV=4096,                                                x
+               A=(1)
+         LM    R14,R12,12(R13)         Reload system's regs             NJE00220
+         XR    R15,R15                 RC=0                             NJE00230
+         BR    R14                     Return                           NJE00240
+*                                                                       NJE00250
+*                                                                       NJE00250
+*                                                                       NJE00250
+*                                                                       NJE00250
+ASYNRET  SR    R15,R15                 Null DMTXJE ASYNEXIT return      NJE00260
+         BR    R14                                                      NJE00270
+*
+*-- Abends for routines that DMTXJE could potentially call which we
+*-- dont support because we don't need to.  DMTXJE should in fact
+*-- never call these.  These functions are handled by NJEDRV in
+*-- other ways.
+*
+AB22     EQU   *                       POSTREQ
+         LR    R4,R0
+         LR    R5,R1
+         ABEND 22,DUMP,STEP
+AB28     EQU   *
+         LR    R4,R0
+         LR    R5,R1
+         ABEND 28,DUMP,STEP            PMSGREQ
+         LTORG                                                          NJE00280
+*
+DMYLINE  DCB   DDNAME=LINE1,           Communications line DCB         x
+               MACRF=(E),                                              x
+               DSORG=CX
+DMYLINEL EQU   *-DMYLINE
+*
+DMYIRDR  DCB   DDNAME=INTRDR,          Internal reader DCB             x
+               MACRF=(PM),              INTRDR stuff exists in         x
+               DSORG=PS,                this module but is not         x
+               LRECL=80,                implemented (it was            x
+               RECFM=FB,                experimental).                 x
+               BLKSIZE=800
+DMYIRDRL EQU   *-DMYIRDR
+*
+*
+OPEN     OPEN  0,MF=L
+OPENL    EQU   *-OPEN
+CLOSE    CLOSE 0,MF=L
+CLOSEL   EQU   *-CLOSE
+EXTRACT  EXTRACT MF=L
+EXTRACTL EQU   *-EXTRACT
+*
+*                456789012345678901234567890123456789012345678901
+NJE002I  DC    C'NJE002I Activating link'
+*                                                                       NJE00330
+*                                                                       NJE00740
+VECSET   DS    0D                  Vectors that DMTXJE calls            NJE00750
+TLINKS   DC    A(ALINKS-NJEWK)     Offset to ALINKS word in NJEWK       NJE00760
+ASYNREQ  DC    A(ASYNRET)                                               NJE00770
+POSTREQ  DC    A(AB22)                                                  NJE00780
+SPLREQ   DC    A(NJESPL) was TCOM                                       NJE00790
+IOREQ    DC    A(NJESIO)                                                NJE00800
+WAITREQ  DC    A(NJEWT)                                                 NJE00810
+ALERTREQ DC    A(NJEALQ)                                                NJE00820
+GIVEREQ  DC    A(NJEREQ)                                           v220 NJE00830
+*--replacement comdsect                                                 NJE00840
+PMSGREQ  DC    A(AB28)                                                  NJE00850
+GPAGEREQ DC    A(NJEGPG)                                                NJE00860
+GLINKREQ DC    A(NJEGLQ)                                                NJE00870
+GROUTREQ DC    A(NJEGRQ)                                                NJE00880
+GMSGREQ  DC    A(NJEGMQ)                                                NJE00890
+GTODEBCD DC    A(NJETOD)                                                NJE00900
+SVLEN    EQU   *-TLINKS                                                 NJE00910
+*
+WTODMY   WTO   '                                                       x
+                                             ',MF=L
+WTODL    EQU   *-WTODMY
+         DROP  R12
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E C O M      *               NJECOM hosts small routines and     NJE00920
+*                   *               frequently used constants that      NJE00920
+*  Common routines  *               are available to all NJExxx csects  NJE00920
+*  and constants    *               via base register 11                NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+NJECOM   CSECT                                                          NJE00020
+         DC    A(0)                 No branch around constants
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECOM'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         USING NJECOM,R11
+         USING NJEWK,R10
+*
+*-- Issue Dynalloc SVC
+*-- Initialize the S99RB block
+*
+DYN000   EQU   *
+         ST    R14,DYNR14               SAVE RETURN REG
+         MVC   LS99RB,CPS99RB           INIT THE S99RB
+         LA    R1,LS99RB                POINT TO BLOCK
+         USING S99RB,R1
+         OI    S99FLAG1,S99NOCNV        FORCE NEW ALLOCATION
+         ST    R1,LS99PTR               SET PARAMETER WORD
+         OI    LS99PTR,X'80'            SET VL
+         LA    R14,MACLIST              GET ADDRESS OF TEXT UNITS
+         ST    R14,S99TXTPP             PUT IN S99RB
+*
+         LA    R1,LS99PTR               POINTER TO S99 PTR
+         SVC   99                       ISSUE DYNALLOC
+*
+         NJETRACE TYPE=TRCDYNA          TRACE DYNALLOC RESULT
+         STCM  R10,7,1(R14)             identify trace entry       v212
+         MVC   4(3,R14),DYNR14+1        Trace caller               v212
+         STC   R15,4(,R14)              Trace SVC 99 RC            v212
+         MVC   8(8,R14),DDNAME          Trace resulting DDNAME
+         LTR   R15,R15                  R15 non zero?
+         BZ    DYN090                   No
+         LA    R1,LS99RB
+         MVC   8(4,R14),S99ERROR
+         DROP  R1
+*
+DYN090   EQU   *
+         L     R14,DYNR14               Rstore return addr
+         BR    R14
+*
+*-- Get a new command type WRE
+*
+*-- Entry:  None
+*   Exit:   R1 -> WRE
+*
+*
+GTW000   EQU   *
+         ST    R14,SVR14           Save return addr
+         GETMAIN RU,               Get CSA for WRE TYPE=WREMSG         x
+               LV=WRESIZE,                                         v220x
+               SP=2                                                v220
+         XC    0(WRESIZE,R1),0(R1)    Clear stg area               v220
+         USING WRE,R1
+         MVI   WRESP,2             Set subspool                    v220
+         MVI   WRETYPE,WREMSG      MSG WRE
+         DROP  R1
+*
+         NJETRACE TYPE=TRCGWRE
+         STCM  R10,7,1(R14)        Identify trace entry            v220
+         MVC   5(3,R14),SVR14+1    Addr of GTW000 caller           v220
+         STM   R0,R1,8(R14)        Len, stg addr to trace          v220
+         MVI   8(R14),2            Trace subpool #                 v220
+         L     R14,SVR14           Load return addr
+         BR    R14
+*
+*-- Queue the WRE on the main task and post his ECB
+*
+*-- Entry:  R4 -> WRE
+*-- Exit:   None
+*
+PST000   EQU   *
+         ST    R14,SVR14           Save return addr
+         SPKA  0                                                   v220
+         L     R15,CSABLK          -> NJE38 CSA block
+         USING NJ38CSA,R15
+         USING WRE,R4
+         LM    R0,R1,NJ38SWAP      Get first WRE ptr, sync count
+*
+PST020   EQU   *
+         ST    R0,WRENEXT          First WRE becomes next
+         LA    R5,1(,R1)           Incr synchronization count
+         CDS   R0,R4,NJ38SWAP      Update LINK WRE anchor, sync
+         BC    7,PST020            Gotta try again
+*
+         LA    R1,NJ38ECB          -> main task notification ECB
+         POST  (1)                 Wake him up
+*
+         SPKA  X'80'                                               v220
+         L     R14,SVR14           Load return addr
+         BR    R14
+*
+         DROP  R15                 NJ38CSA
+         DROP  R4                  WRE
+*
+*
+*-- Search CSCB chain to see if TSO user is logged on
+*-- Entry:  R15->8-byte padded field containing TSO userid to find
+*-- Exit:  CC=0  user was not logged on
+*--        CC<>0 user is logged on
+*
+USR800   EQU   *
+         CLC   =CL8'OP',0(R15)     Is the userid the operator?
+         BE    USR890              Yes, let it thru
+         L     R1,16               Get CVT ptr
+         USING CVT,R1
+         L     R1,CVTASCBH         -> highest prty ASCB
+         USING ASCB,R1
+*
+USR810   EQU   *
+         L     R2,ASCBCSCB         -> CSCB
+         USING CSCB,R2
+         LTR   R2,R2               Is there a CSCB?
+         BZ    USR840              No, get next ASCB
+*
+USR820   EQU   *
+         CLC   CHKEY,=XL8'00'      Jobname zeroed?
+         BE    USR830              Y, skip this CSCB
+         CLC   CHKEY,=CL8' '       Jobname is blank?
+         BE    USR830              Y, skip this CSCB
+         CLC   CHKEY,0(R15)        Is this the userid?
+         BE    USR890              Yes
+USR830   EQU   *
+         L     R2,CHPTR            -> next CSCB
+         LA    R2,0(,R2)           Clear high order
+         LTR   R2,R2               Last CSCB?
+         BNZ   USR820              No
+         BR    R14                 Return with CC=0 (not found)
+*
+USR840   EQU   *
+         L     R1,ASCBFWDP         -> next ASCB
+         LTR   R1,R1               last one?
+         BNZ   USR810              No
+         BR    R14                 Return with CC=0 (not found)
+*
+USR890   EQU   *
+         LTR   R14,R14             Set CC=non zero (userid found)
+         BR    R14                 Return to caller
+*
+         DROP  R1                  ASCB
+         DROP  R2                  CSCB
+*
+FMT000   EQU   *
+         STM   R14,R2,BALRSAVE         Save regs used
+         MVC   MACLIST(WTODL),WTOD
+         MVC   MACLIST+4(L'NJE079I),NJE079I   Move msg text
+         MVC   MACLIST+55(8),5(R12)    Move csect name
+         TRT   MACLIST+55(9),BLANK     Look for end of csect name
+         MVI   0(R1),C'+'
+*
+         LA    R15,0(,R14)  Clear high, Get addr of call to this rtn
+         LA    R12,0(,R12)             Clear high byte
+         SR    R15,R12                 Compute offset of call
+         ST    R15,DBLE                Save to work area
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   1(4,R1),TWRK            Move call offset to msg
+*
+         L     R15,BALRSAVE+12         Get R1 value (->failing NCB)v130
+         UNPK  TWRK(5),NCBRTNCD-NCB(3,R15)  Add zones
+         TR    TWRK(4),HEXTRAN-240
+         MVC   MACLIST+35(4),TWRK      Move rtncd/errcd
+*
+         UNPK  TWRK(3),NCBREQ-NCB(2,R15)  Add zones
+         TR    TWRK(2),HEXTRAN-240
+         MVC   MACLIST+45(2),TWRK      Move req code
+*
+         L     R1,NCBMACAD-NCB(,R15)   Get failing VSAM macro addr
+         LA    R1,0(,R1)               Clear high byte
+         S     R1,ANJESPL              Compute offset into NJESPOOLv210
+         ST    R1,DBLE
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   MACLIST+50(4),TWRK      Move NJESPOOL offset to msg
+*
+         MVC   LASTRC(2),NCBRTNCD-NCB(R15)  Save off rtncd/errcd
+         OI    NJFL1,NJF1VSER          Indicate VSAM error occurred
+*
+         WTO   ,MF=(E,MACLIST)
+*
+FMT090   EQU   *
+         LM    R14,R2,BALRSAVE         Restore caller regs
+         BR    R14
+*
+U0039    EQU   *
+         STM   R0,R1,DBLE              Save across ABEND SVC
+         ABEND 39,DUMP,STEP            Abend on spool errors
+*
+         LTORG
+*
+* TEXT UNITS TO SET UP  //DDNAME DD SYSOUT=(A,INTRDR),FREE=CLOSE
+*
+TXT1D    DC    Y(DALRTDDN),AL2(1),AL2(8),CL8' '   RETURN DDNAME
+TXT2D    DC    Y(DALSYSOU),AL2(1),AL2(1),C'A'     SYSOUT=(A,
+TXT3D    DC    Y(DALSPGNM),AL2(1),AL2(6),C'INTRDR'          INTRDR)
+TXT4D    DC    Y(DALCLOSE),AL2(0)                 FREE=CLOSE
+*
+* TEXT UNITS TO SET UP  //DDNAME DD UNIT=cuu,FREE=CLOSE
+*
+TXT12D   DC    Y(DALUNIT),AL2(1),AL2(3),CL3' '    UNIT NAME
+*
+UTXT4    DC    Y(DUNDDNAM)                        DDNAME FOR UNALLOC
+*
+         DS    0F
+CPS99RB  DS    0XL20                   DEFINE INITIAL S99RB
+         DC    AL1(20)                 LENGTH OF REQ BLOCK
+         DC    AL1(1)                  VERB CODE:  ALLOCATION
+         DC    X'20'                   FLAGS:  NO MOUNTS,OFFLINE VOLS
+         DC    X'00'                   FLAGS
+         DC    AL2(0)                  ERROR REASON CODE
+         DC    AL2(0)                  INFO REASON CODE
+         DC    A(0)                    ADDR OF TEXT PTRS
+         DC    A(0)                    ADDR OF RBX
+         DC    AL4(0)                  MORE FLAGS
+*
+POST     POST  0,ASCB=0,ERRET=0,MF=L
+POSTL    EQU   *-POST
+*
+*
+BLANKS   DC    CL120' '
+NONBLANK DC    64X'FF',X'00',191X'FF'   TR Table to locate nonblank
+BLANK    DC    64X'00',X'FF',100X'00'   TR Table to locate blanks
+TRTAB$   DC    91X'00',X'FF',164X'00'   TR Table to locate '$'
+HEXTRAN  DC    CL16'0123456789ABCDEF'  Translate table
+*
+*                456789012345678901234567890123 45678 90123456789012345
+NJE079I  DC    C'NJE079I NETSPOOL RTNCD/ERRCD=X''0000'',REQ=01,O=1234,Mx
+               MMMMMMM     '
+*                                                                       NJE00920
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E R E Q      *               NJEREQ presently only supports      NJE00920
+*                   *               REX request types for CMD and MSG   NJE00920
+*  Supports the     *               AXS request type open/close         NJE00920
+*  GIVEREQ vector   *                                                   NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+* This csect is called by:  every place there is a GIVEREQ call in      NJE00920
+*                           DMTXJE.                                     NJE00920
+*                                                                       NJE00920
+*                                                                       NJE00920
+NJEREQ   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEREQ'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)          Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJEREQ,R12              ADDRESS IT                       NJE00070
+         L     R10,0(,R9)              -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJEREQSA+4
+         LA    R13,NJEREQSA
+         ST    R13,8(,R9)
+*
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+         L     R8,AMSGWK           -> msg processing work area
+         USING MSGWK,R8
+*
+         USING REQBLOK,R1
+         CLC   REQTASK,=CL4'REX'   Is this a CMD or MSG req?
+         BE    REX000              Yes
+         CLC   REQTASK,=CL4'AXS'   Is this an AXS-style req?
+         BE    CALLAXS             Yes
+         B     AB40                Unhandled req type for now
+*
+REX000   EQU   *
+         L     R3,REQBUFA          -> associated request buffer
+         CLI   MSGBTYP-MSGBLOK(R3),0  Is this a CMD type request?
+         BE    CMD000              Yes
+         CLI   MSGBTYP-MSGBLOK(R3),2  Is this a MSG type request?
+         BE    REX010              Yes
+*
+U0047    EQU   *                ** Here if invalid REX-type requesst
+         LR    R5,R1               R1 contents to R5 for dump regs
+         ABEND 47,DUMP,STEP        This abend should not occur
+*
+CALLAXS  EQU   *
+*                                  r1 -> original request block
+*                                  r8 -> MSGWK
+*                                  r10-> NJEWK
+         L     R15,=A(NJEAXS)      -> AXS routines
+         BALR  R14,R15             Go handle it
+         B     XITREQ              And return to DMTXJE w R15=RC
+*
+*-- Message to MVS Console or TSO user
+*
+REX010   EQU   *
+         BAL   R14,MSG000          Go process a MSGBLOK
+         LA    R1,WTOMSG
+         USING MSGBLOK,R3
+         NJETRACE TYPE=TRCMSG      Message
+         STCM  R10,7,1(R14)        Identify trace entry            v212
+         MVC   4(1,R14),MSGBLEN     Msg len                        v212
+         MVC   6(2,R14),MSGNUM      Msg number                     v212
+         MVC   8(8,R14),MSGVMID     Msg target
+         MVC   16(16,R14),WTOMSG+4  Move a bit of msg text         v212
+*
+         LA    R5,REX020           -> where to go if no userid
+         CLI   MSGBRTE,X'20'       Message only to user?
+         BE    REX030
+*
+REX020   EQU   *
+         WTO   ,MF=(E,(1))
+*
+         CLC   MSGNUM,=AL2(145)    Is this msg 145 (file recv'd)?
+         BE    REX100              Yes, special handling
+         CLC   MSGNUM,=AL2(905)    Is this msg 905 (signon complete)?
+         BE    REX200              Yes, special handling
+*
+         LA    R5,XITREQ00         -> where to go if no userid
+         TM    MSGBRTE,X'20'       Message also to user?
+         BO    REX030
+         B     REX900              Done with request
+*
+REX030   EQU   *
+         NI    MSGBRTE,255-X'20'   Turn off user flag
+         CLC   MSGVMID,=CL8'OP'    Message is for the 'user' operator?
+         BER   R5                  Yes, send to console or exit
+         CLI   MSGVMID,X'00'       No response to userid?
+         BER   R5                  Yes, send to console or exit
+         CLI   MSGVMID,C' '        No TSO userid?
+         BER   R5                  Yes, send to console or exit
+*
+REX040   EQU   *
+         LA    R15,MSGVMID         -> userid to locate
+*
+         SR    R0,R0               R0=0 search and queue           v220
+         BAL   R14,REG000          Search for registered user      v220
+         BNZ   REX900              Msg queued, just exit here      v220
+*
+         BAL   R14,USR800          See if TSO user logged on
+         BZ    REX900              Skip msg if not
+*
+         MVC   MTEXT,BLANKS
+         MVC   MWORK,BLANKS
+         MVC   MTEXT(4),=C'SE '''
+         MVC   MTEXT+4(104),WTOMSG+4                               v102
+         MVC   WTOMSG+4(108),MTEXT Move it back to WTO buffer      v210
+         LA    R2,WTOMSG+111       -> last byte from MTEXT area    v210
+         LA    R0,32               # char to check backwards       v210
+*
+REX050   EQU   *                   Only look backwards to col 80   v210
+         CLI   0(R2),C' '          Try to find last non-blank      v210
+         BNE   REX060              Found it                        v210
+         BCTR  R2,0                -> prev char                    v210
+         BCT   R0,REX050           Keep scanning                   v210
+*
+REX060   EQU   *                                                   v210
+         LA    R2,1(,R2)           -> first blank after last char  v210
+         MVC   0(8,R2),=C''',USER=('                               v210
+         MVC   8(12,R2),BLANKS      Ensure trailer initted         v210
+         MVC   8(7,R2),MSGVMID      Max for TSO userid is 7        v210
+         LA    R1,8+7(,R2)          -> max end of trt              v210
+         TRT   8(7,R2),BLANK        Look for end of userid         v210
+         MVI   0(R1),C')'           Move closing                   v210
+         MVI   1(R1),C' '           Plus 1 blank                   v210
+         LA    R0,WTOMSG            -> start of msg area           v210
+         SR    R1,R0                Compute length of msg          v210
+         LA    R1,1(,R1)            Account for blank at end       v210
+         XC    WTOMSG(4),WTOMSG     Clear len, flags               v210
+         STH   R1,WTOMSG            Insert the msg length          v210
+*
+         SPKA  0
+         LA    R1,WTOMSG
+         SR    R0,R0
+         SVC   34                  Issue MGCR SVC
+         SPKA  X'80'
+         B     REX900              Done with request
+*
+*-- When MSG 145 is issued that a file has been received,
+*-- then do the following IF this is the final node for the file:
+*
+*--  1. Send a message back to the sender that file arrived at this
+*--     node.
+*--  2. Send a message to the destination TSO user that file arrived.
+*
+*
+REX100   EQU   *
+         CLC   MSGVARS+24(8),LCLNODE   Was file for this node?
+         BNE   REX900                  No, done with msg
+         MVC   MSGVMID,MSGVARS+32      Set userid of new file to recv
+*                                       arrival msg
+*
+*-- Prepare a remote msg to the file sender that file arrived here.
+*
+         BAL   R14,GTW000              Get a WRE
+*
+         LR    R4,R1
+         USING WRE,R4
+         MVC   WRELINK,MSGVARS+8       Dest= file sender's node
+         MVC   WREUSER,MSGVARS+16      Dest= file sender's userid
+         MVC   WREORIG,BLANKS          No originating user
+         MVC   WRETXT,BLANKS           Init
+         MVC   WRETXT(6),=CL6'File ('  Set msg
+         MVC   WRETXT+6(4),MSGVARS+0   File number
+         MVC   WRETXT+10(34),=CL34') received at destination node for'
+         MVC   WRETXT+45(8),MSGVARS+24 show dest node
+         TRT   WRETXT+45(9),BLANK      Look for end
+         MVI   0(R1),C'('
+         MVC   1(8,R1),MSGVARS+32      show dest user
+         TRT   1(9,R1),BLANK           Look for end
+         MVI   0(R1),C')'
+         MVI   WRETXTLN,66             Set the max possible len
+*
+         BAL   R14,PST000              Queue the WRE to main task
+         DROP  R4                      WRE
+*
+*-- Finally, go tell local TSO user that his file arrived.
+*
+         B     REX040                  Tell him it arrived
+*
+*-- MSG 905 is issued when signon is complete.
+*-- Send a copy of it back to the connecting node's operator.
+*
+REX200   EQU   *
+         BAL   R14,GTW000              Get a WRE
+*
+         LR    R4,R1
+         USING WRE,R4
+         MVC   WRELINK,XJENODE         Dest= file sender's node
+         MVC   WREUSER,BLANKS          Dest= operator or RSCS console
+         MVC   WREORIG,BLANKS          No originating user
+         MVC   WRETXT,BLANKS           Init
+         MVC   WRETXT(50),MTEXT+2      Set 'connected' msg text
+         MVI   WRETXTLN,51             Set the max possible len
+*
+         BAL   R14,PST000              Queue the WRE to main task
+         DROP  R4                      WRE
+         B     REX900                  Done with msg
+*
+REX900   EQU   *
+         MVC   MSGVMID,BLANKS      Clear to avoid inadvertent oper msgs
+         MVC   MSGVARS(16),BLANKS  issued to users
+         B     XITREQ00
+         DROP  R3                      MSGBLOK
+*
+*-- Process incoming command from remote users
+*
+*    CMD000 - extract the command and echo it to MVS console.
+*    CMD100-CMD300 - Process the command and respond to requestor.
+*
+TGTUSER  EQU   0                   cmd response returned to remote user
+TGTCONS  EQU   4                   cmd response returned to sys console
+*
+CMD000   EQU   *
+         LR    R6,R3               CMDBLOK ptr to R6
+         USING CMDBLOK,R6
+         XC    MBLOK,MBLOK         Clear area to build MSGBLOK
+         LA    R4,MBLOK            -> msg blok area
+         USING MSGBLOK,R4
+         MVC   MSGVARS(14*8),BLANKS Init  variables area
+         MVC   MSGBLEN,CMDBLEN     Move text length
+         MVI   MSGBTYP,2           Set msg type request
+* LOCATION EXECUTING:
+         MVC   MSGNUM,=AL2(5)      Use message number 5
+         MVC   MSGVARS+0(8),CMDLINK  Move node name as msg variable
+         MVC   MSGVARS+8(8),CMDVMID  Move userid as msg variable
+         LA    R15,MSGVARS+16      -> where variables will start
+*
+         NJETRACE TYPE=TRCRCMD     Trace remote command
+         STCM  R10,7,1(R14)        Identify trace entry            v212
+         MVC   7(1,R14),CMDBLEN    Trace length                    v212
+         MVC   8(8,R14),CMDVMID     remote userid                  v212
+         MVC   16(8,R14),CMDLINK    remote node                    v212
+*
+         CLI   CMDVMID,X'40'       Is userid leading off blank?    v200
+         BE    CMD015              Yes use msg 4                   v200
+         CLI   CMDVMID,X'00'       Is userid present?
+         BNE   CMD020              Yes, use MSG 5 as planned
+*
+CMD015   EQU   *                                                   v200
+         MVC   CMDVMID,BLANKS      Ensure userid is blanks
+         MVC   MSGNUM,=AL2(4)      Use message number 4 instead
+         LA    R15,MSGVARS+8       -> where variables will start
+*
+CMD020   EQU   *
+         SR    R5,R5               Clear for IC
+         IC    R5,CMDBLEN          Get the cmd length
+         BCTR  R5,0                Adjust for execute              v110
+         S     R5,=A(CMDTEXT-CMDBLOK-1) less block & sender ovrheadv110
+         BNP   XITREQ00            Ignore if invalid len
+         STC   R5,CMDBLEN          Save adjusted len
+         EX    R5,MVCCMD           Move the actual cmd text
+*MVCCMD  MVC   0(0,R15),CMDTEXT
+         LA    R1,0(R5,R15)        -> last byte used in MSGVARS
+         SR    R1,R3               Compute length of this MSGBLOK
+         ST    R1,MSGBLEN          Plug it into its length field
+*
+         NJETRACE TYPE=TRCRCMD     Remote command
+         OI    0(R14),X'80'        Indicate continuation trace entry
+         MVC   1(31,R14),CMDTEXT   1st 31 bytes cmd to trace       v212
+*
+         LR    R3,R4               -> built MSGBLOK in R3
+         BAL   R14,MSG000          Go format the message
+         MVC   WTOMSG+10(112),MTEXT Move finished msg
+         LA    R1,WTOMSG
+         WTO   ,MF=(E,(1))         Show cmd on console
+*
+CMD050   EQU   *
+         ST    R6,ACMDBLOK         Set addr in cmd parm list
+         LA    R1,INITPARM         -> parm list to pass            v211
+         LA    R0,TGTUSER          Remote user gets response
+         L     R15,ANJECMX         -> Command processor
+         BALR  R14,R15             Call NJECMX
+*
+*-- Exit command processing
+*
+CMD990   EQU   *
+         L     R1,AMSGECB          -> DMTXJE MSGECB
+         POST  (1)                 Tell DMTXJE there are stacked msgs
+         B     XITREQ00            And exit
+*
+MVCCMD   MVC   0(0,R15),CMDTEXT    executed instr
+*
+         DROP  R6                  CMDBLOK
+         DROP  R4                  MSGBLOK
+*
+*
+*
+*
+*
+*-- Process MSGBLOK and format a message
+*
+*   Exit: formatted message text is in MTEXT and ready for WTO or
+*         other disposition.
+*
+         DS    0F
+MSG000   EQU   *
+         USING MSGBLOK,R3
+         STM   R0,R9,MSGREGS       Save working regs
+         L     R4,=V(DMTMSG)       -> message repository
+         USING MSGREPO,R4
+*
+MSG010   EQU   *
+         CLC   MSGRNEXT,=A(0)      End of MSG repo?
+         BE    AB41                Yes, unknown msg number
+         CLC   MSGNUM,MSGRNUM      Locate msg in repo
+         BE    MSG020              Found it
+         L     R4,MSGRNEXT         -> next msg in repo
+         B     MSG010              Keep looking
+*
+MSG020   EQU   *
+         MVC   MSGBRTE,MSGRFLGS    Move routing flags
+         MVC   WTOMSG(WTOL),WTO    Move macro model
+         MVC   WTOMSG+4(3),=CL3'NJE'  MSG id
+         LH    R0,MSGNUM           Get message number
+         CVD   R0,DBLE             Convert
+         UNPK  WTOMSG+7(3),DBLE    Make display
+         OI    WTOMSG+9,X'F0'      Fix sign
+         MVC   MTEXT,BLANKS        Init work field
+         MVC   MWORK,BLANKS        Init work field
+         CLC   MSGNUM,=AL2(170)    Is this special msg 170?
+         BE    MSG170              Yes, special handling
+         CLC   MSGNUM,=AL2(171)    Is this special msg 171?
+         BE    MSG171              Yes, special handling
+         SR    R15,R15             Clear for IC
+         IC    R15,MSGRLEN         Get msg text length
+         BCTR  R15,0               Adjust for execute
+         EX    R15,MVCMSG          Move msg text to work area
+*MVCMSG  MVC   MTEXT(0),MSGRTXT
+*
+         SR    R5,R5               Clear for IC
+         IC    R5,MSGBLEN          Get length of msg block
+         S     R5,=A(MSGVARS-MSGBLOK) Less size of overhead portion
+         BNP   MSG100              Branch if no variables
+         LA    R15,MSGVARS         -> message variables
+         LA    R1,MTEXT            -> message area
+*
+MSG050   EQU   *
+         TRT   0(L'MTEXT,R1),TRTAB$ Look for replacement indic
+         BZ    MSG100              All text replaced
+         MVC   MWORK,1(R1)         Save off remainder of line
+         MVC   0(8,R1),0(R15)      Put replacement text in line
+*-
+         LA    R0,7                max # blanks to look for
+         AR    R1,R0               -> last byte this repl text
+*
+MSG060   EQU   *
+         CLI   0(R1),C' '          Is this byte blank?
+         BNE   MSG070              No; true end of repl text var
+         BCTR  R1,0                -> previous replacement text char
+         BCT   R0,MSG060           Keep looking for ending blank
+         LA    R1,7(,R1)           No blanks, all 8 char used; -> next
+*
+MSG070   EQU   *
+         LA    R1,1(,R1)           -> blank or last char of repl var
+         MVC   0(L'MTEXT,R1),MWORK Recopy saved part of msg
+         LA    R15,8(,R15)         -> next replacement var
+         S     R5,=F'8'            Reduce length remaining vars
+         BP    MSG050              Go replace more text
+*
+MSG100   EQU   *
+         CLI   0(R1),C'$'          More immediate $ delims remaining?
+         BNE   MSG110              No
+         MVC   0(L'MTEXT,R1),BLANKS Clear any remaining $ delims
+*
+MSG110   EQU   *
+         MVC   WTOMSG+10(112),MTEXT Move finished msg
+         LM    R0,R9,MSGREGS       Restore caller regs
+         BR    R14                 Return with message in MTEXT
+*
+MVCMSG   MVC   MTEXT(0),MSGRTXT    Executed instr
+         DROP  R4                  MSGREPO
+*
+*-Special case for msg 170:        From NODE:
+*
+*- Dont issue msg number prefix (e.g., NJE170I)
+*- Just move msg as is to WTO buffer; dont parse thru all the $ chars
+*
+MSG170   EQU   *
+         SR    R5,R5               Clear for IC
+         IC    R5,MSGBLEN          Get length of msg block
+         S     R5,=A(MSGVARS-MSGBLOK) Less size of overhead portion
+         BNP   MSG100              Branch if no variables
+         MVC   MTEXT(L'M17X),M17X  Set up msg
+         LA    R15,MSGVARS         -> message variables
+         MVC   MTEXT+7(8),0(R15)   Move node name from
+         TRT   MTEXT+7(9),BLANK    Look for end of node name
+         MVI   0(R1),C':'          Insert the colon
+         LA    R1,2(,R1)           Skip : and one blank
+         S     R5,=F'8'            Reduce length of nodename we moved
+*
+         EX    R5,MVCMSG70         Move the msg text
+         LM    R0,R9,MSGREGS       Restore caller regs
+         MVC   WTOMSG+4(112),MTEXT+2 Move finished msg w/o NJE170I
+         BR    R14                 Return with message 170 in MTEXT
+*
+MVCMSG70 MVC   0(0,R1),8(R15)      Executed instr
+*
+*-Special case for msg 171:        From NODE(USERID):
+*
+*- Dont issue msg number prefix (e.g., NJE171I)
+*- Just move msg as is to WTO buffer; dont parse thru all the $ chars
+*
+MSG171   EQU   *
+         ST    R14,SVR14M          Save R14                        v220
+         LA    R15,MSGVMID         -> userid to locate
+         LA    R0,1                R0=1 search for userid only     v220
+         BAL   R14,REG000          Search for registered user      v220
+         BNZ   MSG171J             User was regs'trd, skip TSO chk v220
+         BAL   R14,USR800          See if TSO user logged on
+         BZ    UNL000              Skip message if user not logged on
+*
+MSG171J  EQU   *                                                   v220
+         SR    R5,R5               Clear for IC
+         IC    R5,MSGBLEN          Get length of msg block
+         S     R5,=A(MSGVARS-MSGBLOK) Less size of overhead portion
+         BNP   MSG100              Branch if no variables
+         MVC   MTEXT(L'M17X),M17X  Set up msg
+         LA    R15,MSGVARS         -> message variables
+         MVC   MTEXT+7(8),0(R15)   Move node name from
+         TRT   MTEXT+7(9),BLANK    Look for end of node name
+         MVI   0(R1),C'('          Insert the paren
+         MVC   1(8,R1),8(R15)      Move node userid from
+         TRT   1(9,R1),BLANK       Look for end of userid
+         MVC   0(2,R1),=C'):'      Insert the paren
+         LA    R1,3(,R1)           Skip : and one blank
+         S     R5,=F'16'           Reduce length of node/user we moved
+*
+         EX    R5,MVCMSG71         Move the msg text
+         LM    R0,R9,MSGREGS       Restore caller regs
+         MVC   WTOMSG+4(112),MTEXT+2 Move finished msg w/o NJE170I
+         L     R14,SVR14M          Load return addr                v220
+         BR    R14                 Return with message 170 in MTEXT
+*
+MVCMSG71 MVC   0(0,R1),16(R15)     Executed instr
+*
+*-- Send msg back to a MSG sender that user is not logged on
+*
+UNL000   EQU   *                   User Not Logged
+         L     R7,CSABLK               -> NJE38 CSA block
+         USING NJ38CSA,R7
+*
+         GETMAIN RU,                   Get CSA for WRE TYPE=WREMSG     x
+               LV=WRESIZE,                                         v220x
+               SP=2                                                v220
+         XC    0(WRESIZE,R1),0(R1)     Clear stg area              v220
+*
+*
+         NJETRACE TYPE=TRCGWRE
+         STCM  R10,7,1(R14)        Identify trace entry            v220
+         LA    R15,*
+         STCM  R15,7,5(R14)        Addr of Getmain to trace        v212
+         STM   R0,R1,8(R14)        Len, stg addr to trace          v220
+         MVI   8(R14),2            Trace subpool #                 v220
+*
+         LR    R4,R1
+         USING WRE,R4
+         MVI   WRESP,2                 Save subpool                v220
+         MVI   WRETYPE,WREMSG          Set type to MSG type
+         MVC   WRELINK,MSGVARS+0       Set destination node
+         MVC   WREUSER,MSGVARS+8       Set destination user
+         MVC   WREORIG,BLANKS          No originating user
+         MVC   WRETXT,BLANKS           Init
+         MVC   WRETXT(4),=CL4'User'    Set msg
+         MVC   WRETXT+5(8),MSGVMID     User name of msg sender
+         TRT   WRETXT+5(9),BLANK       Look for end
+         MVC   1(13,R1),=CL13'not logged on'   Set msg
+         MVI   WRETXTLN,27             Set the max length
+         DROP  R3                      MSGBLOK
+*
+         SPKA  0                                                   v220
+         LM    R2,R3,NJ38SWAP          Get first WRE ptr, sync count
+UNL020   EQU   *
+         ST    R2,WRENEXT              First WRE becomes next
+         LA    R5,1(,R3)               Incr synchronization count
+         CDS   R2,R4,NJ38SWAP          Update CSA WRE anchor, sync
+         BC    7,UNL020                Gotta try again
+*
+         LA    R7,NJ38ECB              -> NJE38 external WRE ECB
+         DROP  R7                      NJ38CSA
+         DROP  R4                      WRE
+*
+         POST  (7)                     Post the main task WRE ECB
+*
+         SPKA  X'80'
+*
+         LM    R0,R9,MSGREGS       Restore caller regs
+         B     XITREQ00            And exit
+*
+*
+*
+*
+*-- Special code to intercept messages destined for                v220
+*-- registered users                                               v220
+*
+*-- Entry:  R0=0 Search for user and queue msg if registered       v220
+*           R0=1 Search for user only (no queuing)                 v220
+*
+REG000   EQU   *                                                   v220
+         L     R2,AREGUSER         -> registered user anchor word  v220
+         ICM   R2,15,0(R2)         -> registered user queue        v220
+         BZR   R14                 No registered users             v220
+*
+         USING REGUSERB,R2                                         v220
+REG010   EQU   *                                                   v220
+         CLC   REGUSRID,0(R15)     Find a matching registered user v220
+         BE    REG020              Found it                        v220
+         ICM   R2,15,REGNEXT       -> next REGUSER entry           v220
+         BNZ   REG010              Keep looking                    v220
+         BR    R14                 Userid was not registered       v220
+*
+REG020   EQU   *                                                   v220
+         LTR   R0,R0               Search only or search and queue?v220
+         BNZR  R14                 Exit if only search selected    v220
+*                                                                  v220
+         ST    R14,SVR14R          Save return addr                v220
+         BAL   R14,GTW000          Get a WRE                       v220
+         LR    R4,R1                                               v220
+         USING WRE,R4                                              v220
+         MVI   WRETYPE,WREQRM      Queue registered msg WRE        v220
+*
+         MVC   WRELINK,LCLNODE     Target WRE to local node task   v220
+         MVC   WREUSER,REGUSRID    Dest= registered user id        v220
+         MVC   WREORIG,BLANKS      No originating node             v220
+         MVC   WRETXT,WTOMSG+4     Plug in the msg to be queued    v220
+         MVI   WRETXTLN,L'WRETXT   Set the max possible len        v220
+*
+         BAL   R14,PST000          Queue WRE to main task          v220
+*
+         DROP  R2,R4               REGUSERB,WRE                    v220
+*
+REG090   EQU   *                                                   v220
+         L     R14,SVR14R          Load return addr                v220
+         LTR   R14,R14             Set non-zero CC                 v220
+         BR    R14                 Ret w/CC non-zero (msg queued   v220
+*
+*
+XITREQ00 EQU   *
+         SR    R15,R15             Set RC=0
+*
+XITREQ   EQU   *
+         L     R9,4(,R13)          -> DMTXJE save area
+         ST    R15,16(,R9)         Set return R15
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*
+AB40     EQU   *                   Unhandled request type
+         LR    R4,R0
+         LR    R5,R1
+         ABEND 40,DUMP,STEP
+AB41     EQU   *                   Unhandled message number
+         LR    R4,R0
+         LR    R5,R1
+         ABEND 41,DUMP,STEP
+         DROP  R8                  MSGWK
+         LTORG
+*               1234567890123456789012345678901234567890123456789012345
+WTO      WTO   '                                                       x
+                                                                       x
+                        ',MF=L
+*              67890123456789012345678901234567890123456789012345678901
+WTOL     EQU   *-WTO
+*
+M17X     DC    CL24'I From xxxxxxxx '
+*
+*-- DSECTS used by NJEREQ
+*
+*
+REQBLOK  DSECT                     Map request area used by DMTXJE
+REQLOK   DS    F'0'                SYNCH LOCK
+REQTASK  DS    CL4'REX '           TASK NAME
+REQBUFA  DS    A(0)                -> REQUEST BUFFER
+REQRESPA DS    A(0)                -> RESPONSE area or zero
+*
+*
+PDEVBLOK DSECT                     PRT/PUN device request block
+PDEVRLEN DS    AL1(19)             REQUEST LENGTH
+PDEVFUN  DS    AL1(0)              REQUEST FUNCTION
+OOPCODE  EQU   X'11'                OPEN OUTPUT FILE
+OCLCODE  EQU   X'12'                CLOSE OUTPUT FILE
+PDEVRESV DS    AL1(0)              RESERVED BYTE
+PDEVSOPT DS    AL1(0)              Dev type (e.g., TYPPUN)
+TYPPRT   EQU   X'40'                PRT dev
+TYPPUN   EQU   X'80'                PUN dev
+APDEVTAG DS    A(0)                Tag address
+PDEVFIOA DS    A(0)                FILE I/O AREA
+PDEVLINK DS    CL8' '              LINK NAME
+*
+RDEVBLOK DSECT                     RDR device request block
+RDEVRLEN DS    AL1(19)             REQUEST LENGTH
+RDEVFUN  DS    AL1(0)              REQUEST FUNCTION
+IOPCODE  EQU   X'01'                OPEN INPUT FILE
+ICLCODE  EQU   X'02'                CLOSE INPUT FILE
+RDEVRESV DS    AL1(0)              RESERVED BYTE
+RDEVSOPT DS    AL1(0)              Dev type (e.g., TYPRDR)
+TYP2540R EQU   X'82'                2540 RDR
+RPDEVTAG DS    A(0)                Tag address
+RDEVFIOA DS    A(0)                FILE I/O AREA
+RDEVLINK DS    CL8' '              LINK NAME
+*
+*
+MSGBLOK  DSECT                     Map msg area used by DMTXJE
+MSGBLEN  DS    AL1                 MSGBLOK length
+MSGBTYP  DS    AL1(2)              Type 2 = MSGBLOK request
+MSGBRTE  DS    AL1                 Route code
+MSGBSEV  DS    AL1                 Severity code
+MSGLINK  DS    XL8                 LINKID
+MSGVMID  DS    CL8                 VIRTUAL MACHINE ID
+MSGID    DS    CL3'XJE',CL1' '     Module ID plus action code
+MSGBUF   DS    0CL120' '           MSG BUFFER
+MSGNUM   DS    AL2                 RSCS msg number
+         DS    AL2
+MSGVARS  DS    14CL8               Variables for msg
+MSGBLOKL EQU   *-MSGBLOK           Size of dsect
+*
+*
+MSGREPO  DSECT                     Map msg repository in DMTMSG
+MSGRNEXT DS    A                   Address of next MDEF entry
+MSGRNUM  DS    H                   RSCS Message number
+MSGRFLGS DS    X                   Message flags
+         DS    AL1                 Unused byte
+MSGRLEN  DS    AL1                 Length of msg text
+MSGRTXT  DS    0CL120              Text of raw message
+*
+*
+MSGWK    DSECT                     MSG work area (used by NJEREQ)
+MSGEYE   DS    CL4'MSGW'           Eyecatcher
+MSGWKLEN DS    F                   Size of area
+MSGREGS  DS    10A                 Save regs 0-9 in MSG000
+WTOMSG   DS    CL128
+MTEXT    DS    CL120               Message text work area
+MWORK    DS    CL120               Message text work area
+MBLOK    DS    (MSGBLOKL)X         Space to build a MSGBLOK
+SV14     DS    A                   R14 save area
+SV23     DS    2A                  R2,R3 save area
+         DS    0D                  Force doubleword size
+MSGWKSZ  EQU   *-MSGWK
+*                                                                       NJE00920
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E A X S      *               NJEREQ presently only supports      NJE00920
+*                   *               AXS request type open/close         NJE00920
+*  Supports the     *                                                   NJE00920
+*  GIVEREQ vector   *                                                   NJE00920
+*  for AXS function *                                                   NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+*                                                                       NJE00920
+* This csect is called by:  NJEREQ, after an AXS-based GIVEREQ call in  NJE00920
+*                           DMTXJE.                                     NJE00920
+*
+*
+*
+*
+NJEAXS   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEAXS'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R13)         Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJEAXS,R12              ADDRESS IT                       NJE00070
+         USING NJEWK,R10
+         USING NJECOM,R11
+*
+         ST    R13,NJEAXSSA+4
+         LA    R13,NJEAXSSA
+*
+*
+         LR    R4,R1
+         USING REQBLOK,R4
+*
+*
+AXS000   EQU   *
+         L     R3,REQBUFA          -> associated request buffer
+         USING PDEVBLOK,R3         PDEVBLOK/RDEVBLOK are the same
+         CLI   PDEVFUN,IOPCODE     Open input type request?
+         BE    AXSA000             Yes
+         CLI   PDEVFUN,ICLCODE     Close input type request?
+         BE    AXSB000             Yes
+         CLI   PDEVFUN,OOPCODE     Open output type request?
+         BE    AXSP000             Yes
+         CLI   PDEVFUN,OCLCODE     Close output type request?
+         BE    AXSC000             Yes
+         DROP  R4                  REQBLOK
+*
+U0046    EQU   *                ** Here if invalid AXS-type requesst
+         ABEND 46,DUMP,STEP        This abend should not occur
+*
+*-- AXS Open output file request
+*
+AXSP000  EQU   *
+         CLI   PDEVRLEN,19         Less than required length?
+         BL    U0046               Y, inv request length
+*
+AXSP010  EQU   *
+         GETMAIN RU,LV=4096,BNDRY=PAGE  Get PDEVFIOA stg
+         ST    R1,PDEVFIOA
+         XC    0(256,R1),0(R1)     Clear 256
+*
+         NJETRACE TYPE=TRCGET
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         LA    R15,*
+         STCM  R15,7,5(R14)            Addr of Getmain to trace    v212
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v212
+*
+*
+*- Build an IOTABLE block, modeled like RSCSADA
+*- DMTAXS OPENOUT does this same thing.
+*
+         USING RSCSADA,R1
+         MVC   ADACUU,=X'000D'     Make look like PUN 00D
+         MVI   ADATYP,TYPPUN       Set as PUN dev type
+*
+         L     R6,APDEVTAG         -> Tag data
+         USING TAG,R6
+         TM    TAGINDEV,TYPPUN     Is it actually a PUN type?
+         BO    AXSP015             Yes
+         MVC   ADACUU,=X'000E'     Make look like PRT 00E
+         MVI   ADATYP,TYPPRT       Set as PRT dev type
+*
+AXSP015  EQU   *
+         MVI   ADASREQ,X'01'       One sense byte
+         MVC   ADACCW,DMYCCW       Set up dummy write CCW
+         LA    R2,ADABUFF          -> buffer
+         STCM  R2,7,ADACCW+1       Set in dummy CCW
+         DROP  R6                  TAG
+*
+*-- Open Spool to write out the incoming tranmission data
+*
+         LA    R6,NCB1             -> NCB for output file
+         USING NCB,R6
+         MVC   NCBFL1,ADATYP       Set PRT or PUN type in NCB
+         DROP  R1                  RSCSADA
+*
+         NSIO  TYPE=OPEN,          Open dataset                        x
+               NCB=(R6),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         NJETRACE TYPE=TRCOPNO     Open output request
+         STCM  R10,7,1(R14)        Identify trace entry            v212
+         MVC   4(1,R14),NCBFL1     Prt or Pun type                 v212
+         MVC   6(2,R14),NCBRTNCD   Error code bytes                v212
+*
+         LTR   R15,R15             Any errors?
+         BZ    AXSP020             No
+         BAL   R14,FMT000          Display error
+         B     U0039               Abend on VSAM error
+         DROP  R6                  NCB
+*
+AXSP020  EQU   *
+         POST  (4)                 Post the RSCS synch lock (PDEVSYNC)
+         B     XITAXS00
+*
+*-- AXS Close output file request
+*-- Then build a WRE to alert the outgoing task (if needed) that
+*-- a file has arrived for it to send out.
+*
+AXSC000  EQU   *
+         CLI   PDEVRLEN,11         Less than required length?
+         BL    U0046               Y, inv request length
+*
+         L     R1,PDEVFIOA         -> i/o area
+*
+         NJETRACE TYPE=TRCFREE
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         LA    R15,*
+         STCM  R15,7,5(R14)            Addr of Getmain to trace    v212
+         L     R0,=F'4096'             Size to free
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v212
+*
+         FREEMAIN RU,LV=(0),A=(1)
+         XC    PDEVFIOA,PDEVFIOA
+*
+         LA    R6,NCB1                 -> NCB for output use
+         USING NCB,R6
+         L     R5,APDEVTAG         -> tag data
+         NSIO  TYPE=CLOSE,             Done with spool file            x
+               NCB=(R6),                                               x
+               TAG=(R5),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         NJETRACE TYPE=TRCCLSO     Open output request
+         STCM  R10,7,1(R14)        Identify trace entry            v212
+         MVC   4(1,R14),NCBFL1     Flags                           v212
+         MVC   6(2,R14),NCBRTNCD   Error code bytes                v212
+         MVC   8(2,R14),NCBFID     File id #                       v212
+         MVC   10(2,R14),NCBRECCT  Record count                    v212
+         MVC   16(8,R14),TAGINLOC-TAG(R5)   Incoming node id       v212
+         MVC   24(8,R14),TAGTOLOC-TAG(R5)   Outgoing node id       v212
+         DROP  R6
+*
+         POST  (4)                 Post the RSCS synch lock (PDEVSYNC)
+*
+         USING TAG,R5
+         CLC   TAGTOLOC,LCLNODE    Was this system the dest?
+         BE    AXSC090             Yes.  No other link needs wake-up
+         DROP  R3                  PDEVBLOK
+*
+*-- Alert outgoing task
+*
+         L     R7,CSABLK               -> NJE38 CSA block
+         USING NJ38CSA,R7
+*
+         GETMAIN RU,                   Get CSA for WRE TYPE=WRENEW     x
+               LV=WRESIZE,                                         v220x
+               SP=2                                                v220
+         XC    0(WRESIZE,R1),0(R1)     Clear stg area              v220
+         USING WRE,R1
+*
+         NJETRACE TYPE=TRCGWRE
+         STCM  R10,7,1(R14)        Identify trace entry            v220
+         LA    R15,*
+         STCM  R15,7,5(R14)        Addr of Getmain to trace        v212
+         STM   R0,R1,8(R14)        Len, stg addr to trace          v220
+         MVI   8(R14),2            Trace subpool #                 v220
+*
+         MVI   WRESP,2                 Save subpool                v220
+         MVI   WRETYPE,WRENEW          "New file in spool" WRE
+         MVC   WRELINK,TAGTOLOC        Set destination node
+         DROP  R5
+*
+         SPKA  0                                                   v220
+         LM    R2,R3,NJ38SWAP          Get first WRE ptr, sync count
+AXSC020  EQU   *
+         ST    R2,WRENEXT              First WRE becomes next
+         LR    R4,R1                   -> WRE to be added as first
+         LA    R5,1(,R3)               Incr synchronization count
+         CDS   R2,R4,NJ38SWAP          Update CSA WRE anchor, sync
+         BC    7,AXSC020               Gotta try again
+*
+         LA    R7,NJ38ECB              -> NJE38 external WRE ECB
+         DROP  R7                      NJ38CSA
+*
+         POST  (7)                     Post the main task WRE ECB
+*
+         SPKA  X'80'
+*
+AXSC090  EQU   *
+         B     XITAXS00
+*
+*
+*-- AXS Open input file request
+*
+AXSA000  EQU   *
+         USING RDEVBLOK,R3
+         CLI   RDEVRLEN,19         Less than required length?
+         BL    U0046               Y, inv request length
+*
+AXSA010  EQU   *
+         GETMAIN RU,LV=4096,BNDRY=PAGE  Get RDEVFIOA stg
+         ST    R1,RDEVFIOA
+         XC    0(256,R1),0(R1)     Clear 256
+*
+         NJETRACE TYPE=TRCGET
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         LA    R15,*
+         STCM  R15,7,5(R14)            Addr of Getmain to trace    v212
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v212
+*
+*
+*- Build an IOTABLE block, modeled like RSCSADA
+*- DMTAXS OPENOUT does this same thing.
+*
+         USING RSCSADA,R1
+         MVC   ADACUU,=X'000C'     Make look like RDR 00C
+         MVI   ADASREQ,X'01'       One sense byte
+         MVI   ADATYP,TYP2540R     Set as RDR dev type
+         MVC   ADACCW,DMYCCW2      Set up dummy read CCW
+         LA    R2,ADABUFF          -> buffer
+         STCM  R2,7,ADACCW+1       Set in dummy CCW
+         DROP  R1                  RSCSADA
+*
+*-- Open Spool to read file to be transmitted
+*
+         LA    R6,NCB2                 -> NCB for input file
+         USING NCB,R6
+*
+         NSIO  TYPE=OPEN,              Open dataset                    x
+               NCB=(R6),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         NJETRACE TYPE=TRCOPNI         Open input request
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         MVC   4(1,R14),NCBFL1         flags                       v212
+         MVC   6(2,R14),NCBRTNCD       Error code bytes            v212
+*
+         LTR   R15,R15                 Any errors?
+         BZ    AXSA020                 No
+         BAL   R14,FMT000              Display error
+         B     U0039                   Abend on VSAM error
+*
+AXSA020  EQU   *
+         NSIO  TYPE=CONTENTS,          Get list of files               x
+               NCB=(R6),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         NJETRACE TYPE=TRCCONT         Contents request
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         MVC   4(1,R14),NCBFL1         flags                       v212
+         MVC   6(2,R14),NCBRTNCD       Error code bytes            v212
+         ST    R14,SVR14               Save trace entry addr       v220
+*
+         LTR   R15,R15                 Any errors?
+         BZ    AXSA030                 No
+         CLC   NCBRTNCD(2),=AL1(12,6)  No files in directory?
+         BE    AXSA180                 Close up and indicate no files
+         BAL   R14,FMT000              Display error
+         B     U0039                   Abend on VSAM error
+*
+AXSA030  EQU   *
+         L     R2,NCBAREA              Get a list of spool content
+         USING NSDIR,R2
+         SR    R5,R5
+         ICM   R5,3,NCBRECCT           # of returned entries
+         SR    R7,R7                   Indicate nothing found yet  v211
+*
+AXSA040  EQU   *
+         CLC   NSTOLOC,LCLNODE         Is this file already final? v221
+         BE    AXSA160                 Y, dont let * route select  v221
+         CLC   XJENODE,NSTOLOC         Is this file for this link?
+         BE    AXSA150                 yes
+*
+*-- Also, look at routes
+*
+         L     R1,AROUTES              -> ROUTES anchor word       v211
+         ICM   R1,15,0(R1)             -> RTE list                 v211
+         BZ    AXSA160                 No matching routes to find  v211
+         USING RTE,R1                                              v211
+*
+AXSA050  EQU   *
+         LA    R14,ROUTNAME            -> name from route list     v211
+         LA    R15,8                   max length                  v211
+         LA    R8,NSTOLOC              -> selected name to locate  v211
+         LR    R9,R15                  copy length                 v211
+         CLCL  R14,R8                  Did we locate the name?     v211
+         BE    AXSA090                 Yes                         v211
+         CLI   0(R14),C'*'             Wildcard was in the name?   v211
+         BE    AXSA090                 Y, we matched to that point v211
+***      CLC   NSTOLOC,ROUTNAME        Is file dest in route list? v211
+***      BE    AXSA090                 Found it
+         ICM   R1,15,ROUTPTR           -> Next route entry         v211
+         BNZ   AXSA050                 Keep looking                v211
+         B     AXSA160                 No matching route; next file
+*
+AXSA090  EQU   *
+         CLC   XJENODE,ROUTNEXT        Is route-to name our link?  v211
+         BE    AXSA150                 Yes, use it                 v211
+         CLC   XJENODE,ROUTALT1        Is route-to name our link?  v211
+         BE    AXSA150                 Yes, use it                 v211
+         CLC   XJENODE,ROUTALT2        Is route-to name our link?  v211
+         BE    AXSA150                 Yes, use it                 v211
+         CLC   XJENODE,ROUTALT3        Is route-to name our link?  v211
+         BNE   AXSA160                 No, this file not for this link
+*                                      Else, select this file
+         DROP  R1                      RTE                         v211
+*
+AXSA150  EQU   *
+         LA    R7,TDATA                -> tag data area for file   v211
+         USING TAG,R7
+         XC    TDATA(TAGLEN),TDATA                                 v211
+         MVC   TAGINLOC(TAGUSELN),NSINLOC  Copy tag datq
+         MVC   TAGLINK,XJENODE         Set up next link is this link
+         ST    R7,NCBTAG               Tag block addr to NCB       v211
+         L     R14,SVR14               Restore trace entry addr    v220
+         MVC   4(2,R14),NCBFID         File id # to trace
+         MVC   6(2,R14),NCBRECCT       Record count to trac
+         MVC   8(8,R14),NSTOLOC        File destination node
+         B     AXSA170
+*
+*
+AXSA160  EQU   *
+         LA    R2,NSDIRLN(,R2)         Next NETSPOOL dir entry
+         BCT   R5,AXSA040              Continue thru the contents
+         DROP  R2                      NSDIR
+*
+*
+AXSA170  EQU   *
+         LM    R0,R1,NCBAREAL          Get list length and address
+         XC    NCBAREA,NCBAREA         Clear obsolete ptr
+*
+         NJETRACE TYPE=TRCFREE
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         LA    R15,*
+         STCM  R15,7,5(R14)            Addr of Freemain to trace   v212
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v212
+*
+         FREEMAIN RU,LV=(0),A=(1)
+*
+         LTR   R7,R7                   Did we obtain tag data?     v211
+         BZ    AXSA180                 No, no file available
+*
+         MVI   RDEVSOPT,TYP2540R       Set up reader type
+         ST    R7,RPDEVTAG             Save tag data for DMTXJE    v211
+*
+         MVC   TAGDEV,=X'000C'         Pseudo reader dev addr
+         MVC   TAGBLOCK,RDEVFIOA       Set the XJE i/o buffer addr
+         IC    R1,TAGINDEV             Get PRT or PUN type flags
+         N     R1,=A(TYPPRT+TYPPUN)    Keep only these bits
+         STC   R1,NCBFL1               Set dev type in NCB
+         DROP  R7                      TAG                         v211
+*
+         POST  (4)                 Post the RSCS synch lock (RDEVSYNC)
+         B     XITAXS00
+*
+AXSA180  EQU   *
+         POST  (4)                 Post the RSCS synch lock (RDEVSYNC)
+         OI    0(R4),X'02'         Indicate no file available in ECB
+*
+         NSIO  TYPE=CLOSE,         Done with Spool                     x
+               NCB=(R6),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         NJETRACE TYPE=TRCCLSI     Open output request
+         STCM  R10,7,1(R14)        Identify trace entry            v212
+         MVC   4(1,R14),NCBFL1     Flags                           v212
+         MVI   5(R14),X'FF'        Indic this trace entry = no filev212
+         MVC   6(2,R14),NCBRTNCD   Error code bytes                v212
+         DROP  R6                  NCB
+         B     XITAXS00
+*
+*-- AXS Close input file request
+*
+AXSB000  EQU   *
+         CLI   RDEVRLEN,11         Less than required length?
+         BL    U0046               Y, inv request length
+*
+         L     R1,RDEVFIOA         -> i/o area
+*
+         NJETRACE TYPE=TRCFREE
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         LA    R15,*
+         STCM  R15,7,5(R14)            Addr of Freemain to trace   v212
+         L     R0,=F'4096'             Size to free
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v212
+*
+         FREEMAIN RU,LV=(0),A=(1)
+         XC    RDEVFIOA,RDEVFIOA
+*
+         LA    R6,NCB2              -> NCB for input use
+         USING NCB,R6
+         NSIO  TYPE=PURGE,          Purge the file                     x
+               NCB=(R6),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         NJETRACE TYPE=TRCPURG     File purge request
+         STCM  R10,7,1(R14)        Identify trace entry            v212
+         MVC   4(1,R14),NCBFL1     Flags                           v212
+         MVC   6(2,R14),NCBRTNCD   Error code bytes                v212
+         MVC   8(2,R14),NCBFID     File id #                       v212
+         MVC   10(2,R14),NCBRECCT  Record count                    v212
+*
+         LTR   R15,R15                 Any errors?
+         BZ    AXSB020                 No
+         BAL   R14,FMT000              Display error
+         B     U0039                   Abend on VSAM error
+*
+AXSB020  EQU   *
+         NSIO  TYPE=CLOSE,             Done with dataset               x
+               NCB=(R6),                                           v210x
+               ENTRY=ANJESPL                                       v210
+*
+         NJETRACE TYPE=TRCCLSI     Open output request
+         STCM  R10,7,1(R14)        Identify trace entry            v212
+         MVC   4(1,R14),NCBFL1     Flags                           v212
+         MVC   6(2,R14),NCBRTNCD   Error code bytes                v212
+         MVC   8(2,R14),NCBFID     File id #                       v212
+         MVC   10(2,R14),NCBRECCT  Record count                    v212
+         L     R5,NCBTAG           -> tag data
+         MVC   16(8,R14),TAGTOLOC-TAG(R5)   Outgoing node id       v212
+         DROP  R6                  NCB
+*
+         POST  (4)                 Post the RSCS synch lock (RDEVSYNC)
+         B     XITAXS00
+*
+         DROP  R3                  PDEVBLOK
+*
+XITAXS00 EQU   *
+         SR    R15,R15             Set RC=0
+         B     XITAXS
+*
+XITAXS   EQU   *
+         L     R13,4(,R13)         -> NJEREQ save area
+         ST    R15,16(,R13)        Set RC for R15
+         LM    R14,R12,12(R13)     Reload callers regs
+         BR    R14                 Return to NJEREQ
+*
+         LTORG
+*
+DMYCCW   CCW   X'01',*-*,0,132     Dummy output CCW
+DMYCCW2  CCW   X'02',*-*,0,80      Dummy input CCW
+*                                                                       NJE00920
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E S I O      *            NJESIO supports comm line i/o,         NJE00920
+*                   *             and PRT/PUN output to NETSPOOL.       NJE00920
+*  Supports the     *                                                   NJE00920
+*  IOREQ vector     *                                                   NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+*-- NJESIO is called by DMTXJE label RSIO for comm line i/o             NJE00920
+*-- NJESIO is called by DMTXJE label PWRITDEV for print & punch i/o     NJE00920
+*                                                                       NJE00920
+*                                                                       NJE00920
+NJESIO   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJESIO'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)          Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJESIO,R12              ADDRESS IT                       NJE00070
+         L     R10,0(,R9)              -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJESIOSA+4
+         LA    R13,NJESIOSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+*
+         LR    R7,R1               -> "RSCS adapter" i/o block
+         USING RSCSADA,R7
+*
+         CLC   ADACUU,=X'000D'     Punch data?
+         BE    PUNIO               Yes
+         CLC   ADACUU,=X'000E'     Print data?
+         BE    PRTIO               Yes
+*
+         LA    R8,XIOB             -> IOB
+         USING IOBSTDRD,R8
+         XC    XECB,XECB           Init ECB
+         XC    XIOB,XIOB           Init IOB
+         OI    IOBFLAG1,IOBDATCH+IOBCMDCH+IOBUNREL Turn on CD+CC flags
+*********LA    R1,ADAECB           -> ECB
+         LA    R1,XECB             -> Our own ECB for EXCP
+         ST    R1,IOBECBPT         Set it in the IOB
+         LA    R1,LINE1            -> DCB
+         ST    R1,IOBDCBPT         Set it in the IOB
+         MVC   IOBSTART,ADCCWA     Set ptr to CCW in IOB
+         MVI   IOBSTART,X'00'      Ensure flag bits zeroed
+*
+         NJETRACE TYPE=TRCEXCP
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         MVC   4(4,R14),IOBECBPT   ECB address to trace            v212
+         MVC   8(4,R14),IOBSTART   CCW start addr to trace         v212
+         MVC   12(4,R14),12(R9)    R14 caller of this i/o operationv212
+         L     R15,IOBSTART        -> CCWs                         v212
+         MVC   16(8,R14),0(R15)    Trace 1st CCW                   v212
+         TM    4(R15),X'C0'        CC or CD in CCW?                v212
+         BZ    *+10                No                              v212
+         MVC   24(8,R14),8(R15)    Trace 2nd CCW                   v212
+*
+         EXCP  XIOB                Execute the CCW
+*
+         B     XITSIO00
+*
+*-- Handle PUNCH records.
+*
+PUNIO    EQU   *
+         L     R2,ADCCWA
+         TM    0(R2),X'03'         No-operation CCW? (tag data)
+         BO    NOOP                Yes, do not write
+*
+         SR    R3,R3
+         ICM   R3,7,1(R2)          -> data addr in CCW
+         LH    R5,6(,R2)           Get length from CCW
+         LA    R6,NCB1             -> NCB for outgoing
+         USING NCB,R6
+*
+         NSIO  TYPE=PUT,           Write record to spool               X
+               NCB=(R6),                                               x
+               AREA=(R3),                                              x
+               RECLEN=(R5),                                        v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15              Any errors?
+         BZ    NOOP                 No
+         BAL   R14,FMT000           Display error
+         B     U0039                Abend on VSAM error
+*
+*-- Handle PRINT records.
+*
+PRTIO    EQU   *
+         L     R2,ADCCWA
+         CLI   0(R2),X'03'         No-operation CCW? (tag data)
+         BE    NOOP                Yes, do not write
+*
+         SR    R3,R3
+         ICM   R3,7,1(R2)          -> data addr in CCW
+         LH    R5,6(,R2)           Get length from CCW
+         LA    R6,NCB1             -> NCB for outgoing
+         USING NCB,R6
+*
+         MVC   DATAREC(1),0(R2)    Move CCW OP as carriage ctl byte
+         MVC   DATAREC+1(132),0(R3)  Move the record data
+         LA    R3,DATAREC          Write from this area
+         LA    R5,1(,R5)           Bump rec length for added CC byte
+         CH    R5,=H'133'          Did that push it over 132?
+         BL    *+8                 no
+         LA    R5,132              132 is the limit
+*
+         NSIO  TYPE=PUT,           Write record to spool               X
+               NCB=(R6),                                               x
+               AREA=(R3),                                              x
+               RECLEN=(R5),                                        v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15              Any errors?
+         BZ    NOOP                 No
+         BAL   R14,FMT000           Display error
+         B     U0039                Abend on VSAM error
+*
+NOOP     EQU   *
+         XC    ADACSW(8),ADACSW
+         MVI   ADACSW+4,X'0C'      Set CE+DE in CSW
+         MVI   ADAECB,X'40'        Post the ECB
+         LA    R1,8(,R2)           -> CCW executed + 8
+         ST    R1,ADACSW
+*
+         DROP  R6                  NCB
+         DROP  R7                  RSCSADA
+         DROP  R8                  IOBSTDRD
+*
+XITSIO00 EQU   *
+         L     R9,4(,R13)          -> DMTXJE save area
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*
+         LTORG
+*                                                                       NJE00290
+*-- DSECTS used by NJESIO                                               NJE00290
+*                                                                       NJE00290
+RSCSADA  DSECT                     RSCS adapter i/o block
+ADAECB   DS    F'0'                SYNCH LOCK
+ADACUU   DS    XL2'00'             Device address
+ADASREQ  DS    AL1(0)              Number of sense bytes
+ADATYP   DS    AL1(0)              Device type
+ADCCWA   DS    A(0)                ADAPTER CCW ADDR
+ADASIOCC EQU   *                   SIO CONDITION CODE
+ADACSW   DS    2F'0'               ADAPTER ENDING CSW
+ADASENSE DS    F'0'                ADAPTER SENSE BYTE
+ADACCW   DS    D                   CCW
+ADABUFF  EQU   *                   Buffer start
+*                                                                       NJE00290
+*                                                                       NJE00290
+* OS-Style EXCP ECB condition code notes                                NJE00920
+*
+* ECB condition code value in ECB byte 0 after EXCP:
+*
+*- 7F Normal completion: The Read or Write operation has ended
+*  with indications of Channel End-Device End and either Unit
+*  Exception or Incorrect Length, or toth, if they are normal
+*  conditions (for example, Unit Exception indicating end-of-
+*  transmission or negative response to polling).
+*  should examine the bits in DECFLAGS to determine the
+*
+*- 41 Complete with I/O error; the program should examine the bits
+*  in DECERRST to determine the kind of error.
+*
+*- 44 The I/O request was rejected, because (1) a device error was
+*  detected after the last I/O operation on the device was posted
+*  complete or (2) a request-for-test message was received
+*  from a local 3270 display station requesting that a test message
+*  be sent to another local 3270 device. The buffer contents
+*  are unpredictable.
+*
+*- 48 Enable Command Halted or I/O Operation Purged
+*  An I/O operation was purged at Channel End interrupt time
+*  as a result of closing the line group while I/O operations
+*  were still in progress.
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*                   *                                                   NJE00920
+*  N J E S P L      *                                                   NJE00920
+*                   *                                                   NJE00920
+*  Supports the     *                                                   NJE00920
+*  reading of data  *                                                   NJE00920
+*  from NETSPOOL    *                                                   NJE00920
+*  for outgoing     *                                                   NJE00920
+*  links.           *                                                   NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+*-- NJESPL is called by DMTXJE label VMDEBLOK                           NJE00920
+*                                                                       NJE00920
+*                                                                       NJE00920
+NJESPL   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJESPL'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)          Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJESPL,R12              ADDRESS IT                       NJE00070
+         L     R10,0(,R9)              -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJESPLSA+4
+         LA    R13,NJESPLSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM          -> common csect
+         USING NJECOM,R11
+*
+* R1 -> RDEVFIOA
+*
+RD000    EQU   *
+         MVC   0(120,R1),BLANKS     Init record area
+         MVC   120(120,R1),BLANKS   Init record area
+*
+         LA    R2,NCB2              -> NCB for file incoming
+         USING NCB,R2
+         L     R8,NCBTAG            -> TAG data for file
+         USING TAG,R8
+         MVC   0(2,R1),=H'132'      Assume 132-byte print data
+         LA    R3,2(,R1)            -> where to place spool record
+*                                   This will put car ctl in byte 2
+*
+         TM    TAGINDEV,TYPPRT      Are these print records?
+         BO    RD110                Yes, all set
+*
+         MVI   2(R1),X'41'          Else use 41 punch CCW code
+         MVC   0(2,R1),=H'80'       And 80-byte punch length
+         LA    R3,3(,R1)            -> where to place spool record
+*
+* read one record from spool and return it to XJE for transmission
+*
+RD110    EQU   *
+         SR    R4,R4                Clear for IC
+         ICM   R4,3,0(R1)           Get the record length we're using
+*
+         NSIO  TYPE=GET,            Read a spool record                X
+               NCB=(R2),                                               x
+               AREA=(R3),                                              x
+               RECLEN=(R4),                                            x
+               EODAD=XITSPL04,                                     v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15              Any errors?
+         BZ    RD120                No
+         BAL   R14,FMT000           Display error
+         B     U0039                Abend on VSAM error
+*
+RD120    EQU   *
+         B     XITSPL00
+         DROP  R2                   NCB
+         DROP  R8                   TAG
+*
+XITSPL04 EQU   *
+         LA    R15,4                Here on end of data; set RC
+         B     XITSPL
+*
+XITSPL00 EQU   *
+         SR    R15,R15
+*
+XITSPL   EQU   *
+         L     R9,4(,R13)          -> DMTXJE save area
+         ST    R15,16(,R9)
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*
+         LTORG
+*                                                                       NJE00920
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E W T        *                                                   NJE00920
+*                   *                                                   NJE00920
+*  Supports the     *                                                   NJE00920
+*  WAITREQ vector   *                                                   NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+*                                                                       NJE00920
+* This csect is called by:  every place there is a WAITREQ call in      NJE00920
+*                           DMTXJE.                                     NJE00920
+*                                                                       NJE00920
+NJEWT    CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEWT'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)          Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJEWT,R12               ADDRESS IT                       NJE00070
+         L     R10,0(,R9)              -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJEWTSA+4
+         LA    R13,NJEWTSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+*
+         LR    R3,R1               Copy ECB or ECBLIST ptr
+*
+*
+WT010    EQU   *                   Here to process RSCS ECBLIST
+         XC    XECBLIST(32),XECBLIST  Clear our ECBLIST
+         MVC   XECBLIST(4),LINKECBA  Link ECB is always first in list
+*
+* DMTXJE sets R3 specially, in this way:
+* R3-> ECB if the word content pointed to by R3 = 0.
+* R3-> ECBLIST if the word content pointed to by R3 ¬= 0.
+*
+         CLC   1(3,R3),=AL3(0)     Is there an address or an ECB?
+         BNE   WT015               Non-zero, it is in ECBLIST form
+         CLM   R3,7,AADAECB+1      Is it the addr of ADAECB?
+         BNE   *+8                 No, no special action
+         LA    R3,XECB             Otherwise use our EXCP ECB instead
+         ST    R3,XECBLIST+4       Plug addr of single ECB in list
+         OI    XECBLIST+4,X'80'    Mark end of list
+         B     WT050               Go check for work
+*
+WT015    EQU   *
+         LA    R0,7                Seven remaining ECBs in list
+         LA    R1,XECBLIST+4       -> our ECBLIST (after the first)
+         LA    R2,XECB             -> our EXCP ECB
+*
+WT020    EQU   *
+         TM    0(R3),X'40'         Empty RSCS ECBLIST entry?
+         BO    WT030               Yes, skip it
+         MVC   0(4,R1),0(R3)       Put RSCS ECB ptr in our list
+         CLC   1(3,R1),AADAECB+1   Did we just plug the ADAECB addr?
+         BNE   *+8                 No, no special action
+         STCM  R2,7,1(R1)          Otherwise, use our EXCP ECB instead
+         TM    0(R3),X'80'         Was this the last RSCS ECB?
+         BO    WT050               Yes, go check for work
+         LA    R1,4(,R1)           Next ECBLIST word for MVS
+         BCT   R0,WT030            Continue to next
+U0048    ABEND 48,DUMP,STEP        Should not occur (more than 8 ecbs)
+*
+WT030    EQU   *
+         LA    R3,4(,R3)           Next ECBLIST word for RSCS
+         B     WT020               Keep building ECB list
+*
+WT040    EQU   *
+         WAIT  1,ECBLIST=XECBLIST  Wait on the ECB list
+*
+*-- Identify the ECB that was posted
+*
+WT050    EQU   *
+         LA    R1,XECBLIST         -> our ECBLIST
+WT060    EQU   *
+         L     R2,0(,R1)           -> ECB
+         TM    0(R2),X'40'         Was this ECB posted?
+         BO    WT070               Yes
+         TM    0(R1),X'80'         Last ECB addr in list?
+         BO    WT065               Yes
+         LA    R1,4(,R1)           -> next ECB addr
+         B     WT060
+*
+*-- No ECBs were posted but check for WREs still on Q
+*
+WT065    EQU   *
+         CLC   WREQ,=A(0)          Process WRE Q still has work?
+         BE    WT040               Its zero, ok to WAIT
+         SPKA  0                   Some WREs are in key 0 stg
+         B     WRK000              Go handle the WRE request
+*
+WT070    EQU   *
+         LA    R8,XIOB             -> IOB for last i/o
+         USING IOBSTDRD,R8
+*
+         NJETRACE TYPE=TRCWAIT     Trace wait completion
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         ST    R2,4(,R14)          Addr of posted ECB to trace     v212
+         MVC   12(4,R14),12(R9)    R14 caller of this wait oper    v212
+*
+         CLM   R2,7,LINKECBA+1     Was the Link ECB posted?
+         BE    COMM000             Yes
+         CLM   R2,7,IOBECBPT+1     Was i/o ECB the one posted?
+         BNE   XITWT00             No
+*
+WT080    EQU   *                ** Here to return line i/o status
+         MVC   8(1,R14),IOBSTART   Trace SIO status                v212
+         MVC   9(1,R14),IOBSENS0   Trace SENSE byte                v212
+         MVC   16(8,R14),IOBCSW-1  Move CSW to trace               v212
+         L     R2,AADAECB
+         USING RSCSADA,R2          Pass back CSW from i/o to DMTXJE
+         MVC   ADACSW(8),IOBCSW-1  Pass back CSW
+*
+         IC    R1,IOBSTART         Get the SIO cond code (bits 2,3)
+         SRL   R1,4
+         STC   R1,ADACSW           Set SIOCOND for DMTXJE
+         NI    ADACSW,X'03'        Keep only the SIOCOND bits
+         MVI   ADAECB,X'40'        "post" DMTXJE's line ECB
+*
+         TM    ADACSW,X'02'        Was there a unit-check?
+         BZ    XITWT00             No
+         MVC   ADASENSE(1),IOBSENS0 Move single sense byte from IOB
+*
+         DROP  R2                  RSCSADA
+         DROP  R8                  IOBSTDRD
+*
+XITWT00  EQU   *
+         L     R9,4(,R13)          -> DMTXJE save area
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*                                                                       NJE00290
+*-- WRE(s) have been posted to this link.  Dequeue that chain of WREs   NJE00290
+*-- from the WRE-IN Q  (LWREWRIN) and put them on our local process Q.
+*                                                                       NJE00290
+COMM000  EQU   *
+         XC    0(4,R2),0(R2)           Clear ECB that got us here
+         L     R2,XJELINK              -> task's LINKTABL entry
+         USING LINKTABL,R2
+         LM    R4,R5,LWRESWAP          Get WRE anchor, sync count
+*
+COMM010  EQU   *
+         LTR   R4,R4                   Was WRE Q empty?
+         BZ    XITWT00                 Yes, nothing else to do
+         SR    R14,R14                 Zero out the WRE Q anchor
+         LR    R15,R5                  Copy same sync count
+         CDS   R4,R14,LWRESWAP         Try to empty the WRE Q
+         BC    7,COMM010               Can't yet, try again
+         DROP  R2                      LINKTABL
+*
+*-- R4 -> start of WRE chain we dequeued from WRE Q
+*
+*-- Find the end of the WRE chain we just dequeued and chain that
+*-- last WRE to the start of the existing process chain
+*
+*   Example (before we do anything below):
+*
+*   Input WRE chain                Process WRE chain
+*    from LWREWRIN                   from WREQ
+*   --------------------           ---------------------
+*   LWREWRIN -> WRE A              WREQ -> WRE X
+*   WRE A -> WRE B                 WRE X -> WRE Y
+*   WRE B -> 0                     WRE Y -> 0
+*
+*
+*
+*   After COMM020-COMM030 completed:
+*
+*   Input WRE chain                Process WRE chain
+*    from LWREWRIN                   from WREQ
+*   --------------------           ---------------------
+*   LWREWRIN -> 0                  WREQ -> WRE A
+*                                  WRE A -> WRE B
+*                                  WRE B -> WRE X
+*                                  WRE X -> WRE Y
+*                                  WRE Y -> 0
+*
+*
+         LR    R3,R4               Copy ptr to 1st WRE
+         USING WRE,R3
+*
+COMM020  EQU   *
+         ICM   R15,15,WRENEXT      -> next WRE
+         BZ    COMM030             Found the end
+         LR    R3,R15              Make that next one the current
+         B     COMM020             Keep looking for the end
+*
+COMM030  EQU   *
+         SPKA  0                   Some WREs are in key 0 stg
+         MVC   WRENEXT,WREQ        Add existing process chain to end
+         DROP  R3                  WRE
+         ST    R4,WREQ             Set new 1st WRE on process Q
+*
+*
+*-- Process a WRE
+*-- Find the last WRE on chain and process it first (its the oldest)
+*
+*
+*=== The entire WRK000 routine must run Key=0 ===*
+*
+*
+WRK000   EQU   *
+         LA    R2,WREQ-(WRENEXT-WRE) -> 0th WRE on process Q
+         L     R3,WREQ             -> 1st WRE on process Q
+         USING WRE,R3
+*
+WRK020   EQU   *
+         ICM   R15,15,WRENEXT      -> next WRE
+         BZ    WRK030              Found the end
+         LR    R2,R3               -> current -1 WRE
+         LR    R3,R15              Make that next one the current
+         B     WRK020              Keep looking for the end
+*
+WRK030   EQU   *
+         XC    WRENEXT-WRE(,R2),WRENEXT-WRE(R2) Make current -1 as last
+*
+*-- Now see what kind of WRE it is and act on the request
+*
+         NJETRACE TYPE=TRCIWRE     Trace incoming WRE
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         LA    R15,*               -> here                         v220
+         ST    R15,4(,R14)         Save addr of trace request      v220
+         ST    R3,8(,R14)          Trace WRE addr                  v220
+         MVC   12(4,R14),WRETYPE   Trace type code,len,subpool     v220
+         MVC   16(8,R14),WRELINK   link dest                       v220
+         MVC   24(8,R14),WREUSER   userid dest                     v220
+         NJETRACE TYPE=TRCIWRE     Trace incoming WRE follow on    v220
+         OI    0(R14),X'80'        Indicate follow on              v220
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         MVC   4(8,R14),WREORIG    Originator userid               v220
+         MVC   12(20,R14),WRETXT   Trace WRE content               v220
+*
+         CLI   WRETYPE,WRENEW      New file queued WRE?
+         BE    WRK100
+         CLI   WRETYPE,WRECMD      CMD type WRE?
+         BE    WRK200
+         CLI   WRETYPE,WREMSG      MSG type WRE?
+         BE    WRK400
+U0044    ABEND 44,DUMP,STEP
+*
+WRK100   EQU   *
+         L     R1,ARDEVECB         -> DMTXJE RDEVSYNC ECB
+         POST  (1)                 Tell DMTXJE there is input file
+         B     WRK900
+*
+WRK200   EQU   *
+         CLI   WRECODE,X'81'       Drain?
+         BE    WRK800              Yes
+         CLI   WRECODE,X'B0'       CMD?
+         BE    WRK300              Yes
+U0043    ABEND 43,DUMP,STEP
+*
+*-- Build XJE CMDBLOK in XJE CMDRESP area
+*
+WRK300   EQU   *
+         L     R1,ACMDRESP         -> CMD response area
+         MVC   0(4,R1),=X'00B00000' Set up CMBBLOK hdr: len,code,0,0
+         MVC   4(8,R1),LCLNODE     Respond to this node
+         MVC   12(8,R1),WREUSER    response to userid
+         MVC   20(8,R1),WRELINK    Destination node of cmd
+*
+         SR    R5,R5
+         IC    R5,WRETXTLN         Get IBM length of cmd text
+         EX    R5,CPYTXT           Copy text from WRE
+*CPYTXT  MVC   28(0,R1),WRETXT
+         LA    R5,4+8+8+8(,R5)     Compute total CMDBLOK IBM len
+         STC   R5,0(,R1)           Plug into CMDBLOK
+*
+         L     R1,ACMDECB          -> DMTXJE CMDECB
+         POST  (1)                 Let it know command entered
+         B     WRK900
+*
+CPYTXT   MVC   28(0,R1),WRETXT     executed instr
+*
+*
+*-- Stack a message on a chain for DMTXJE to transmit to a remote
+*-- user over a link. (Messages are unstacked by NJEGMQ when DMTXJE
+*-- requests that function).
+*
+*-- NOTE: the building the the msg in STKMSG is a little screwy and
+*--       it is because we are trying to conform to what the NMR
+*--       build routine in DMTXJE requires. This in DMTXJE-BLDNMRM.
+*--       This is pretty gruesome stuff.
+*
+* On entry:
+*
+*    R3 -> WRE which contains the message and destination
+*
+*
+WRK400   EQU   *
+         LM    R0,R1,RQENUM        Get # RQEs and first addr
+         USING RQE,R1
+*
+WRK420   EQU   *
+         CLC   RQEOWN,=A(0)        Look for empty RQE
+         BE    WRK430              Got one
+         LA    R1,RQESZ(,R1)       -> next RQE
+         BCT   R0,WRK420
+U0045    ABEND 45,DUMP,STEP
+*
+WRK430   EQU   *
+         L     R2,XJELINK          -> this task's LINKTABL entry
+         SR    R0,R0               Look for owner word value of 0
+         CS    R0,R2,RQEOWN        Set owner to LINKTABL addr
+         BC    4,WRK400            CC=1; owner non-zero, look again
+*
+         XC    RQEDATA(256),RQEDATA       Init area
+         XC    RQEDATA+256(4),RQEDATA+4   Init area
+         DROP  R1                  RQE
+*
+         LR    R4,R1               RQE ptr to R4
+         ST    R4,4(,R14)          RQE/STACKMSG ptr to trace       v212
+         USING STACKMSG,R4
+         MVC   STKNODE,WRELINK     Move node name to respond to
+         MVC   STKID,WREUSER       Move user name to respond to
+*
+         MVC   STKMSG(L'BLANKS),BLANKS  Init 1st part of this area
+         MVC   STKMSG(16),=CL16'DMTCMX171I FROM '
+         MVC   STKMSG+16(8),LCLNODE Msg is from the local node
+         TRT   STKMSG+16(9),BLANK  Look for end of local node id
+*
+         CLC   WREORIG,=XL8'00'    No originating userid?
+         BE    WRK435              No, use MSG170 style
+         CLC   WREORIG,BLANKS      No originating userid?
+         BE    WRK435              No, use MSG170 style
+         MVI   0(R1),C'('          Set opening
+         MVC   1(8,R1),WREORIG     Set origin userid of msg
+         TRT   1(9,R1),BLANK       Look for end of orig user id
+         MVC   0(2,R1),=C'):'      Set closing
+         MVC   4(120,R1),WRETXT    Move msg text now
+         B     WRK438
+*
+WRK435   EQU   *
+         MVI   STKMSG+8,C'0'       Change to DMTCMX170I
+         MVI   0(R1),C':'          Just move a colon
+         MVC   4(120,R1),WRETXT    Move msg text now
+*
+WRK438   EQU   *
+         LA    R0,STKNODE          -> node name
+         SR    R1,R0               Compute length to msg text start
+*
+         SR    R15,R15
+         IC    R15,WRETXTLN
+         LA    R15,8(R1,R15)       Add stack ovhd len to text length
+         STC   R15,STKLEN          Store in block
+         DROP  R4                  STACKMSG
+*
+         LA    R2,MSGQ-(STKNEXT-STACKMSG)  -> 0th stacked msg
+         USING STACKMSG,R2
+*
+WRK440   EQU   *
+         ICM   R15,15,STKNEXT      -> next stacked message
+         BZ    WRK450              Found the end
+         LR    R2,R15              stacked msg ptr to R2
+         B     WRK440
+*
+WRK450   EQU   *
+         ST    R4,STKNEXT          Add new stacked msg to the end
+*
+         L     R1,AMSGECB          -> DMTXJE MSGECB
+         POST  (1)                 Tell DMTXJE there are stacked msgs
+         B     WRK900
+*
+*-- Drain request on shutdown
+*
+WRK800   EQU   *
+         L     R1,ACMDRESP         -> CMD response area
+         MVC   0(DMYCMDL,R1),DMYCMD   Plug a drain command
+         L     R1,ACMDECB          -> DMTXJE CMDECB
+         POST  (1)                 Let it know command entered
+         B     WRK900
+*
+*-- Done with WRE; release it
+*
+WRK900   EQU   *                   Release the WRE -> R3
+         LA    R0,WRESIZE          Size of this WRE                v220
+*
+         LR    R1,R3               WRE ptr to R1
+         NJETRACE TYPE=TRCFWRE
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         LA    R15,*
+         STCM  R15,7,5(R14)            Addr of Freemain to trace   v212
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v212
+*
+         SR    R15,R15             Clear for IC                    v220
+         IC    R15,WRESP           Get subpool number              v220
+         STC   R15,8(,R14)         Trace subspool                  v220
+         MVI   WRESP,X'FF'             Mark stg as freed           v220
+         DROP  R3                  WRE                             v220
+*
+         FREEMAIN RU,              Free the WRE                        x
+               LV=(0),                                                 x
+               A=(1),                                                  x
+               SP=(15)                                             v220
+*
+         SPKA  X'80'                   Back to user key
+         B     XITWT00
+*
+         DS 0F
+DMYCMD   DC    AL1(DMYCMDL),X'81',AL2(0)
+         DC    CL8'      '         response node (not needed for drain)
+         DC    CL8'OP'             response user
+         DC    C'DRAIN nodeid   '  dummy model
+DMYCMDL  EQU   *-DMYCMD
+*
+*GPR  1 =  00012B50     Example command CMDBLOK to remote link
+*D T12B50.40
+*012B50    1FB00000  E9E6F0F2  40404040  40404040     *....ZW02
+*012B60    40404040  E6C1C2D5  C5E34040  D840E2E8     *    WABNET  Q SY
+*012B70    00000000  00000000  00000000  00000000     *................
+*012B80 TO 012B90   SUPPRESSED LINE(S) SAME AS ABOVE .....
+*
+*
+*
+*
+         LTORG
+*                                                                       NJE00290
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E G P G      *                                                   NJE00920
+*                   *              This function simply serves to       NJE00920
+*  Supports the     *              obtain a full pages of memory        NJE00920
+*  GPAGEREQ vector  *              when DMTXJE requests them            NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00920
+NJEGPG   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEGPG'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)      Save DMTXJE regs                     NJE00050
+         LR    R12,R15             Base                                 NJE00060
+         USING NJEGPG,R12          ADDRESS IT                           NJE00070
+         L     R10,0(,R9)          -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJEGPGSA+4
+         LA    R13,NJEGPGSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+*
+         SLL   R0,12               Multiply # pages requested by 4096
+         GETMAIN RU,               Get storage                         x
+               LV=(0),                                                 x
+               BNDRY=PAGE
+*
+         NJETRACE TYPE=TRCGET
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         LA    R15,*
+         STCM  R15,7,5(R14)            Addr of Getmain to trace    v212
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v212
+*
+*
+XITGPG00 EQU   *
+         L     R9,4(,R13)          -> DMTXJE save area
+         ST    R1,24(,R9)          Return new page in R1
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+         LTORG
+*                                                                       NJE00290
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E G M Q      *                                                   NJE00920
+*                   *              This function is called by DMTXJE    NJE00920
+*  Supports the     *              when it wants to "unstack" messages  NJE00920
+*  GMSGREQ vector   *              for transmission to a Node.  Occurs  NJE00920
+*                   *              when MSGECB is posted.               NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00290
+* Messages are placed on this stack by routine ISSUE000 in NJECMX.
+* Messages are also placed on this stack by ALQ000 in NJEALQ.  Note
+* that messages placed on the stack by ISSUE000 goes on the MSGQ
+* chain; these messages are originated and owned by the same link
+* task.   Messages placed on the stack by ALQ000 are not placed on
+* the message queue chain because of the vagaries of multiple link
+* tasks possibly needing to place an entry on the chain simultaneously
+* or while this link task is retrieving one from the chain.  Instead
+* ALQ000 messages are placed in the stack without using the chain;
+* the target link owner address is placed in the RQEOWN (STKOWN) field
+* to identify who is to retrieve it, but there is no chain manipulation
+* and no conflict by multiple tasks.  Control over who gets what
+* available RQE for stacking is controlled by COMPARE AND SWAP in
+* ALQ000.
+*
+NJEGMQ   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEGMQ'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)          Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJEGMQ,R12              ADDRESS IT                       NJE00070
+         L     R10,0(,R9)              -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJEGMQSA+4
+         LA    R13,NJEGMQSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+*
+*-- R1 -> DMTXJE provided area to place the stacked message
+*
+GMQ000   EQU   *                ** Search the MSGQ chain for msgs
+         ICM   R2,15,MSGQ          -> stacked msg Q
+         BZ    GMQ100              None stacked, but check for RQE
+         USING STACKMSG,R2
+         MVC   0(120,R1),STKLEN    Move stacked msg to DMTXJE area
+         MVC   MSGQ,STKNEXT        Remove this stacked msg from Q
+*
+         NJETRACE TYPE=TRCGMQM     Trace GMSGREQ from MSGQ         v212
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         ST    R2,4(,R14)          Trace RQE/STACKMSG addr         v212
+         MVC   8(24,R14),STKLEN    Trace 24 of stack area          v212
+         NJETRACE TYPE=TRCGMQM     Trace GMSGREQ follow-on         v212
+         OI    0(R14),X'80'        Indicate follow on              v212
+         MVC   1(31,R14),STKLEN+24 Trace more of stacked msg text  v212
+*
+         XC    STKOWN,STKOWN       This RQE no longer owned        v212
+         DROP  R2                  STACKMSG
+         B     XITGMQ00            We're done
+*
+GMQ100   EQU   *                ** Search the RQE area for messages
+         LM    R3,R4,RQENUM        Get number and addr of RQEs
+         USING RQE,R4
+*
+GMQ120   EQU   *
+         CLC   RQEOWN,XJELINK      Look for RQE that this link owns
+         BE    GMQ130              Got one
+         LA    R4,RQESZ(,R4)       -> next RQE
+         BCT   R3,GMQ120
+         B     XITGMQ04            No more messages to unstack
+*
+GMQ130   EQU   *
+         USING STACKMSG,R4
+         MVC   0(120,R1),STKLEN    Move stacked msg to DMTXJE area
+*
+         NJETRACE TYPE=TRCGMQR     Trace GMSGREQ from RQE          v212
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         ST    R4,4(,R14)          Trace RQE/STACKMSG addr         v212
+         MVC   8(24,R14),STKLEN    Trace 24 of stack area          v212
+         NJETRACE TYPE=TRCGMQR     Trace GMSGREQ follow-on         v212
+         OI    0(R14),X'80'        Indicate follow on              v212
+         MVC   1(31,R14),STKLEN+24 Trace more of stacked msg text  v212
+*
+         XC    STKNEXT,STKNEXT     Ensure no left over pointers
+         XC    STKOWN,STKOWN       This RQE no longer owned
+         DROP  R4                  STACKMSG
+*
+XITGMQ00 EQU   *
+         SR    R15,R15             Zero RC = unstacked msg -> R1
+         B     XITGMQ
+*
+XITGMQ04 EQU   *
+         LA    R15,4               Non-zero RC = no messages to unstk
+*
+XITGMQ   EQU   *
+         L     R9,4(,R13)          -> DMTXJE save area
+         ST    R15,16(,R9)         Return with RC in R15
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*                                                                       NJE00290
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E G L Q      *                                                   NJE00920
+*                   *              This function is called by DMTXJE    NJE00920
+*  Supports the     *              when it wants to locate a link by    NJE00920
+*  GLINKREQ vector  *              name in the LINKTABL.                NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00290
+*  Entry:  R1-> CL8'name of destination link'                           NJE00290
+*  Exit:   R1-> LINKTABL entry of destination link, R15=0               NJE00290
+*          R15 = 0 if entry found; R15 = 16 if not found.               NJE00290
+*                                                                       NJE00290
+*                                                                       NJE00290
+NJEGLQ   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEGLQ'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)      Save DMTXJE regs                     NJE00050
+         LR    R12,R15             Base                                 NJE00060
+         USING NJEGLQ,R12          ADDRESS IT                           NJE00070
+         L     R10,0(,R9)          -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJEGLQSA+4
+         LA    R13,NJEGLQSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+*
+         L     R2,ALINKS           -> LINKS anchor word            v211
+         L     R2,0(,R2)           -> first LINKTABL entry         v211
+         USING LINKTABL,R2
+         ICM   R2,15,LNEXT         Skip over local entry           v211
+         BZ    GLQ080              Doesnt exist                    v211
+*
+GLQ000   EQU   *
+         CLC   0(8,R1),LINKID      Look for destination link
+         BE    GLQ090              Found it
+         ICM   R2,15,LNEXT         -> next LINKTABL entry
+         BNZ   GLQ000              Keep searching
+*
+GLQ080   EQU   *                                                   v211
+         LA    R15,16              No matching entry found
+         B     XITGLQ              And exit w/ original R1 intact
+*
+GLQ090   EQU   *
+         LR    R1,R2               -> LINKTABL entry to return
+         SR    R15,R15             RC=0, entry was found
+*
+XITGLQ   EQU   *
+         NJETRACE TYPE=TRCGLQ      Trace GLINKREQ
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         ST    R15,4(,R14)         Trace resulting RC              v212
+         MVC   8(8,R14),0(R1)      Trace LINKID
+*
+         L     R9,4(,R13)          -> DMTXJE save area
+         ST    R1,24(,R9)          Return A(linktabl entry) in R1
+         ST    R15,16(,R9)         Set R15 RC to caller
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*
+         DROP  R2
+         LTORG
+*                                                                       NJE00290
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E G R Q      *                                                   NJE00920
+*                   *              This function is called by DMTXJE    NJE00920
+*  Supports the     *              when it wants to locate a node       NJE00920
+*  GROUTREQ vector  *              name in the routing table.           NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00290
+NJEGRQ   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEGRQ'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)          Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJEGRQ,R12              ADDRESS IT                       NJE00070
+         L     R10,0(,R9)              -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJEGRQSA+4
+         LA    R13,NJEGRQSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+*
+*-- R1 -> Requested route name
+*
+*
+*-- First determine if the route name we are looking up is actuallyv211
+*-- a link name.                                                   v211
+*
+RLNK000  EQU   *
+         L     R2,ALINKS           -> LINKS anchor word            v211
+         L     R2,0(,R2)           1st entry (LOCAL entry)         v211
+         USING LINKTABL,R2
+         L     R2,LNEXT            Skip over local entry           v211
+         SR    R0,R0               R0=0 assume name not a link     v211
+*
+RLNK010  EQU   *                                                   v211
+         CLC   LINKID,0(R1)        Find the link entry by name     v211
+         BE    RLNK020             Got it                          v211
+         ICM   R2,15,LNEXT         -> next LINKTABL entry          v211
+         BNZ   RLNK010             Keep looking                    v211
+         B     RLNK030             Didn't find a matching link     v211
+         DROP  R2                  LINKTABL                        v211
+*
+*-- Here if route we want is a link name too (dont use wildcards)  v211
+*
+RLNK020  EQU   *                                                   v211
+         BCTR  R0,0                Indic route is explicit link nm v211
+*                                                                  v211
+*-- Search the RTEs for the route name                             v211
+*                                                                  v211
+RLNK030  EQU   *
+         L     R2,AROUTES          -> ROUTES anchor word           v211
+         ICM   R2,15,0(R2)         -> RTE list                     v211
+         BZ    XITGRQ04            If 0, no routes found
+         USING RTE,R2                                              v211
+*
+RLNK040  EQU   *
+         LA    R4,ROUTNAME         -> name from route list         v211
+         LA    R5,8                max length                      v211
+         LR    R6,R1               -> selected name to locate      v211
+         LR    R7,R5               copy length                     v211
+         CLCL  R4,R6               Did we locate the name?         v211
+         BE    RTE400              Yes                             v211
+         LTR   R0,R0               Must be explicit link name?     v211
+         BNZ   RLNK050             Yes, no wildcard checking       v211
+         CLI   0(R4),C'*'          Wildcard was in the name?       v211
+         BE    RTE400              Then we matched to that point   v211
+*
+RLNK050  EQU   *                                                   v211
+         ICM   R2,15,ROUTPTR       -> next RTE                     v211
+         BNZ   RLNK040             Keep looking                    v211
+         B     XITGRQ04            Error if not found
+*
+RTE400   EQU   *
+         LA    R0,4                # possible routed-to names      v211
+         LA    R3,ROUTNEXT         -> first possible name          v211
+*
+RTE410   EQU   *                                                   v211
+         L     R4,ALINKS           -> LINKS anchor word            v211
+         L     R4,0(,R4)           -> first LINKTABL entry         v211
+         USING LINKTABL,R4                                         v211
+         ICM   R4,15,LNEXT         Skip over local entry           v211
+         BZ    XITGRQ04            Let DMTXJE fail the request     v211
+*
+RTE420   EQU   *                                                   v211
+         CLC   0(8,R3),BLANKS      No route-to name?               v211
+         BE    XITGRQ04            Fail the request                v211
+         CLC   0(8,R3),LINKID      Look for destination link       v211
+         BE    RTE440              Found it                        v211
+         ICM   R4,15,LNEXT         -> next LINKTABL entry          v211
+         BNZ   RTE420              Keep searching                  v211
+*
+RTE430   EQU   *                                                   v211
+         LA    R3,8(,R3)           Next alternate route-to         v211
+         BCT   R0,RTE410           Rescan for matching link        v211
+         B     XITGRQ04            None found, fail the request    v211
+*
+RTE440   EQU   *                                                   v211
+         TM    LFLAG,LCONNECT      Is the link active?             v211
+         BZ    RTE430              N, try next route-to link       v211
+         LR    R1,R3               Return selected link in R1      v211
+         DROP  R4                  LINKTABL                        v211
+*
+XITGRQ00 EQU   *
+         SR    R15,R15             Zero RC = final link name -> R1
+         B     XITGRQ
+*
+XITGRQ04 EQU   *
+         LA    R15,4               Non-zero RC = no matching route
+*
+XITGRQ   EQU   *
+         NJETRACE TYPE=TRCGRQ      Trace GROUTREQ
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         ST    R15,4(,R14)         Trace resulting RC              v212
+         MVC   8(8,R14),0(R1)      Trace LINKID
+*
+         L     R9,4(,R13)          -> DMTXJE save area
+         ST    R15,16(,R9)         Return with RC in R15
+         ST    R1,24(,R9)          Return -> route entry in r1
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*                                                                       NJE00290
+         LTORG
+*                                                                       NJE00290
+*                                                                       NJE00920
+*********************                                                   NJE00920
+*  N J E A L Q      *                                                   NJE00920
+*                   *              This function is called by DMTXJE    NJE00920
+*  Supports the     *              when it wants to post a msg or       NJE00920
+*  ALERTREQ vector  *              cmd to another link.                 NJE00920
+*                   *                                                   NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00290
+NJEALQ   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEALQ'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R9)          Save DMTXJE regs                 NJE00050
+         LR    R12,R15                 Base                             NJE00060
+         USING NJEALQ,R12              ADDRESS IT                       NJE00070
+         L     R10,0(,R9)              -> NJEWK
+         USING NJEWK,R10
+*
+         ST    R9,NJEALQSA+4
+         LA    R13,NJEALQSA
+         ST    R13,8(,R9)
+         L     R11,ANJECOM         -> common csect
+         USING NJECOM,R11
+         LR    R7,R1               Copy msg ptr to R7
+*
+*-- R7 -> Message NMR
+*-- R0 =  Task name (RSCS format) of link to alert
+*
+         L     R2,ALINKS           -> LINKS anchor word            v211
+         L     R2,0(,R2)           -> first LINKTABL entry         v211
+         USING LINKTABL,R2
+         ICM   R2,15,LNEXT         -> next LINKTABL entry          v211
+         BZ    XITALQ04            Doesnt exist                    v211
+*
+ALQ000   EQU   *
+         CL    R0,LTCBA            Look for target task id
+         BE    ALQ020              Found it
+         ICM   R2,15,LNEXT         -> next LINKTABL entry
+         BNZ   ALQ000              Keep searching
+         B     XITALQ04            Not found, exit with RC
+*
+ALQ020   EQU   *
+         SR    R15,R15             RC=0, entry was found
+         L     R5,LNJEW            -> work area of target task
+*
+*-- Stack a message in an RQE for DMTXJE to transmit to a remote
+*-- user over a link. (Messages are unstacked by NJEGMQ when DMTXJE
+*-- requests that function).
+*
+*
+*
+ALQ100   EQU   *
+*
+ALQ110   EQU   *
+         LM    R0,R1,RQENUM        Get number and addr of RQEs
+         USING RQE,R1
+*
+ALQ120   EQU   *
+         CLC   RQEOWN,=A(0)        Look for empty RQE
+         BE    ALQ130              Got one
+         LA    R1,RQESZ(,R1)       -> next RQE
+         BCT   R0,ALQ120
+U0045A   ABEND 45,DUMP,STEP        RQEs exhausted
+*
+*                                  R2 -> target task's LINKTABL entry
+ALQ130   EQU   *
+         SR    R0,R0               Clear compare value             v213
+         SR    R15,R15             Set up for -1                   v213
+         BCTR  R15,0               Make -1                         v213
+         CS    R0,R15,RQEOWN       Reserve the RQE with -1 owner   v213
+         BC    4,ALQ110            CC=1; owner non-zero, look again
+*
+         XC    RQEDATA(256),RQEDATA       Init area
+         XC    RQEDATA+256(4),RQEDATA+256 Init area                v213
+*
+*-- When stacking a command or msg destined for another outgoing link,
+*-- the stacking process as done by RSCS PMSGREQ in DMTCOM lops off
+*-- the first two bytes of the data (a length byte and a X'B2') and
+*-- then moves the data to be stacked started with byte 2. It then
+*-- recalculates the new length as two bytes less, and further
+*-- adjusts the length down by one more byte as it makes the length
+*-- into IBM format.  The code just below with register 0 performs
+*-- this same operation, for ALERTREQ stacking only.
+*
+         USING STACKMSG,R1
+*
+         SR    R0,R0               Clear for IC
+         IC    R0,0(,R7)           Get original length from tank
+         MVC   STKLEN(256),2(R7)   Move tank data, skipping 1st 2 bytes
+         S     R0,=F'3'            Reduce length for 2 bytes skipped
+*                                   -1 more to make IBM length
+         STC   R0,STKLEN           Plug new command stack length
+         ST    R2,STKOWN           Now set true LINKTABL owner     v213
+*
+         NJETRACE TYPE=TRCALQ      Trace alert task
+         STCM  R10,7,1(R14)            Identify trace entry        v212
+         ST    R1,4(,R14)          Trace RQE/STACKMSG address      v212
+         MVC   8(24,R14),STKLEN    Trace 1st 24 of stack data area v212
+         DROP  R1                  STACKMSG
+*
+XITALQ00 EQU   *
+         L     R1,AMSGECB-NJEWK(,R5) -> DMTXJE MSGECB
+         POST  (1)                 Tell DMTXJE there are stacked msgs
+*
+         SR    R15,R15             Zero RC = unstacked msg -> R1
+         B     XITALQ
+*
+XITALQ04 EQU   *
+         LA    R15,4               Non-zero RC = no task found
+*
+XITALQ   EQU   *
+         L     R9,4(,R13)          -> DMTXJE save area
+         ST    R15,16(,R9)         Return with RC in R15
+         LM    R14,R12,12(R9)      Reload callers regs
+         BR    R14                 Return to DMTXJE
+*                                                                       NJE00290
+         LTORG
+*                                                                       NJE00290
+*                                                                       NJE00920
+*********************              This function is called by DMTXJE    NJE00920
+*  N J E T O D      *              when it wants to convert the TOD     NJE00920
+*                   *              format.  It does not use standard    NJE00920
+*  Supports the     *              linkage and is called directly by    NJE00920
+*  GTODEBCD vector  *              DMTXJE and it references no non-     NJE00920
+*                   *              DMTXJE fields.                       NJE00920
+*********************                                                   NJE00920
+*                                                                       NJE00290
+NJETOD   CSECT                                                          NJE00020
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJETOD'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         USING NJETOD,R15              ADDRESS IT                       NJE00070
+*                                                                       NJE00290
+*.
+*
+* ENTRY NAME -
+*
+*        GTODEBCD
+*
+* FUNCTION -
+*
+*        CONVERT A S/370 FORMAT TOD TO EBCDIC DATE AND TIME.
+*
+* CALLS TO OTHER ROUTINES -
+*
+*        NONE
+*
+* OPERATION -
+*
+*        1. CONVERT TIME AND DATE AND EDIT INTO USER
+*           SUPPLIED FIELD.
+*
+*        2. OBTAIN DAY OF THE WEEK AND TIME ZONE
+*           AND MOVE INTO USER SUPPLIED FIELD
+*
+* ENTRY -
+*
+*                  R0, R1=S/370 FORMAT TOD TO BE CONVERTED
+*                  R2=ADDRESS OF A FIELD INTO WHICH THE OUTPUT
+*                       IS TO BE EDITED BY MEANS OF AN EDIT INSTR.
+*                      (THIS FIELD MUST START WITH A BYTE SET TO
+*                       ONE LESS THAN THE TOTAL LENGTH OF THE FIELD,
+*                       WHICH SHOLUD CONTAIN AN EDITING MASK, INTO
+*                       WHICH THE RESULT IS TO BE PLACED.
+*                       BLANKS ARE MOVED INTO THE SIX BYTE FIELD
+*                       IMMEDIATELY FOLLOWING THE SPECIFIED
+*                       OUTPUT EDITING FIELD.)
+*
+*                  R13= ADDRESS OF AN  21 FW FIELD OF THE FOLLOWING
+*                          INITIAL FORMAT:
+*
+*              DC       3D'0' FOR DATE AND TIME DECIMAL CONVERSION
+*              DC       A(0)  FIELD TO RECEIVE CONVERTED DAY OF THE WK
+*              DC       F'-1' TO HOLD LAST CALCULATION ELAPSED HOURS
+*              DC       A(0+4) SW USED AS AN INDEX, FOR STD VS DLT
+*              DC       A(TIMEZON+4) ADDR OF TIMEZON TABLE IN CALLERS
+*                                    STORAGE
+*              DC       11F'0' SAVE AREA
+*
+*    NOTE:  THIS AREA SHOULD NOT BE MODIFIED AFTER THE INITIAL CALL
+*
+* EXIT -
+*
+*                  DATE, TIME, AND TIME ZONE HAVE BEEN GENERATED AND
+*                  AND MOVED TO THE SPECIFIED OUTPUT AREA.
+*
+         EJECT
+*
+* RESPONSES -
+*
+*        NONE
+*
+* ERROR MESSAGES -
+*
+*        NONE
+*
+*.
+*
+*ODEBCD  DC    0H'0'
+*        USING *,R15               GET ADDRESSABILITY
+         USING TODDSECT,R13        GET COMMON AREA ADDRESSABILITY
+         STM   R0,R10,TODSAVE+4*R0 SAVE REGISTERS TO BE MODIFIED
+*
+TODRETRY EQU   *
+         SRDL  R0,12               RIGHT JUST TIME OF DAY MICROSECONDS
+         LM    R3,R5,TODEBCON      LOAD KEY VALUES FROM LAST COMP
+         LA    R10,0(R4,R5)        R10=ADDR OF APPROPRIATE TIMEZONE ENT
+         SLR   R6,R6               CLEAR R6 FOR RETURN FIELD LENGTH
+         IC    R6,0(R2)            R6=LENGTH OF CALLER'S EDIT MASK
+         LA    R2,1(R6,R2)         R2=ADDR OF RETURN FIELD FOR TIMEZONE
+         MVC   0(6,R2),2(R10)      GIVE CALLER TIMEZONE NAME IN EBCDIC
+         D     R0,F60MEG           370 TOD BY 60,000,000(NO. USEC/MIN)
+         LR    R10,R0              R10=ODD MICROSECONDS LESS THAN A MIN
+         SLR   R0,R0               CLEAR R0 FOR MORE DIVIDING
+         AH    R1,0(R4,R5)         ADJUST TIMEZONE DIFFERENCE FROM GMT
+         D     R0,F60              DIVIDE MINUTES BY 60 TO GET HOURS
+         LR    R9,R0               R9=ODD MINUTES LESS THAN AN HOUR
+         CLR   R1,R3               HOUR SAME AS FOR THE LAST CONV?
+         BNE   NEWHOUR             NOPE-GOTTA GO DO A COMPLETE COMP
+*
+TODFINIS EQU   *
+         LR    R1,R10              R1=ODD MICROSECONDS LESS THAN A MIN
+         SLR   R0,R0               CLEAR R0 FOR DIVIDE
+         D     R0,F10              R1=SECONDS TO FIVE DECIMAL PLACES
+         M     R8,F10MEG           SHIFT MINUTES LEFT SEVEN PLACES DEC
+         ALR   R9,R1               SET SEC AND FRACTION TO RIGHT OF MIN
+         CVD   R9,MMSSMMMM         FIELD=DECIMAL '000000MMSSMMMMMZ'
+         IC    R0,MMSSMMMM+3       SAVE DECIMAL MINUTES THROUGH MVO
+         MVO   MMSSMMMM-2(6),MMDDYYHH+3(5) APPEND DATE AND HOUR
+         STC   R0,MMSSMMMM+3       RESTORE MINUTES CLOBBERED BY ZONE
+         L     R2,TODSAVE+4*R2     RESTORE CALLER'S R2
+         IC    R1,0(R2)            R1=LENGTH OF CALLER'S EDIT MASK
+         MVI   0(R2),C' '          SET FILL CHARACTER OF MASK TO A BLNK
+         EX    R1,TODEDIT          EDIT OUTPUT INTO CALLER'S FIELD
+         LM    R0,R10,TODSAVE+4*R0 RESTORE MODIFIED CALLER'S REGS
+         L     R15,DAYNUMBR        SET RETURN DAY OF WEEK 0 -> 6 IN R15
+         BR    R14                 AND RETURN TO THE CALLER
+*
+TODEDIT  ED    0(0,R2),MMSSMMMM-1  EDIT TO BE EXECUTED BY ABOVE CODE
+*
+NEWHOUR  EQU   *
+         ST    R1,TODEBCON         SAVE HOUR COMPUTATION FOR NEXT CALL
+         SLR   R0,R0               CLEAR R0 FOR MORE DIVIDING
+         D     R0,F24              DIV HRS BY 24 TO GET DAYS AND ODD HR
+         LR    R8,R0               R8=ODD HOURS LESS THAN ONE DAY
+*
+FIRSTDAY EQU   1                   - JANUARY 1, 1900, WAS A MONDAY
+*
+         LA    R3,FIRSTDAY(R1)     R3=DAY COUNT SINCE SUNDAY LONG PAST
+         SLR   R2,R2               CLEAR R2 FOR DIVIDE TO FOLLOW
+         D     R2,F7               R2=CURRENT WEEKDAY NUMBER 0 -> 6
+         ST    R2,DAYNUMBR         SAVE WEEKDAY FOR LATER REF AND RET
+*
+         SLR   R7,R7               ASSUME NO LEAPYEAR FOR NOW
+         S     R1,F365             SUBTRACT THE DAYS IN 1900
+         BM    YEAR1900            DEAL WITH SPEC PROB IF YEAR IS 1900
+         SLR   R0,R0               CLEAR R0 FOR YET MORE DIVIDING
+         D     R0,F1461            DIV DYS BY DYS IN 4 YEARS((4*365)+1)
+         SLL   R1,2                MULT QUOTIENT BY FOUR TO GET YEARS
+         LA    R5,1(R1)            R5=YEARS LESS ODD YEARS NORM TO 1900
+         LR    R3,R0               R3=REMAINING DAYS
+         SLR   R2,R2               CLEAR R2 FOR IMPENDING DIVIDE
+         D     R2,F365             GET NUM OF ODD YRS AND ODD DYS LEFT
+         CL    R3,F3               CHECK FOR PRESENCE OF LEAPYEAR
+         BL    YEARSET             GO FIN YEAR NUMBER IF NOT LEAPYEAR
+         LA    R7,1                ADJUST EXTRA DAY REG FOR LEAPYEAR
+         BE    YEARSET             COMP YEAR NUM IF NO SPECIAL PROB
+         BCTR  R3,0                OTHERWISE SET ODD YEAR REG BACK TO 3
+         LA    R2,365              SET DY OF YR TO LAST DAY OF LEAPYEAR
+*
+YEARSET  EQU   *
+         ALR   R5,R3               ADD ODD YRS TO FORM EXACT YEAR IN R5
+*
+DATECALC EQU   *
+         LA    R2,1(R2)            BUMP DATE TO STA AT ONE RATH THAN 0
+         LA    R1,59(R7)           R1=60 IF LEAPYEAR, 59 IF NOT
+         CLR   R2,R1               IS THE DATE PAST FEBRUARY?
+         BNH   WINTER              NOPE - LET THE DATE STAND AS IT IS
+         LA    R2,2(R2)            SET FOR NON LEAPYEAR INITIALLY...
+         SLR   R2,R7               DEC BY ONE IF DATE IS OF A LEAPYEAR
+*
+WINTER   EQU   *
+         LA    R3,91(R2)           R3=DATE OF YEAR + 91
+         LR    R7,R3               R7=SAME THING
+         M     R2,F2145            MAGIC NUMBER - NO INTUITIVE EXPL
+         SRL   R3,16               DIV BY 65536 TO GET MONTH NUMBER + 2
+         LR    R6,R3               R6=NUMBER OF MONTH + 2
+         BCTR  R6,0                R6=NUMBER OF MONTH + 1
+         BCTR  R6,0                R6=NUMBER OF MONTH EXACTLY
+         M     R2,F1955            MULTIPLY BY ANOTHER MAGIC NUMBER
+         SRL   R3,6                DIV BY 64 GET TOT DYS IN PAST MON+91
+         SLR   R7,R3               R7=EXACT DATE OF MONTH
+         LA    R0,4                SET TIME TYPE FLAG TO DIFF TABLE DIS
+         LCR   R0,R0               SET FLAG TO STAN TIME (-4) INITIALLY
+         CL    R6,FW4              COMPARE MONTH NUMBER TO APRIL NUMBER
+         BL    FLAGCHEK            FLAG IS CORRECT GO LOOK AT CALC FLAG
+         LA    R1,0                INIT MON INDICATOR INCASE OF BRANCH
+         BE    DETAILS             DO A CLOSE INSP IF DATE IS IN APRIL
+         CL    R6,F10              AFTER APRIL-COMPARE MONTH TO OCT
+         BH    FLAGCHEK            DATE IS AFT OCT-STANDARD TIME SET OK
+         LA    R0,4                OTHERWISE RESET FLAG TO DAYLITE TIME
+         BL    FLAGCHEK            FLAG SET PROP IF AFT APR BEFORE OCT
+         LA    R1,1                MUST CHECK CLOSELY - SET OCT IND
+*
+DETAILS  EQU   *
+         LA    R2,30(R1)           R2=DAYS IN MONTH - APRIL OR OCTOBER
+         LA    R4,7(R7)            R4=COMPUTED DATE OF MONTH + 7
+         SR    R4,R2               R4=NUM OF DAYS PAST IN LAST WK OF MO
+         BM    FLAGCHEK            DATE COMP IS PRIOR TO STA OF LAST WK
+         CL    R4,DAYNUMBR         WILL SUNDAY OCCUR BETWEEN
+*                                  TOMORROW AND THE END OF THE MONTH?
+         BNH   FLAGCHEK            YES - TIME FLAG IS SET PROPERLY
+         CLI   DAYNUMBR+3,X'00'    IS COMPUTED DATE SUNDAY, PERHAPS?
+         BNE   INVERT              NOPE-AFTER SUN-INVERT FLAG AND CONT
+         L     R4,TODEBCON+4       R4=FLAG USED IN PRIOR COMPUTATION
+         SRA   R4,4                R4=-1 IF STAN USD; 0 IF DAYLITE USD
+         LCR   R1,R1               R1=0 IF MONTH APR;  -1 IF MONTH OCT
+         LA    R2,3(R1,R4)         R2=HOUR CHANGE COMP: 1, 2, OR 3
+         CLR   R8,R2               IS COMPUTED TIME BEFORE TIME CHANGE?
+         BNH   FLAGCHEK       YES - FLAG HAS BEEN PROPERLY SET @VA07031
+*
+INVERT   EQU   *
+         LCR   R0,R0               INVERT TIME FLAG TO PROPER SETTING
+*
+FLAGCHEK EQU   *
+         CL    R0,TODEBCON+4      NOW - DID WE USE THE RIGHT TIME TYPE?
+         BNE   SETRETRY           NO-MUST DO THE WHOLE COMP OVER AGAIN
+*
+         LA    R2,100              SET DIVISOR FOR DEC MANIPULATIONS
+         LR    R1,R6               R1=HEXADECIMAL MONTH NUMBER
+         MR    R0,R2               SHIFT MONTH LEFT TWO PLACES DECIMAL
+         ALR   R1,R7               SET DAY NUMBER INTO ACCUMULATION
+         MR    R0,R2               SHIFT MMDD LEFT TWO PLACES DECIMAL
+         SLR   R4,R4               CLEAR R4 FOR R5 YEAR DIVIDE
+         DR    R4,R2               R4=YEAR NUMBER MODULO CENTURY
+         ALR   R1,R4               SET TRUNCATED YEAR NUM INTO ACCUM
+         MR    R0,R2               SHIFT MMDDYY LEFT TWO PLACES DECIMAL
+         ALR   R1,R8               SET HOUR NUMBER INTO ACCUMULATION
+         CVD   R1,MMDDYYHH         FIELD=DECIMAL '0000000MMDDYYHHZ'
+         B     TODFINIS            GO BACK TO MAINLINE CODE TO FIN UP
+*
+YEAR1900 EQU   *
+         LA    R2,365(R1)          UNDO DAMAGE TO DATE OF YEAR
+         SLR   R5,R5               SET YEAR NUMBER TO ZERO
+         B     DATECALC            AND GO CALCULATE THE DATE OF YEAR
+*
+SETRETRY EQU   *
+         SLR   R1,R1               SET R1 TO ZERO AND...
+         BCTR  R1,0                DECREMENT TO SET R1 TO -1
+         ST    R1,TODEBCON         DUM UP LAST HR VAL TO FORCE RECAL
+         ST    R0,TODEBCON+4       SET PROP TIME TYPE FLAG FOR NEXT TRY
+         LM    R0,R2,TODSAVE+4*R0  RESTORE CALLER'S INPUT REGISTERS
+         B     TODRETRY            AND START FROM THE TOP AGAIN
+*
+F60MEG   DC    F'60000000'
+F60      DC    F'60'
+F10      DC    F'10'
+F10MEG   DC    F'10000000'
+F24      DC    F'24'
+F7       DC    F'7'
+F365     DC    F'365'
+F1461    DC    F'1461'
+F3       DC    F'3'
+F2145    DC    F'2145'
+F1955    DC    F'1955'
+FW4      DC    F'4'
+         LTORG
+*
+TODDSECT DSECT
+MMDDYYHH DS    1D                  TO HOLD NEW HOUR CALCULATION IN DEC
+         DS    1D                  FOR APPENDING MMDDYYHH TO MMSSMMMM
+MMSSMMMM DS    1D                  TO RECEIVE DECIMAL MINUTE AND SECOND
+DAYNUMBR DS    1A                  TO RECEIVE COMPUTED DAY OF WEEK 0->6
+TODEBCON DS    1F,2A               SEE BELOW
+*        DC    F'-1'               TO HOLD LAST CALC ELAPSED HRS
+*        DC    A(0+4) SWITCH, USED AS AN INDEX, FOR STD VS. DLT TIME
+*        DC    A(TIMEZON+4)        EXT ADDR OF TIMEZONE DISP TAB
+TODSAVE  DC    11F'0'              TODEBCD ROUTINE SAVE AREA
+*                                                                       NJE00290
+*                                                                       NJE00290
+****  Main work area common                                             NJE00290
+****  to all NJExxx CSECTs.                                             NJE00290
+*                                                                       NJE00290
+NJEWK    DSECT
+NJEEYE   DS    CL4'NJEW'           Eyecatcher
+NJEWKLEN DS    F                   Getmain size of this area
+XJENODE  DS    CL8                 Link node name
+ANJECOM  DS    A                   -> NJECOM common csect               NJE00320
+AMSGWK   DS    A                   -> MSGWK storage                     NJE00320
+*
+DBLE     DS    D                   Work area                            NJE00310
+TWRK     DS    2D                  Work area
+INTDD    DS    CL8                 DDNAME of INTRDR allocation
+*
+         NJEPARMS                  Passed parameter list           v220
+*
+*
+*-- This area is filled by DMTXJE right after initial entry
+XJEWORDS DS    0XL20               Addr list from DMTXJE
+AMSGECB  DS    A                    Addr of DMTXJE's MSGECB
+ACMDECB  DS    A                    Addr of DMTXJE's CMDECB
+ACMDRESP DS    A                    Addr of DMTXJE's CMDRESP area
+AADAECB  DS    A                    Addr of DMTXJE's ADAECB
+ARDEVECB DS    A                    Addr of DMTXJE's RDEVSYNC
+*--end of passed area
+*
+*
+XJESTOR  DS    A                   -> two page DMTXJE stg area
+WREQ     DS    A                   -> Process WRE chain for this task
+XECB     DS    F                   ECB for EXCP use
+XIOB     DS    XL48                Area for EXCP IOB
+PUNIOB   DS    XL48                PUNCH pseudo IOB
+MACLIST  DS    XL100               Macro expansion area
+LINKECBA DS    A                   -> Link task communications ECB
+XECBLIST DS    8A                  OS ECBLIST of RSCS-style ECBLIST
+*
+*
+NCB1     DS    XL48                NETSPOOL NCB for outgoing files
+NCB2     DS    XL48                NETSPOOL NCB for incoming files
+LINE1    DS    (DMYLINEL)X         DCB
+INTRDR   DS    (DMYIRDRL)X         DCB
+WTOD     DS    (WTODL)X
+*
+SVR14    DS    A                      R14 save area
+SVR14R   DS    A                      R14 save area                v220
+SVR14M   DS    A                      R14 save area                v220
+DYNR14   DS    A                      R14 SAVE AREA
+LS99PTR  DS    A                      PTR TO S99RB
+LS99RB   DS    XL20                   SPACE FOR S99RB
+*
+TXT1     DS    0XL14,Y,AL2,AL2        SPACE FOR THE DDNAME TEXT UNIT
+DDNAME   DS    CL8                     DDNAME RETURNED
+*
+TXT2     DS    0XL07,Y,AL2,AL2,C      SYSOUT=(A,
+TXT3     DS    0XL12,Y,AL2,AL2,CL6         INTRDR)
+TXT4     DS    0XL04,Y,AL2            FREE=CLOSE
+*
+TXT12    DS    0XL09,Y,AL2,AL2        UNIT NAME text unit
+UNITCUU  DS    CL3                     UNIT NAME
+*
+NJFL1    DS    X                   Flag bits
+NJF1VSER EQU   X'02'   ..... ..1.   VSAM error
+*
+LASTRC   DS    X                   RC on VSAM error
+LASTERR  DS    X                   ERRCD on VSAM error
+*
+DATAREC  DS    CL133               Data record area
+*
+TDATA    DS    108X
+*
+NJESA    DS    18F                     NJEDRV  OS save area             NJE00300
+NJEREQSA DS    18F                     NJEREQ  OS save area             NJE00300
+NJEAXSSA DS    18F                     NJEAXS  OS save area             NJE00300
+NJESIOSA DS    18F                     NJESIO  OS save area             NJE00300
+NJEWTSA  DS    18F                     NJEWT   OS save area             NJE00300
+NJESPLSA DS    18F                     NJESPL  OS save area             NJE00300
+NJEGPGSA DS    18F                     NJEGPG  OS save area             NJE00300
+NJEGMQSA DS    18F                     NJEGMQ  OS save area             NJE00300
+NJEGLQSA DS    18F                     NJEGLQ  OS save area             NJE00300
+NJEGRQSA DS    18F                     NJEGRQ  OS save area             NJE00300
+NJEALQSA DS    18F                     NJEALQ  OS save area             NJE00300
+BALRSAVE DS    16F                     Local rtns register save         NJE00300
+*
+         DS    0D                      Force doubleword size
+NJEWKSZ  EQU   *-NJEWK
+*                                                                       NJE00930
+*
+*-- System DSECTs
+*
+         IEZIOB
+         CVT   DSECT=YES,PREFIX=NO
+         IHAPSA
+         IKJTCB
+         IHAASVT
+         IHAASCB
+IEZCOM   DSECT
+         IEZCOM                        Comm area
+IEZCIB   IEZCIB                        CIB
+*
+CSCB     DSECT
+         IEECHAIN                      CSCB
+         IEESMCA
+         IEFZB4D0
+         IEFZB4D2
+         DCBD  DSORG=PS,DEVD=DA
+*
+         COPY LINKTABL                                                  NJE00940
+         COPY RTE                                                       NJE00940
+         COPY AUTHLIST                                                  NJE00940
+         COPY TAG                                                       NJE00940
+         COPY NETSPOOL                                                  NJE00940
+*
+*-- NJE38 DSECTs
+*
+         NJERUSER                                                  v220
+         NJEWRE                                                    v220
+         NJETRACE TYPE=DSECT                                       v220
+*
+         END   NJEDRV                                                   NJE01000

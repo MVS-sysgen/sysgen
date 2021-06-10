@@ -1,0 +1,16 @@
+         MACRO
+&X       NJERUSER
+.*
+.* Change log:
+.*
+.* 10 Dec 20 - Initial creation.                                   v220
+.*
+*
+REGUSERB DSECT                     Registered userid block
+REGNEXT  DS    A                   -> next REGUSER or 0
+REGEYE   DS    CL4'REGU'           Eyecatcher
+REGWRE   DS    A                   -> user's registration WRE in CSA
+REGMSGQ  DS    A                   -> user's queued msgs WRE chain
+REGUSRID DS    CL8                 Userid
+REGSIZE  EQU   *-REGUSERB          Size of dsect
+         MEND

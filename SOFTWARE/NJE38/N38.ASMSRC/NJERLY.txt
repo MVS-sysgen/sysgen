@@ -1,0 +1,634 @@
+*
+*
+*-- NJERLY - NJE38-Registered User Interface
+*
+*
+*
+* Change log:
+*
+*
+* 10 Dec 20 - Initial creation                                     v220
+*
+*
+*
+*
+         PRINT GEN
+         REGEQU                        REGISTER EQUATES
+         GBLC  &VERS
+*
+REGISTER EQU   1
+DREGISTR EQU   2
+WAIT     EQU   3
+GETMSG   EQU   4
+GETECB   EQU   5
+*
+HIGHCODE EQU   5                       Set to highest valid req code
+*
+*
+NJERLY   CSECT
+         NJEVER
+         STM   R14,R12,12(R13)         SAVE REGS
+         LR    R12,R15                 BASE
+         USING NJERLY,R12              ADDRESS IT
+         LR    R6,R1                   Save off input parms
+         LM    R7,R9,0(R6)              Load parameters
+*                                  r7 -> njetkn word
+*                                  r8 =  function code
+*                                  r9 -> string value
+*
+         SR    R10,R10                 Assume no work area
+         C     R8,=A(HIGHCODE)         Request code too high?
+         BH    EXIT12X                 Y, invalid request
+         C     R8,=A(REGISTER)         Register request?
+         BL    EXIT12X                 No too low; invalid request
+         BNE   INIT010                 Not register; skip Getmain
+*
+INIT000  EQU   *
+         GETMAIN RU,                   Get local stg area              X
+               LV=4096,                                                X
+               BNDRY=PAGE
+         LR    R10,R1
+         LR    R1,R0                   Copy length
+         LR    R2,R0                   Copy length
+         LR    R0,R10                  -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the page
+         ST    R10,0(,R7)              Return the stg tkn to caller
+*
+INIT010  EQU   *
+         ICM   R10,15,0(R7)            Get our work area addr (njetkn)
+         BZ    EXIT12X                 Not reg: invalid request
+         USING NJERWK,R10
+         ST    R13,NJESA+4             SAVE prv S.A. ADDR
+         LA    R1,NJESA                -> my save area
+         LR    R13,R1
+*
+         MVC   NJEEYE,=CL4'NJER'       Work area eyecatcher
+         LA    R2,NJEWKSZ              Get size of our work area
+         ST    R2,NJEWKLEN             Save size of area in area
+         ST    R6,APARMS               Save ptr to input parms
+*
+         L     R11,=A(NJECOM)          -> common csect
+         USING NJECOM,R11
+         ST    R11,ANJECOM             Save in main work area
+*
+         SR    R1,R1                   Dont return spool DSN
+         L     R15,=V(NJESYS)          -> ENQ finder
+         BALR  R14,R15                 Check if NJE38 already act
+         LTR   R15,R15                 Look for RC=0
+         BNZ   EXIT16                  No.  NJE38 is not active
+         ST    R1,NJE38CSA             Save NJE38's CSA block addr
+         MVC   LCLNODE,NJ38NODE-NJ38CSA(R1)  Save off lcl node name
+*
+*
+MAIN000  EQU   *
+         LR    R15,R8                  Copy function code
+         SLL   R15,2                   Multiply by 4 into branch idx
+         B     MAIN010(R15)            Branch into table
+*
+MAIN010  EQU   *
+         B     EXIT12              0 - Cant happen; invalid request
+         B     REG000              1 - Register request
+         B     DREG000             2 - Deregister request
+         B     WAIT000             3 - Wait request
+         B     GTM000              4 - Get message
+         B     GTE000              5 - Get ECB address
+*
+*
+* REGISTER
+*
+*   Exit RCs:  0  = successful
+*             12  = Invalid request (bad userid)
+*             16  = NJE38 is not active
+*             20  = POST failed
+*             24  = Userid already registered
+*
+*
+REG000   EQU   *
+         MVC   USERID,0(R9)        Copy requestor userid
+         TRT   USERID,VALDNAME     Validate the characters within
+         BNZ   EXIT12              Name is not valid.  Inv request
+*
+*-- Issue STIMER for keep alive to avoid S 522 abends
+*
+         L     R0,=A(NJETEX)           -> Timer expiration exit
+         L     R1,=A(INTVL)            -> interval
+         STIMER REAL,                  Set timer                       X
+               (0),                                                    X
+               DINTVL=(1)
+*
+*-- Initialize console processing to allow MVS modify and stop
+*-- commands to control this address space
+*
+REG040   EQU   *
+         MVC   MACLIST(EXTRACTL),EXTRACT Move macro model
+         LA    R3,COMMAREA             -> area to place comm area addr
+         EXTRACT (3),                  Get ptr to comm area            X
+               FIELDS=COMM,                                            X
+               MF=(E,MACLIST)
+*
+         L     R3,COMMAREA             -> ptrs to COMM CIB and ECB
+         USING IEZCOM,R3               Map the communication area
+         MVC   COMMECBA,COMECBPT       Save off addr of COMM ECB
+         ICM   R4,15,COMCIBPT          Get addr of CIB ptr
+         BZ    REG060                  No CIB, go get one
+         USING CIBNEXT,R4              Map the CIB
+*
+         CLI   CIBVERB,CIBSTART        Is this a START CIB?
+         BNE   REG060                  No, set up CIB count
+*
+         QEDIT ORIGIN=COMCIBPT,        Free the CIB from the START cmd X
+               BLOCK=(4)                that started this space
+*
+REG060   EQU   *
+         QEDIT ORIGIN=COMCIBPT,        Set CIB limit to 1              X
+               CIBCTR=1
+         DROP  R4                      IEZCIB
+         DROP  R3                      IEZCOM
+*
+REG090   EQU   *
+         MODESET KEY=ZERO,MODE=SUP
+*
+         GETMAIN RU,               Obtain stg for a WRE                x
+               LV=WRESIZE,                                             x
+               SP=241
+         LR    R4,R1               -> WRE
+         USING WRE,R4
+         XC    0(WRESIZE,R4),0(R4)
+         ST    R4,AREGWRE          Save WRE address for life of reg
+         MVI   WRESP,241           Set subpool
+         MVI   WRETYPE,WREREG      Register user WRE
+         MVC   WRELINK,LCLNODE     Set target node for WRE
+         MVC   WREUSER,USERID      Set requestor userid
+*
+         MVC   WREASCB,PSAAOLD-PSA(0)  Set our ASCB addr
+*
+         MVC   WRETXT,BLANKS       Init receiving field
+         BAL   R14,PST000          POST NJE38 with our request
+         LTR   R15,R15             Was post successful?
+         BNZ   EXIT20              No
+*
+         WAIT  1,ECB=WREECB        Wait for NJE38's response
+         L     R5,WREECB           Load ECB value
+         XC    WREECB,WREECB       Clear the ECB
+         N     R5,=X'0000FFFF'     Keep only our POST code
+         B     QUIT000             Exit with POST code as RC
+         DROP  R4                  WRE
+*
+*
+* DEREGISTER
+*
+*   Exit RCs:  0  = successful
+*             12  = Invalid request (bad userid)
+*             16  = NJE38 is not active
+*             20  = POST failed
+*             28  = Userid not registered
+*
+*
+DREG000  EQU   *
+         ICM   R4,15,AREGWRE       -> registration WRE
+         BZ    EXIT28              No WRE, user is not registered
+         USING WRE,R4
+*
+         MODESET KEY=ZERO,MODE=SUP
+*
+         MVI   WRETYPE,WREDREG     Deregister user WRE
+*
+         BAL   R14,PST000          POST NJE38 with our request
+         LTR   R15,R15             Was post successful?
+         BNZ   EXIT20              No
+*
+         WAIT  1,ECB=WREECB        Wait for NJE38's response
+         L     R5,WREECB           Load ECB value
+         XC    WREECB,WREECB       Clear the ECB
+         N     R5,=X'0000FFFF'     Keep only our POST code
+         BNZ   QUIT000             Exit with POST code if non-zero
+         DROP  R4                  WRE
+*
+         FREEMAIN RU,              Free the WRE                        x
+               LV=WRESIZE,                                             x
+               A=(4),                                                  x
+               SP=241
+*
+         XC    AREGWRE,AREGWRE     Clear the anchor
+         TTIMER CANCEL                 Cancel the timer
+         B     EXIT00              Exit with success
+*
+* GET MESSAGE
+*
+*   Exit RCs:  0  = successful
+*              4  = No message queued
+*             12  = Invalid request (bad userid)
+*             16  = NJE38 is not active
+*             20  = POST failed
+*             28  = Userid not registered
+*
+*
+GTM000   EQU   *
+         ICM   R4,15,AREGWRE       -> registration WRE
+         BZ    EXIT28              No WRE, user is not registered
+         USING WRE,R4
+*
+         MODESET KEY=ZERO,MODE=SUP
+*
+         MVI   WRETYPE,WREDRM      Dequeue and retrieve a msg
+*
+         BAL   R14,PST000          POST NJE38 with our request
+         LTR   R15,R15             Was post successful?
+         BNZ   EXIT20              No
+*
+         WAIT  1,ECB=WREECB        Wait for NJE38's response
+         L     R5,WREECB           Load ECB value
+         XC    WREECB,WREECB       Clear the ECB
+         N     R5,=X'0000FFFF'     Keep only our POST code
+         BNZ   QUIT000             Exit with POST code if non-zero
+*
+         MVC   0(L'WRETXT,R9),WRETXT Give msg to caller
+         MVI   L'WRETXT(R9),X'00'  Ensure string terminated
+         B     EXIT00              Exit with success
+         DROP  R4                  WRE
+*
+* GET ECB ADDRESS
+*
+*   Exit RCs:  0  = successful
+*             28  = Userid not registered
+*
+*
+GTE000   EQU   *
+         ICM   R4,15,AREGWRE       -> registration WRE
+         BZ    EXIT28              No WRE, user is not registered
+*
+         LA    R5,USERECB          -> User accessible ECB
+         B     QUIT010             Exit w/ ECB addr as the ret code
+*
+*
+* WAIT
+*
+*   Exit RCs:  0  = successful; a message has been queued
+*              8  = MVS Console STOP command entered (non-TSO only)
+*             16  = NJE38 is not active
+*             28  = Not registered
+*             32  = USER ECB posted
+*
+*
+WAIT000  EQU   *
+         NC    AREGWRE,AREGWRE     Is registration complete?
+         BZ    EXIT28              No, no user is registered
+*
+         BAL   R14,BLDL000             Go build the ECB list
+*
+         MODESET KEY=ZERO,MODE=SUP     Use key 0 for CSA ECB
+*
+         WAIT  1,ECBLIST=ECBLIST
+*
+*-- Identify the ECB that was posted
+*
+WAIT010  EQU   *
+         LM    R2,R4,ECBLIST           Get our ECB ptrs
+         TM    0(R2),X'40'             Was COMM ECB posted?
+         BO    COMM000                 Yes
+         TM    0(R3),X'40'             Was WRE ECB posted?
+         BO    WRK000                  Yes
+         TM    0(R4),X'40'             Was USER ECB posted?
+         BO    EXIT32                  Yes
+*
+         B     WAIT000                 Nothing; go back to sleep
+*
+*
+*-- Build a new ECBLIST before the wait
+*
+BLDL000  EQU   *
+         SR    R1,R1                   Init: no ECBs in list
+         LA    R15,ECBLIST-4           -> 0th ECB list entry
+         LA    R15,4(,R15)             -> next available ECB list slot
+         L     R1,COMMECBA             -> COMM ECB
+         ST    R1,0(,R15)              Set addr in ECB list
+         LA    R15,4(,R15)             -> next available ECB list slot
+         L     R1,AREGWRE              -> registration WRE in CSA
+         LA    R1,WREECB-WRE(,R1)      -> WRE work ECB
+         ST    R1,0(,R15)              Set addr in ECB list
+         LA    R15,4(,R15)             -> next available ECB list slot
+         LA    R1,USERECB              -> User accessible ECB
+         ST    R1,0(,R15)              Set addr in ECB list
+         OI    0(R15),X'80'            Mark end of list
+         BR    R14                     Return with ECB list built
+*
+*
+*-- Address space Communications ECB was posted
+*-- The QEDIT macro will clear the COMM ECB
+*
+COMM000  EQU   *
+         L     R4,COMMAREA             -> Communications area
+         USING IEZCOM,R4
+         L     R5,COMCIBPT             -> CIB
+         USING CIBNEXT,R5
+         CLI   CIBVERB,CIBMODFY        Modify cmd?
+         BE    MOD000                  Yes
+         CLI   CIBVERB,CIBSTOP         Stop cmd?
+         BE    STOP000                 Yes, let subtasks know
+U0038    ABEND 38,DUMP,STEP            Shouldnt happen
+*
+MOD000   EQU   *
+         QEDIT ORIGIN=COMCIBPT,BLOCK=(5)     Purge the CIB
+         B     WAIT010
+*
+*
+*
+STOP000  EQU   *
+         QEDIT ORIGIN=COMCIBPT,BLOCK=(5)     Purge the CIB
+         DROP  R4                      IEZCOM
+         DROP  R5                      IEZCIB
+*
+STOP010  EQU   *
+         OI    NJFL1,NJF1STOP          Indicate STOP ordered
+         B     EXIT08                  And exit
+*
+WRK000   EQU   *
+         XC    0(4,R3),0(R3)           Clear the WRE ECB
+         B     EXIT00                  Indicate wait completed
+*
+*
+EXIT00   EQU   *
+         LA    R5,ERNOERR              No errors
+         B     QUIT000
+*
+EXIT04   EQU   *
+         LA    R5,ERNOMSG              No more messages
+         B     QUIT000
+*
+EXIT08   EQU   *
+         LA    R5,ERSTOP               STOP command issued
+         B     QUIT000
+*
+EXIT12   EQU   *
+         LA    R5,ERINVREQ             Invalid request
+         B     QUIT000
+*
+EXIT12X  EQU   *
+         LA    R5,ERINVREQ             Invalid request on entry
+         B     QUIT090
+*
+EXIT16   EQU   *
+         LA    R5,ERINACT              NJE38 not active
+         B     QUIT000
+*
+EXIT20   EQU   *
+         LA    R5,ERPOST               POST NJE38 failed
+         B     QUIT000
+*
+EXIT24   EQU   *
+         LA    R5,ERDUPUSR             User already registered
+         B     QUIT000
+*
+EXIT28   EQU   *
+         LA    R5,ERUSERNF             User not registered (not found)
+         B     QUIT000
+*
+EXIT32   EQU   *
+         LA    R5,ERECBPST             User ECB was posted
+         B     QUIT000
+*
+QUIT000  EQU   *
+         MODESET KEY=NZERO,MODE=PROB
+*
+QUIT010  EQU   *
+         L     R13,4(,R13)             -> caller's sa
+*
+*
+QUIT090  EQU   *
+         LR    R1,R10                  -> NJEWK main work area page
+         ST    R5,16(,R13)             Set RC in save area
+*
+         LTR   R1,R1                   Anything to free?
+         BZ    QUIT095                 No
+*
+         C     R8,=A(DREGISTR)         De-registration request?
+         BNE   QUIT095                 No.  Dont free work area
+         XC    0(4,R7),0(R7)           Clear callers tkn (njetkn)
+*
+         FREEMAIN RU,                  Release our area                x
+               LV=4096,                                                x
+               A=(1)
+*
+QUIT095  EQU   *
+         LM    R14,R12,12(R13)         Reload system's regs
+         BR    R14                     Return
+*
+         LTORG
+*
+EXTRACT  EXTRACT MF=L
+EXTRACTL EQU   *-EXTRACT
+ESTAE    ESTAE 0,MF=L
+ESTAEL   EQU   *-ESTAE
+*
+*
+         DROP  R12
+*
+*********************
+*  N J E C O M      *               NJECOM hosts small routines and
+*                   *               frequently used constants that
+*  Common routines  *               are available to all NJExxx csects
+*  and constants    *               via base register 11
+*                   *
+*********************
+*
+NJECOM   CSECT
+         DC    A(0)                 No branch around constants
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECOM'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         USING NJECOM,R11
+         USING NJERWK,R10
+*
+*
+*-- Get a new command type WRE
+*
+*-- Caller must be in PSW key 0 before call
+*
+*-- Entry:  None
+*   Exit:   R1 -> WRE
+*
+*
+GTW000   EQU   *
+         ST    R14,SVR14           Save return addr
+         GETMAIN RU,               Get CSA for WRE TYPE=WREREG         x
+               LV=WRESIZE,                                             x
+               SP=241
+         XC    0(WRESIZE,R1),0(R1)    Clear stg area
+         USING WRE,R1
+         MVI   WRESP,241           Set subpool
+         MVI   WRETYPE,WREREG      Registration WRE
+         DROP  R1
+         L     R14,SVR14           Load return addr
+         BR    R14
+*
+*-- Queue the WRE to NJE38's main task
+*-- Caller must be PSW key 0
+*
+*-- Entry:  R4 -> WRE
+*-- Exit:   None
+*
+PST000   EQU   *
+         ST    R14,SVR14           Save return addr
+         L     R6,NJE38CSA         -> NJE38 CSA block
+         USING NJ38CSA,R6
+         USING WRE,R4
+         LM    R0,R1,NJ38SWAP      Get first WRE ptr, sync count
+*
+PST020   EQU   *
+         ST    R0,WRENEXT          First WRE becomes next
+         LA    R5,1(,R1)           Incr synchronization count
+         CDS   R0,R4,NJ38SWAP      Update LINK WRE anchor, sync
+         BC    7,PST020            Gotta try again
+*
+         LA    R5,NJ38ECB          -> NJE38 external WRE ECB
+         L     R6,NJ38ASCB         -> NJE38 ASCB
+         DROP  R6                  NJ38CSA
+         DROP  R4                  WRE
+*
+         MVC   MACLIST(POSTL),POST Move macro model
+         POST  (5),                Wake up NJE38                       x
+               ASCB=(6),                                               x
+               ERRET=PST030,       Exit if can't do the post           x
+               ECBKEY=0,                                               x
+               MF=(E,MACLIST)
+*
+         SR    R15,R15             Set POST success RC
+         L     R14,SVR14           Load return addr
+         BR    R14
+*
+PST030   EQU   *
+         LA    R15,20              POST failed
+         L     R14,SVR14           Load return addr
+         BR    R14
+*
+*
+*
+*
+*
+POST     POST  0,ASCB=0,ERRET=0,MF=L
+POSTL    EQU   *-POST
+*
+BLANKS   DC    CL120' '
+NONBLANK DC    64X'FF',X'00',191X'FF'   TR Table to locate nonblank
+BLANK    DC    64X'00',X'FF',191X'00'   TR Table to locate blanks
+HEXTRAN  DC    CL16'0123456789ABCDEF'  Translate table
+*                 0 1 2 3 4 5 6 7 8 9 A B C D E F
+VALDNAME DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 0 Invalid userid
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 1 characters
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 2
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 3
+         DC    X'00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 4  Blank=ok/delim
+         DC    X'FFFFFFFFFFFFFFFFFFFFFF00FFFFFFFF' 5  valid= $
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 6
+         DC    X'FFFFFFFFFFFFFFFFFFFFFF0000FFFFFF' 7  valid= # @
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 8
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 9
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' A
+         DC    X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' B  valid =
+         DC    X'FF000000000000000000FFFFFFFFFFFF' C  C1-C9
+         DC    X'FF000000000000000000FFFFFFFFFFFF' D  D1-D9
+         DC    X'FFFF0000000000000000FFFFFFFFFFFF' E  E2-E9
+         DC    X'00000000000000000000FFFFFFFFFFFF' F  F0-F9
+*
+         LTORG
+*
+*
+*
+*
+***************
+* TIMER       *                        THIS EXIT WILL KEEP THE JOB
+* EXPIRATION  *                        ACTIVE EVERY 20 MINUTES, AND
+* EXIT        *                        WILL KEEP THE JOB FROM ABENDING
+***************                        WITH AN S 522 ABEND (WAIT LIMIT)
+*
+NJETEX   CSECT
+         B     28(,R15)                BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                 LENGTH OF EYECATCHERS
+         DC    CL9'NJETEX'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R13)
+         LR    R12,R15
+         USING NJETEX,R12
+*
+         STIMER REAL,                  RESET THE TIMER AGAIN           X
+               (12),                   POINT TO THE EXIT ROUTINE       X
+               DINTVL=INTVL            INTERVAL
+*
+         LM    R14,R12,12(R13)         RELOAD REGS
+         SR    R15,R15
+         BR    R14                     RETURN TO SYSTEM
+*
+         DS    0D
+*                  HHMMSSTH
+INTVL    DC    CL8'00200000'           20 MINUTE TIMER
+*
+         DROP  R12
+         LTORG
+*
+*
+****  Main work area common
+****  to all NJExxx CSECTs.
+*
+NJERWK   DSECT
+NJEEYE   DS    CL4'NJER'           Eyecatcher; work area
+NJEWKLEN DS    F                   Getmain size of this area
+*
+DBLE     DS    D                   Work area
+TWRK     DS    2D                  Work area
+LCLNODE  DS    CL8                 Local node name
+USERID   DS    CL8                 Requestor userid
+*
+*
+MACLIST  DS    XL160               Macro expansion area
+ANJECOM  DS    A                   -> NJECOM csect
+COMMAREA DS    A                   -> Console communications area
+COMMECBA DS    A                   -> Console communications ECB
+NJE38CSA DS    A                   -> NJE38's CSA block
+APARMS   DS    A                   -> Caller's parm list
+AREGWRE  DS    A                   CSA addr of registration WRE
+USERECB  DS    F                   User accessible ECB
+*
+ECBLIST  DS    3A                  ECB list
+*
+NJFL1    DS    X                   Flag byte
+NJF1STOP EQU   X'80'   1... ...     STOP command issued
+*                      ..xx xx..    Available
+*
+NJFL2    DS    X                   Flag byte
+*                      xxxx xxxx    Available
+*
+*
+SVR14    DS    A                   R14 save
+NJESA    DS    18F                 NJEINIT OS save area
+BALRSAVE DS    16F                 Local register save area
+*
+         DS    0D                      Force doubleword size
+NJEWKSZ  EQU   *-NJERWK
+*
+*
+*-- System DSECTs
+*
+*
+IEZCOM   DSECT
+         IEZCOM
+IEZCIB   IEZCIB
+         IHAPSA
+         IHASDWA
+         IKJTCB
+         IHAASCB
+*
+CSCB     DSECT
+         IEECHAIN                      MAP FOR A CSCB
+         CVT   DSECT=YES,LIST=NO
+         DCBD  DEVD=DA,DSORG=PS
+*
+         COPY  NETSPOOL
+*
+*-- NJE38 DSECTs
+*
+         NJEWRE
+*
+         END   NJERLY

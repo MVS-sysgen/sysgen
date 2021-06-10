@@ -1,0 +1,13 @@
+         MACRO
+&X       NJEQUMSG
+.*
+.* Change log:
+.*
+.* 11 Dec 20 - Initial creation.                                   v220
+.*
+QUMSG    DSECT                     Queued user message
+QUMNEXT  DS    A                   -> next QUMSG or 0
+QUMOWNER DS    A                   -> REGUSER that owns this msg
+QUMSGTXT DS    CL120               Message text
+QUMSIZE  EQU   *-QUMSG             Size of dsect
+         MEND

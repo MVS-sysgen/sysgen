@@ -1,0 +1,76 @@
+         PUSH  PRINT
+         AIF   ('&SYSPARM' NE 'SUP').RSS01
+         PRINT OFF,NOGEN
+.RSS01   ANOP
+*
+***      RSS EQUATE SYMBOLS - MACHINE USAGE
+*
+          SPACE 1
+*        BITS DEFINED IN STANDARD/EXTENDED PSW
+EXTMODE  EQU   X'08'          BIT 12 - EXTENDED MODE
+MCHEK    EQU   X'04'          BIT 13 - MACHINE CHECK ENABLED
+WAIT     EQU   X'02'          BIT 14 - WAIT STATE
+PROBMODE EQU   X'01'          BIT 15 - PROBLEM STATE
+          SPACE 1
+*        BITS DEFINED IN CHANNEL STATUS WORD - CSW
+ATTN     EQU   X'80'          BIT 32 - ATTENTION
+SM       EQU   X'40'          BIT 33 - STATUS MODIFIER
+CUE      EQU   X'20'          BIT 34 - CONTROL UNIT END
+BUSY     EQU   X'10'          BIT 35 - BUSY
+CE       EQU   X'08'          BIT 36 - CHANNEL END
+DE       EQU   X'04'          BIT 37 - DEVICE END
+UC       EQU   X'02'          BIT 38 - UNIT CHECK
+UE       EQU   X'01'          BIT 39 - UNIT EXCEPTION
+*
+PCI      EQU   X'80'          BIT 40 - PROGRAM-CONTROL INTERRUPT
+IL       EQU   X'40'          BIT 41 - INCORRECT LENGTH
+PRGC     EQU   X'20'          BIT 42 - PROGRAM CHECK
+PRTC     EQU   X'10'          BIT 43 - PROTECTION CHECK
+CDC      EQU   X'08'          BIT 44 - CHANNEL DATA CHECK
+CCC      EQU   X'04'          BIT 45 - CHANNEL CONTROL CHECK
+IFCC     EQU   X'02'          BIT 46 - INTERFACE CONTROL CHECK
+CHC      EQU   X'01'          BIT 47 - CHAINING CHECK
+          SPACE 1
+*        BITS DEFINED IN CHANNEL COMMAND WORD - CCW
+CD       EQU   X'80'          BIT 32 - CHAIN DATA
+CC       EQU   X'40'          BIT 33 - COMMAND CHAIN
+SILI     EQU   X'20'          BIT 34 - SUPPRESS INCORRECT LENGTH IND.
+SKIP     EQU   X'10'          BIT 35 - SUPPRESS DATA TRANSFER
+PCIF     EQU   X'08'          BIT 36 - PROGRAM-CONTROL INTERRUPT FETCH
+IDA      EQU   X'04'          BIT 37 - INDIRECT DATA ADDRESS
+          SPACE 1
+*        BITS DEFINED IN SENSE BYTE 0 -- COMMON TO MOST DEVICES
+CMDREJ   EQU   X'80'          BIT 0 - COMMAND REJECT
+INTREQ   EQU   X'40'          BIT 1 - INTERVENTION REQUIRED
+BUSOUT   EQU   X'20'          BIT 2 - BUS OUT
+EQCHK    EQU   X'10'          BIT 3 - EQUIPMENT CHECK
+DATACHK  EQU   X'08'          BIT 4 - DATA CHECK
+         EJECT
+*
+***      CP370 EQUATE SYMBOLS - CP USAGE
+*
+*        SYMBOLIC REGISTER EQUATES
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7              GENERAL
+R8       EQU   8              REGISTER
+R9       EQU   9              DEFINITIONS
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+*
+Y0       EQU   0              FLOATING
+Y2       EQU   2              POINT
+Y4       EQU   4              REGISTER
+Y6       EQU   6              DEFINITIONS
+         EJECT
+         POP   PRINT
+         SPACE

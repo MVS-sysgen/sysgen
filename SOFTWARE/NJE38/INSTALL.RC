@@ -1,0 +1,4 @@
+* Installing BREXX
+* Launching Automation REXX script
+sh bash ../SOFTWARE/NJE38/install.sh
+exec ../automate.rexx ../SOFTWARE/NJE38/install.txt hercules.log -d &&

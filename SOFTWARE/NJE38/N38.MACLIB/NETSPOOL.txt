@@ -1,0 +1,106 @@
+*
+* Change log:
+*
+* 23 Jul 20 - Add NCBPCT to return spool file percentage           v200
+* 02 Jul 20 - Default userid to CSA in support of TRANSMIT/RECEOVE v200
+* 21 May 20 - Add update directory entry funcation                 v120
+* 04 May 20 - Show CONFIG assembly date and time on start up.      v102
+*
+*
+NCB      DSECT                     NETSPOOL CONTROL BLOCK
+NCBEYE   DS    CL4'NCB'            NCB id
+NCBTKN   DS    F                   Token identifier (caller unique)
+NCBFL1   DS    X                   Flag bits
+NCBPRT   EQU   X'40'                PRT type data
+NCBPUN   EQU   X'80'                PUN type data
+NCBREQ   DS    X                   Request type
+NCBOPEN  EQU   X'01'                Open NETSPOOL dataset
+NCBCLOSE EQU   X'02'                Close NETSPOOL dataset
+NCBPUT   EQU   X'03'                Write a logical record
+NCBGET   EQU   X'04'                Read a logical record
+NCBPURGE EQU   X'05'                Delete a file
+NCBLOC   EQU   X'06'                Locate a file
+NCBCON   EQU   X'07'                Get directory contents
+NCBUDIR  EQU   X'08'                Update directory entry         v120
+NCBRTNCD DS    X                   RC from VSAM macro (same as R15)
+NCBERRCD DS    X                   Error code from VSAM macro
+NCBMACAD DS    A                   Addr of failing VSAM macro
+NCBTAG   DS    A                   Addr of associated TAG block
+NCBEODAD DS    A                   Addr of End of Data routine
+NCBAREAL DS    F                   Length of record area
+NCBAREA  DS    A                   Addr of record area
+NCBRECLN DS    AL2                 Length of record
+NCBRECCT DS    AL2                 Record count
+NCBPCT   DS    0AL2                Spool percentage full (NCBCON)  v200
+NCBFID   DS    AL2                 File id # (avail on new file CLOSE)
+NCBRESV1 DS    AL2                 Available bytes
+NCBRESV2 DS    A                   Available bytes
+         DS    0D                  Force doubleword boundary
+NCBSZ    EQU   *-NCB               Size of NCB
+*
+*
+NSDIR    DSECT                     NETSPOOL directory entry
+NSLEN    DS    AL2(NSDIRLN)        Length of this record incl len
+NSRESV1  DS    AL2                 Resv
+NSBLK    DS    AL4                 Block number of file's ptr block
+NSINLOC  DS    CL8                 Originating location
+NSLINK   DS    CL8                 Next location for transmission
+NSINTOD  DS    CL8                 Time of file origin
+NSINVM   DS    CL8                 Originating virtual machine
+NSRECNM  DS    1F                  Number of records in file
+NSRECLN  DS    1H                  Maximum file data record length
+NSINDEV  DS    1X                  Device code of originating dev
+NSCLASS  DS    CL1                 File output class
+NSID     DS    1H                  File number at origin location
+NSCOPY   DS    1H                  Number of copies requested
+NSFLAG   DS    1X                  VM/370 SFBLOK control flags
+NSFLAG2  DS    1X                  VM/370 SFBLOK control flags
+NSSPARE  DS    1H                  Spare
+NSNAME   DS    CL12                File name
+NSTYPE   DS    CL12                File type
+NSDIST   DS    CL8                 File distribution code
+NSTOLOC  DS    CL8                 Destination location id
+NSTOVM   DS    CL8                 Destination virtual machine id
+NSPRIOR  DS    1H                  Transmission priority
+NSDEV    DS    2X                  Active file's virt dev addr
+NSRESV2  DS    AL4                 Resv
+NSDIRLN  EQU   *-NSDIR
+*
+NJ38CSA  DSECT                     NJE38 CSA STORAGE BLOCK
+NJ38NODE DS    CL8                 Node name of this NJE38
+NJ38ASCB DS    A                   ASCB address of NJE38 addr space
+NJ38ECB  DS    F                   NJE38 ECB for cross memory post
+NJ38SWAP DS    0D                  CDS swap doubleword
+NJ38WRIN DS    A                   Incoming WREs Q chain anchor
+NJ38WRCT DS    F                   Incoming synchronization count  v200
+NJ38DUSR DS    CL8                 Default 'no security' userid    v200
+NJ38CSAZ EQU   *-NJ38CSA           Size of CSA area
+*
+CMDBLOK  DSECT                     Map cmd area used by DMTXJE
+CMDBLEN  DS    AL1                 CMDBLOK length
+CMDBTYP  DS    AL1(0)              Type 0 = CMDBLOK request
+         DS    AL1
+         DS    AL1
+CMDLINK  DS    CL8                 LINKID
+CMDVMID  DS    CL8                 VIRTUAL MACHINE ID
+CMDTEXT  DS    CL120' '            text of command
+CMDBLOKL EQU   *-CMDBLOK           Size of dsect
+*
+STACKMSG DSECT                     Stacked message format
+STKOWN   DS    A                   RQE owner
+STKNEXT  DS    A                   -> next STACKMSG or zero
+STKLEN   DS    AL1                 Stacked msg length
+STKZERO  DS    AL1(0)              Must be 0
+STKNODE  DS    CL8                 Node of receiver of this msg
+STKID    DS    CL8                 userid of receiver of this msg
+STKMSG   DS    CL238               Area for msg text
+STKSZ    EQU   *-STACKMSG          Total size should be 264=RQESZ
+*
+*
+*
+RQE      DSECT
+RQEOWN   DS    A                    ->LINKTABL entry of owner (0=free)
+RQEDATA  DS    XL260                TANK or MSG data as used by DMTXJE
+RQESZ    EQU   *-RQE                Size of RQE area
+*
+*

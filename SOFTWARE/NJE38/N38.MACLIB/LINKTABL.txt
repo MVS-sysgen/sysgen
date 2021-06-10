@@ -1,0 +1,81 @@
+LINKTABL DSECT
+*
+***                     LINKTABL  -  LINK TABLE ENTRY
+*
+*          0   +-----------------------------------------------+
+*              |                   LINKID                      |
+*          8   +-----------------------+-----------------------+
+*              |       LDEFTNME        |     LACTTNME          |
+*         10   +-----------------------+-----------------------+
+*              |                  LDEFDRVR                     |
+*         18   +-----------------------------------------------+
+*              |                  LACTDRVR                     |
+*         20   +-----------+-----------+-----------------------+
+*              |  LDEFLINE | LACTLINE  |     LDRVRVAR          |
+*         28   +-----+-----+-----+-----+-----+-----+-----+-----+
+*              | L*1 | L*2 | L*3 | L*4 | L*5 | L*6 | L*7 | L*8 |
+*         30   +-----+-----+-----+-----+-----+-----+-----+-----+
+*              | L*9 |LFLAG| LBUFF     | LPENDING  |  LTAKEN   |
+*         38   +-----+-----+-----------+-----------+-----------+
+*              |       LPOINTER        |         LMSGQ         |
+*         40   +-----------+-----------+-----------+-----------+
+*              | LTRNSCNT  |  LERRCNT  |   LTOCNT  |
+*         48   +-----------+-----------+-----------+-----------+
+*              |                   LNKCLOCK                    |
+*         50   +-----------------------------------------------+
+*
+*
+***                     LINKTABL  -  LINK TABLE ENTRY
+*
+LINKID   DS    CL8                 EBCDIC LINK ID
+LDEFTNME DS    CL4                 DEFAULT TASK NAME
+LACTTNME DS    CL4                 ACTIVE TASK NAME
+LDEFUSER DS    0CL8                DEFAULT USERID IF NO SECURITY   v130
+LDEFDRVR DS    CL8                 DEFAULT DRIVER ID
+LACTDRVR DS    CL8                 ACTIVE DRIVER ID
+LDEFLINE DS    XL2                 DEFAULT VIRTUAL LINE ADDRESS   *XJE
+LACTLINE DS    XL2                 ACTIVE VIRTUAL LINE ADDRESS    *XJE
+LDRVRVAR DS    1F                  LINE DRIVER VARIABLE INFO
+LDEFCLS1 DS    CL1             L*1 DEFAULT  SPOOL FILE CLS 1
+LDEFCLS2 DS    CL1             L*2 DEFAULT  SPOOL FILE CLS 2
+LDEFCLS3 DS    CL1             L*3 DEFAULT  SPOOL FILE CLS 3
+LDEFCLS4 DS    CL1             L*4 DEFAULT  SPOOL FILE CLS 4
+LACTCLS1 DS    CL1             L*5 ACTIVE   SPOOL FILE CLS 1
+LACTCLS2 DS    CL1             L*6 ACTIVE   SPOOL FILE CLS 2
+LACTCLS3 DS    CL1             L*7 ACTIVE   SPOOL FILE CLS 3
+LACTCLS4 DS    CL1             L*8 ACTIVE   SPOOL FILE CLS 4
+LTIMEZON DS    1X              L*9 2 COMP TIME ZONE DISP FROM GMT
+LFLAG    DS    1X                  LINK FLAG BYTE
+LACTIVE  EQU   X'80'                LINK ACTIVE
+*LALERT   EQU   X'40'   ************AXS ALERT EXIT SET-not used in XJE
+LAUTO    EQU   X'40'                LINK TO BE AUTOSTARTED        *XJE
+LHOLD    EQU   X'20'                LINK HOLD SET
+LDRAIN   EQU   X'10'                LINK DRAIN IN PROGRESS
+LTRALL   EQU   X'08'                LINK TRANSACTION TRACING (ALL)
+LTRERR   EQU   X'04'                LINK TRANSACTION TRACING (ERROR)
+LCONNECT EQU   X'02'                Link successfully signed onHRC031DT
+LHALT    EQU   X'01'                LINK TO BE FORCED INACTIVE
+LBUFF    DS    1H                  Max buffer size for line       *XJE
+LNEGO    DS    1H                  Negotiated actual buffer size  *XJE
+LTAKEN   DS    1H                  COUNT OF TAG SLOTS IN USE
+LPOINTER DS    1F                  LINK QUEUE ADDR
+LMSGQ    DS    1F                  MSG QUEUE POINTER
+LTRNSCNT DS    1H                  LINK TRANSACTION COUNT
+LERRCNT  DS    1H                  ERROR COUNT
+LTOCNT   DS    1H                  TIMEOUT COUNT
+LSPARE   DS    1H                  SPARE HALF WORD
+LNKCLOCK DS    8X             CLOCK COMP VALUE FOR THIS LINK   @VA03349
+*
+*- New fields for NJE/MVS use; below                              *XJE
+*
+LNEXT    DS    A                   -> next LINKTABL entry or 0
+LTCBA    DS    A                   -> TCB for this link
+LTRMECB  DS    F                   Link subtask termination ECB
+LECB     DS    F                   ECB for main task notific'n to link
+LNJEW    DS    A                   -> local work area for this link
+         DS    F                   Available
+LWRESWAP DS    0D                  CDS swap doubleword
+LWREQIN  DS    A                   Incoming WREs Q chain anchor
+LWREQCT  DS    F                   Incoming synchronization count
+LINKLEN  EQU   *-LINKTABL          LENGTH OF LINK TABLE ENTRY
+         SPACE

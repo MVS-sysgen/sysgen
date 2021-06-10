@@ -1,0 +1,35 @@
+         MACRO
+&X       NJEPARMS
+.*
+.* Change log:
+.*
+.*
+.* 04 Dec 20 - Expanded internal trace table support               v212
+.* 29 Nov 20 - Use text-based configuration; alternate routes      v211
+.* 29 Nov 20 - Initial creation.                                   v211
+.*
+*--this area mapped as INITPARM; passed to NJEDRV/NJECMX/NJESCN    v211
+         DS    0D                                                  v211
+INITPARM DS    0XL72                                               v220
+*                  Offset  Owner   Area to be passed               v211
+*                  ------ -------  --------------------------------v211
+LCLNODE  DS    CL8    0   NJEINIT  Local node name                 v211
+CPUID    DS    D      8   NJEINIT  CPUID of this system            v211
+ANJECMX  DS    A     10   NJEINIT  -> entry of NJECMX cmd processorv211
+ANJESPL  DS    A     14   NJEINIT  -> NJESPOOL interface           v211
+RQENUM   DS    F     18   NJEINIT  # RQEs in stg area              v211
+ARQESTG  DS    A     1C   NJEINIT  -> RQE stg area                 v211
+CSABLK   DS    A     20   NJEINIT  -> CSA communication area       v211
+ALINKS   DS    A     24   NJEINIT  -> LINKS  (LINKTABL anchor)     v211
+AROUTES  DS    A     28   NJEINIT  -> ROUTES (RTE list anchor)     v211
+AAUTHS   DS    A     2C   NJEINIT  -> AUTHS  (AUTHLIST anchor)     v211
+ACMDBLOK DS    A     30   NJEINIT  -> CMDBLOK dsect (CMNDBLOK)     v211
+MSGQ     DS    A     34   NJEDRV   Stacked msg Q anchor            v211
+XJELINK  DS    A     38   NJEDRV   -> task's LINKTABL              v211
+ATRACE   DS    A     3C   NJEINIT  -> Trace table control          v212
+AREGUSER DS    A     40   NJEINIT  -> REGUSER (REGUSER anchor)     v220
+RESV1    DS    F     44            Available word                  v220
+*                    48            Total length                    v220
+INITPRML EQU   *-INITPARM          Length of this parm list        v211
+*--end of passed area                                              v211
+         MEND

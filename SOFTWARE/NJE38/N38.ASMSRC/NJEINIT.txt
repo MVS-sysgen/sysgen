@@ -1,0 +1,2177 @@
+*
+*
+*-- NJE38 - Initialization and start up
+*
+*
+*
+* Change log:
+*
+*
+* 10 Dec 20 - Support for registered users and message queuing     v220
+* 04 Dec 20 - Expanded internal trace table support                v212
+* 29 Nov 20 - Use text-based configuration; alternate routes       v211
+* 02 Oct 20 - Use actual length for MGCR SEND cmds                 v210
+* 01 Oct 20 - Put ENQ existence check in common module             v210
+* 10 Aug 20 - Use single NJESPOOL load for all STC NJE38 modules.  v210
+* 22 Jul 20 - Make non-swappable to eliminate long-wait delays     v200
+* 21 Jul 20 - Slightly delay auto-start of links on start-up.      v200
+* 02 Jul 20 - Default userid to CSA in support of TRANSMIT/RECEOVE v200
+* 20 May 20 - Dont pass new file WREs for local node to cmd proc'g v120
+* 05 May 20 - Abend SD23 if SVC 34 parmlist >=130 bytes.           v102
+* 04 May 20 - Show CONFIG assembly date and time on start up.      v102
+*
+*
+*
+*
+*
+*
+         PRINT GEN
+         REGEQU                        REGISTER EQUATES
+         GBLC  &VERS
+*
+* User abend codes
+*  U0038 - Unsupported/unrecognized CIB
+*  U0039 - VSAM error on NETSPOOL
+*
+* MSG numbers used:
+*
+*     0-33      used
+*     34 - 39   available
+*     42-79     used
+*     163       used
+*
+*-- Program limits
+*
+TRACESZ  EQU   64                      Size in K of trace table    v212
+RQELIM   EQU   256                     # of preallocated RQEs
+*
+*
+NJEINIT  CSECT
+         NJEVER
+         STM   R14,R12,12(R13)         SAVE CMS REGS
+         LR    R12,R15                 BASE
+         USING NJEINIT,R12             ADDRESS IT
+*
+         GETMAIN RU,                   Get local stg area              X
+               LV=4096,                                                X
+               BNDRY=PAGE
+         LR    R10,R1
+         LR    R1,R0                   Copy length
+         LR    R2,R0                   Copy length
+         LR    R0,R10                  -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the page
+*
+         USING NJEMWK,R10
+         ST    R13,NJESA+4             SAVE prv S.A. ADDR
+         LA    R1,NJESA                -> my save area
+         ST    R1,8(,R13)              Plug it into prior SA
+         LR    R13,R1
+*
+         MVC   NJEEYE,=CL4'NJEM'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area in area
+*
+         L     R11,=A(NJECOM)          -> common csect
+         USING NJECOM,R11
+         ST    R11,ANJECOM             Save in main work area
+         MVC   CMDBLNK,BLANKS          Init field
+         MVC   RELAYID,=CL8'RELAY'     Set RELAY entity id         v220
+         LA    R1,LINKS                -> LINKTABL anchor word     v211
+         ST    R1,ALINKS               Plug it into param list     v211
+         LA    R1,ROUTES               -> RTE anchor word          v211
+         ST    R1,AROUTES              Plug it into param list     v211
+         LA    R1,AUTHS                -> AUTHLIST anchor word     v211
+         ST    R1,AAUTHS               Plug it into param list     v211
+         LA    R1,REGUSER              -> REGUSER anchor word      v220
+         ST    R1,AREGUSER             Plug it into param list     v220
+*
+INIT000  EQU   *                                                   v200
+         SR    R1,R1                   Dont return spool DSN       v210
+         L     R15,=V(NJESYS)          -> ENQ finder               v210
+         BALR  R14,R15                 Check if NJE38 already act  v210
+         LTR   R15,R15                 Look for RC=0=ENQ was found v210
+         BZ    ERR999                  Branch if NJE38 active      v210
+*
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(L'NJE000I),NJE000I   NJE38 v xx.xx
+         WTO   ,MF=(E,MACLIST)
+*
+         SR    R1,R1                                               v200
+         SYSEVENT TRANSWAP                                         v200
+         CLM   R1,1,=X'00'             SYSEVENT RC=0?              v200
+         BE    INIT010                 Yes                         v200
+         WTO   'NJE032I NJE38 could not enter non-swappable state' v200
+         B     INIT020                                             v200
+*
+INIT010  EQU   *                                                   v200
+         WTO   'NJE031I NJE38 is non-swappable'                    v200
+*
+INIT020  EQU   *                                                   v200
+         MVC   MACLIST(ESTAEL),ESTAE   Move ESTAE parm list
+         L     R6,=A(NJEDMP)           Point to local ESTAE rtn
+         ESTAE (R6),                   Issue ESTAE                     X
+               CT,                                                     X
+               TERM=YES,                                               X
+               PARAM=(R10),            PARAM is work area address      X
+               MF=(E,MACLIST)
+*
+*-- Scan the configuration and build control blocks
+*
+         MODESET MODE=SUP
+         SR    R0,R0                   R0=0 scan entire configuration
+         LA    R1,INITPARM             -> parm list to pass to NJESCN
+         L     R15,=V(NJESCN)
+         BALR  R14,R15
+         LTR   R15,R15
+         BNZ   QUIT000
+*
+         L     R1,LINKS                Get LINKTABL anchor         v210
+         USING LINKTABL,R1
+         MVC   LCLNODE,LINKID          Set LCLNODE in param list   v210
+         DROP  R1
+*
+*-- Issue STIMER for keep alive to avoid S 522 abends
+*
+         L     R0,=A(NJETMR)           -> Timer expiration exit
+         L     R1,=A(INTVL)            -> interval
+         STIMER REAL,                  Set timer                       X
+               (0),                                                    X
+               DINTVL=(1)
+*
+         LOAD  EP=NJESPOOL             Load spool interface        v210
+         ST    R0,ANJESPL              Store entry addr            v210
+*
+         LOAD  EP=NJECMX               Load command processor
+         ST    R0,ANJECMX              Store entry addr of processor
+*
+         BAL   R14,NET000              Check NETSPOOL status
+         BNZ   QUIT000                 Exit if NETSPOOL is not ready
+*
+INIT030  EQU   *
+         MODESET MODE=SUP,KEY=ZERO
+*
+         STIDP CPUID                   Get the CPU ID
+*
+         GETMAIN RU,                   Get CSA communication area      x
+               LV=NJ38CSAZ,                                            x
+               SP=241
+*
+         ST    R1,CSABLK               Save addr of CSA stg area
+         USING NJ38CSA,R1
+         XC    0(NJ38CSAZ,R1),0(R1)    Clear area
+         MVC   NJ38NODE,LCLNODE        Local node name to CSA
+         MVC   NJ38DUSR,DEFUSER        Default userid to CSA       v200
+         MVC   NJ38ASCB,PSAAOLD-PSA(0) Move ASCB addr of this space
+         LA    R2,NJ38ECB              -> cross memory ECB
+         ST    R2,CSAECBAD             Save address locally
+         DROP  R1                      NJ38CSA
+*
+         SPKA  X'80'                    Back to user key
+*
+         MVC   NJERNAME(8),NJERCON     Set rname constant
+         MVC   NJERNAME+8(4),CSABLK    CSA stg addr to Rname
+*                                      JFCB DSN should already be here
+         LA    R5,NJERNAME
+         MVC   MACLIST(ENQL),ENQ       Move macro model
+*
+         ENQ   (NJE38Q,(5),E,56,SYSTEM),                               x
+               RET=NONE,                                               x
+               MF=(E,MACLIST)
+         OI    NJFL1,NJF1ENQ           Set NJE38 ENQ active
+*
+         GETMAIN RU,                   Preallocate RQE storage         x
+               LV=RQESZ*RQELIM
+         ST    R1,ARQESTG              Save the address
+         LR    R2,R1                   Copy length
+         LR    R1,R0                   Copy length
+         LR    R0,R2                   -> new stg area
+         SR    R15,R15                 set pad
+         MVCL  R0,R14                  Clear the stg
+         LA    R0,RQELIM               Get RQE limit
+         ST    R0,RQENUM               Save the value
+*
+*
+*- Build trace table                                               v212
+*
+         GETMAIN RU,                   Get stg for trace table     v212X
+               LV=TRACESZ*1024,                                    v212X
+               BNDRY=PAGE                                          v212
+         ST    R1,ATRACE               Save ptr to trace table     v212
+         MVC   0(5,R1),=CL5'TRACE'                                 v212
+         MVI   5(R1),C'T'              So eyecatcher TRACETAB      v212
+         MVI   6(R1),C'A'               wont show in a dump        v212
+         MVI   7(R1),C'B'                in this load module       v212
+         USING TRCCTL,R1                                           v212
+         ST    R1,TRCSTRT              Set start                   v212
+         ST    R1,TRCCURR              Set current                 v212
+         AR    R0,R1                   -> end                      v212
+         ST    R0,TRCEND               Set end                     v212
+         L     R15,=A(NJETRC)          -> Trace CSECT              v212
+         ST    R15,TRCRTN              Set trace routine EPA       v212
+         DROP  R1                                                  v212
+*
+*
+*-- Initialize console processing to allow MVS modify and stop
+*-- commands to control this address space
+*
+INIT040  EQU   *
+         MVC   MACLIST(EXTRACTL),EXTRACT Move macro model
+         LA    R3,COMMAREA             -> area to place comm area addr
+         EXTRACT (3),                  Get ptr to comm area            X
+               FIELDS=COMM,                                            X
+               MF=(E,MACLIST)
+*
+         L     R3,COMMAREA             -> ptrs to COMM CIB and ECB
+         USING IEZCOM,R3               Map the communication area
+         MVC   COMMECBA,COMECBPT       Save off addr of COMM ECB
+         ICM   R4,15,COMCIBPT          Get addr of CIB ptr
+         BZ    INIT060                 No CIB, go get one
+         USING CIBNEXT,R4              Map the CIB
+*
+         CLI   CIBVERB,CIBSTART        Is this a START CIB?
+         BNE   INIT060                 No, set up CIB count
+*
+         QEDIT ORIGIN=COMCIBPT,        Free the CIB from the START cmd X
+               BLOCK=(4)                that started this space
+*
+INIT060  EQU   *
+         QEDIT ORIGIN=COMCIBPT,        Set CIB limit to 1              X
+               CIBCTR=1
+         DROP  R4                      IEZCIB
+         DROP  R3                      IEZCOM
+*
+*
+*
+*- Initialization Completed
+*
+INIT090  EQU   *
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(L'NJE001I),NJE001I   Move msg text
+         MVC   MACLIST+51(8),LCLNODE
+         WTO   ,MF=(E,MACLIST)
+*
+*- Start any auto-startable links
+*
+*
+         L     R2,LINKS                -> 1st entry (LOCAL entry)  v211
+         USING LINKTABL,R2
+         L     R2,LNEXT                -> first remote link        v211
+*
+AUTO000  EQU   *
+         TM    LFLAG,LAUTO             Is link autostartable?
+         BZ    AUTO010                 No
+         BAL   R14,SLNK000             Try to start the link
+*
+         STIMER WAIT,DINTVL=ATTDLY     Pause briefly               v200
+*
+AUTO010  EQU   *
+         ICM   R2,15,LNEXT             -> next LINKTABL entry
+         BNZ   AUTO000                 Look for another link
+         DROP  R2                      LINKTABL
+*
+*
+*
+MAIN000  EQU   *
+         BAL   R14,BLDL000             Go build the ECB list
+         BZ    QUIT000                 No ECBS in list; terminate
+*
+         SPKA  0                       Use key 0 for CSA ECB
+         WAIT  1,ECBLIST=ECBLIST
+*
+*-- Identify the ECB that was posted
+*
+MAIN010  EQU   *
+         LA    R1,ECBLIST              -> our ECBLIST
+*
+MAIN050  EQU   *
+         ICM   R2,15,0(R1)             -> ECB                      v211
+         BZ    MAIN055                 Skip ECB if empty slot      v211
+         TM    0(R2),X'40'             Was this ECB posted?
+         BO    MAIN060                 Yes
+*
+MAIN055  EQU   *                                                   v211
+         TM    0(R1),X'80'             Last ECB addr in list?
+         BO    MAIN000                 Nothing to do, go WAIT
+         LA    R1,4(,R1)               -> next ECB addr
+         B     MAIN050                 Keep looking
+*
+*
+MAIN060  EQU   *
+         CLM   R2,7,CSAECBAD+1         Was the WRE work ECB posted?
+         BE    WRK000                  Hey!  We have something to do
+*
+         SPKA  X'80'                   Back to user key for the rest
+         CLM   R2,7,COMMECBA+1         Was the COMM ECB posted?
+         BE    COMM000                 Yes
+*
+***      L     R3,0(,R2)               Load the ECB content        v211
+         XC    0(4,R2),0(R2)           Clear the ECB
+         LA    R0,LTRMECB-LINKTABL     Offset of ECB in LINKTABL   v211
+         SR    R2,R0                   -> LINKTABL entry           v211
+         USING LINKTABL,R2
+***      CLM   R3,7,=AL3(255)          ECB post code 255?          v211
+***      BE    MAIN080                 Yes, LINKTABL entry delete  v211
+*
+         DETACH LTCBA                  Detach the subtask
+         XC    LTCBA,LTCBA             Mark task terminated
+         MVI   LFLAG,X'00'             Clear status flags
+*
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(L'NJE010I),NJE010I   Line is drained
+         UNPK  DBLE(4),LACTLINE(3)     Convert CUU of line
+         TR    DBLE(3),HEXTRAN-240
+         MVC   MACLIST+17(3),DBLE
+         WTO   ,MF=(E,MACLIST)         Line xxx is drained
+         B     MAIN010                 Look for more work
+*
+*-- Here to delete a LINKTABL entry (from LINK OFF command)        v211
+*-- We arrive here from POST code 255. NJESCN LOFF000 does the POSTv211
+*
+         DROP  R2                      LINKTABL                    v211
+*
+*-- Build a new ECBLIST before the wait
+*
+BLDL000  EQU   *
+         SR    R1,R1                   Init: no ECBs in list
+         LA    R15,ECBLIST-4           -> 0th ECB list entry
+         TM    NJFL1,NJF1STOP          Is main task termination set?
+         BO    BLDL010                 Yes, dont add COMM ECBs to list
+         LA    R15,4(,R15)             -> next available ECB list slot
+         L     R1,COMMECBA             -> COMM ECB
+         ST    R1,0(,R15)              Set addr in ECB list
+         LA    R15,4(,R15)             -> next available ECB list slot
+         L     R1,CSAECBAD             -> WRE work ECB
+         ST    R1,0(,R15)              Set addr in ECB list
+*
+BLDL010  EQU   *
+         L     R2,LINKS                -> 1st entry (LOCAL entry)  v211
+         USING LINKTABL,R2
+         L     R2,LNEXT                -> first remote link        v211
+*
+BLDL020  EQU   *
+         CLC   LTCBA,=A(0)             Is task active for link?
+         BE    BLDL030                 Zero, skip this one
+         LA    R15,4(,R15)             -> next available ECB list slot
+         LA    R1,LTRMECB              -> task's termination ECB
+         ST    R1,0(,R15)              Set ECB addr in ECB list
+*
+BLDL030  EQU   *
+         ICM   R2,15,LNEXT             -> next LINKTABL entry
+         BNZ   BLDL020                 Scan them all
+         DROP  R2                      LINKTABL
+         LTR   R1,R1                   Any ECB in the list?
+         BZR   R14                     No, return with CC=0 set
+         OI    0(R15),X'80'            Mark end of list
+         BR    R14                     Return with ECB list built
+*
+**********************************************************************
+*                                                                    *
+*                           WRE FLOWS                                *
+*                                                                    *
+**********************************************************************
+*
+* When WREs are created by out-of-address space tasks (such as by
+* modules NJE38 by TSO users, or NJ38XMIT by jobs) they are
+* created in CSA and chained off the NJE38 CSA block NJ38CSA.  The
+* WRE ECB is posted via cross memory post.  Any WRE posted in this
+* manner will first end up here, at WRK000 below.
+*
+* WRK000 will pull the entire chain of WREs and get it off that queue
+* so that these can be processed one at a time while outside tasks may
+* continue to add new WREs to the CSA chain.
+*
+* Each WRE is examined for its destination.  If the WRE has a
+* destination link id in the LINKs table, or via a route that can be
+* forwarded via a destination link, the WRE will be requeued to that
+* particular link task at WRK120.
+*
+*  When the link task gets the WRE, it will be processed by NJEDRV
+*  label COMM000, which will dequeue it and flow continues to
+*  label WRK000 in that same module.  After processing the WRE stg
+*  is freed.
+*
+* Back in NJEINIT, if the WRE is destined for the local link (at
+* WRK030) flow proceeds to WRK200 where the command processor NJECMD
+* is called to examine and process the action.  Upon return, the
+* WRE storage is freed and the next WRE on the chain is examined,
+* if any.
+*
+* Notes:
+*  1. WREs are created in subpool 2 which is shared by other TCBs.
+*       (Except for out-of-address-space WREs, which are in CSA).
+*  2. WREs are sometimes created internally:
+*     a). in NJEINIT STOP000 to queue a WRE to each active link task
+*         in order to stop the link.
+*     b). in NJEINIT CCD000 in order to queue a command that was
+*         input from the system console to a remote link task.
+*  3. Whether the WRE is created from an outside address space or
+*     internally, they all flow the same way, via the post to the
+*     ECB in NJ38CSA and being placed on the queue anchor in NJ38CSA.
+*
+*
+*
+* Summary:
+*
+*  1. WRE gets created and posted to CSA anchor
+*  2. NJEINIT WRK000 sees the WRE first
+*  3. WRE is requeued to a link or handled by NJEINIT/NJECMD
+*  4. WRE is freed.
+*
+*
+*
+*
+*
+*
+*
+*-- WRE work ECB was posted
+*
+WRK000   EQU   *
+         SPKA  0                       This routine must run key=0
+         XC    0(4,R2),0(R2)           Reinit WRE work ECB
+         L     R2,CSABLK               -> CSA communications area
+         USING NJ38CSA,R2
+*
+         LM    R6,R7,NJ38SWAP          Get WRE anchor, sync count
+*
+WRK010   EQU   *
+         LTR   R6,R6                   Was WRE Q empty?
+         BZ    MAIN010                 Yes, nothing else to do
+         SR    R14,R14                 Zero out the WRE Q anchor
+         LR    R15,R7                  Copy same sync count
+         CDS   R6,R14,NJ38SWAP         Try to empty the WRE Q
+         BC    7,WRK010                Can't yet, try again
+         DROP  R2                      NJ38CSA
+*
+*-- Distribute the WREs to the various links
+*
+*-- R6 -> start of WRE chain we dequeued from WRE Q
+*
+         USING WRE,R6
+*
+*
+WRK030   EQU   *
+         NJETRACE TYPE=TRCIWRE     Trace incoming WRE
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         LA    R15,*               -> here                         v220
+         ST    R15,4(,R14)         Save addr of trace request      v220
+         ST    R6,8(,R14)          Trace WRE addr                  v220
+         MVC   12(4,R14),WRETYPE   Trace type code,len,subpool     v220
+         MVC   16(8,R14),WRELINK   link dest                       v220
+         MVC   24(8,R14),WREUSER   userid dest                     v220
+         NJETRACE TYPE=TRCIWRE     Trace incoming WRE follow on    v220
+         OI    0(R14),X'80'        Indicate follow on              v220
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         MVC   4(8,R14),WREORIG    Originator userid               v220
+         MVC   12(20,R14),WRETXT   Trace WRE content               v220
+*
+         CLC   WRELINK,LCLNODE         Is this WRE for the local node?
+         BE    WRK200                  Yes, don't queue it to a link
+*
+WRK040   EQU   *
+         LA    R1,WRELINK              -> destination link of WRE
+         BAL   R14,FLNK000             Locate the LINKTABL entry
+         BZ    WRK050                  No link found, check routes
+*
+         USING LINKTABL,R2
+         TM    LFLAG,LCONNECT          Is link connected?
+         BO    WRK120                  Yes, post the link task
+*
+*-- Otherwise, look at routes.  R1-> WRELINK
+*
+WRK050   EQU   *
+         BAL   R14,RLNK000             Find matching route
+         BZ    WRK150                  No matching routes
+         BAL   R14,FLNK000             Locate the LINKTABL entry
+         BZ    WRK150                  No link found for this WRE
+         TM    LFLAG,LCONNECT          Is link connected?
+         BZ    WRK150                  No, skip this WRE
+*
+*
+*-- Here to requeue the WRE to the link WRE chain
+*
+WRK120   EQU   *
+         NJETRACE TYPE=TRCOWRE     Trace incoming WRE
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         LA    R15,*               -> here                         v220
+         ST    R15,4(,R14)         Save addr of trace request      v220
+         ST    R6,8(,R14)          Trace WRE addr                  v220
+         MVC   12(4,R14),WRETYPE   Trace type code,len,subpool     v220
+         MVC   16(8,R14),WRELINK   link dest                       v220
+         MVC   24(8,R14),WREUSER   userid dest                     v220
+         NJETRACE TYPE=TRCOWRE     Trace incoming WRE follow on    v220
+         OI    0(R14),X'80'        Indicate follow on              v220
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         MVC   4(8,R14),WREORIG    Originator userid               v220
+         MVC   12(20,R14),WRETXT   Trace WRE content               v220
+*
+         L     R8,WRENEXT              -> next WRE in CSA chain
+*
+         LM    R0,R1,LWRESWAP          Get first WRE ptr, sync count
+WRK130   EQU   *
+         ST    R0,WRENEXT              First WRE becomes next
+         LR    R4,R6                   -> WRE to be added as first
+         LA    R5,1(,R1)               Incr synchronization count
+         CDS   R0,R4,LWRESWAP          Update LINK WRE anchor, sync
+         BC    7,WRK130                Gotta try again
+*
+         LA    R1,LECB                 -> link task notification ECB
+         POST  (1)                     Tell task
+         B     WRK290                  Go get another WRE
+*
+*-- Release WRE that we cant distribute to a link
+*
+WRK150   EQU   *
+         B     WRK290
+         DROP  R2                      LINKTABL
+*
+*-- Here if WRE is intended for the local node
+*
+WRK200   EQU   *
+         SR    R15,R15                 Clear for IC                v220
+         IC    R15,WRETYPE             Get WRE type code           v220
+         CLM   R15,1,=AL1(WRK210HI)    Check against highest code  v220
+         BH    WRK280                  Dispose of invalid WRE      v220
+         B     WRK210(R15)             Branch into table           v220
+*
+WRK210   EQU   *                                                   v220
+         B     WRK280            X'00'  Invalid; just delete WRE   v220
+         B     WRK280            X'04'  WRENEW; ignore for LCL nodev220
+         B     WRK215            X'08'  WRECMD                     v220
+         B     WRK220            X'0C'  WREMSG                     v220
+         B     WRK240            X'10'  WRESTAR                    v220
+         B     WRK300            X'14'  WREREG                     v220
+         B     WRK350            X'18'  WREDREG                    v220
+         B     WRK400            X'1C'  WREQRM                     v220
+         B     WRK450            X'20'  WREDRM                     v220
+WRK210HI EQU   (*-WRK210-4)      Highest code supported            v220
+*
+*
+WRK215   EQU   *
+         SPKA  X'80'
+         MVC   CMDAREA,BLANKS          Init receiving area
+         SR    R2,R2                   Clear for IC
+         IC    R2,WRETXTLN             Get cmd image length
+         EX    R2,MVTXT1               Move cmd image
+         STC   R2,CMNDBLEN             IBM length of image to CMDBLOK
+         MVC   CMNDLINK,LCLNODE        This node is the issuer
+         MVC   CMNDUSER,WREUSER        Copy TSO id of issuer
+*
+         L     R15,=A(NJECMD)          -> command processor
+         BALR  R14,R15                 Go there
+         SPKA  X'00'
+         B     WRK280
+*
+MVTXT1   MVC   CMDAREA(0),WRETXT       Executed instr
+*
+*-- Send the msg response to a local TSO user
+*
+WRK220   EQU   *
+         CLC   WREUSER,=CL8'OP'        Message destined for operator?
+         BE    WRK230                  Yes
+         LA    R15,WREUSER              -> userid to locate
+         BAL   R14,REG000               See if user registered     v220
+         BNZ   WRK280                   Yes it was; we queued it   v220
+         BAL   R14,USR800               See if TSO user logged on
+         BZ    WRK280                   Skip msg if not
+         MVC   MACLIST(80),BLANKS       Init first part
+         MVC   MACLIST+4(9),=C'SE ''From '
+         MVC   MACLIST+13(8),WREORIG
+         TRT   MACLIST+13(9),BLANK     Look for end of orig userid
+         MVI   0(R1),C':'
+         LA    R1,2(,R1)               -> area for msg
+         MVC   0(104,R1),WRETXT        Move msg text               v102
+         LA    R2,MACLIST+111      -> last byte from MTEXT area    v210
+         LA    R0,32               # char to check backwards       v210
+*
+WRK223   EQU   *                   Only look backwards to col 80   v210
+         CLI   0(R2),C' '          Try to find last non-blank      v210
+         BNE   WRK226              Found it                        v210
+         BCTR  R2,0                -> prev char                    v210
+         BCT   R0,WRK223           Keep scanning                   v210
+*
+WRK226   EQU   *                                                   v210
+         LA    R2,1(,R2)           -> first blank after last char  v210
+         MVC   0(8,R2),=C''',USER=('                               v210
+         MVC   8(12,R2),BLANKS      Ensure trailer initted         v210
+         MVC   8(7,R2),WREUSER      Max for TSO userid is 7        v210
+         LA    R1,8+7(,R2)          -> max end of trt              v210
+         TRT   8(7,R2),BLANK        Look for end of userid         v210
+         MVI   0(R1),C')'           Move closing                   v210
+         MVI   1(R1),C' '           Plus 1 blank                   v210
+         LA    R0,MACLIST           -> start of msg area           v210
+         SR    R1,R0                Compute length of msg          v210
+         LA    R1,1(,R1)            Account for blank at end       v210
+         XC    MACLIST(4),MACLIST   Clear len, flags               v210
+         STH   R1,MACLIST           Insert the msg length          v210
+*
+         LA    R1,MACLIST
+         SR    R0,R0
+         SVC   34                      Issue MGCR SVC
+         B     WRK280
+*
+*-- Send the msg response to the system operator
+*
+WRK230   EQU   *
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(4),=C'From'
+         MVC   MACLIST+9(8),WREORIG    Move originating userid
+         TRT   MACLIST+9(9),BLANK      Look for end of orig userid
+         MVI   0(R1),C':'
+         LA    R1,2(,R1)               -> area for msg
+         MVC   0(104,R1),WRETXT        Move msg text               v102
+         WTO   ,MF=(E,MACLIST)
+         B     WRK280
+*
+*-- Start a link (via a local or remote command)
+*
+WRK240   EQU   *
+         L     R2,WREUSER              -> LINKTABL entry of START cmd
+         BAL   R14,SLNK000             Attach the link driver
+         B     WRK280
+*
+*-- Clean up spent WRE
+*
+WRK280   EQU   *
+         SPKA  0                       In case WRE isin CSA        v220
+         L     R8,WRENEXT              -> next WRE in chain
+         SR    R15,R15                 Clear for IC                v220
+         IC    R15,WRESP               Get subpool number          v220
+         LA    R0,WRESIZE              Size of this WRE            v220
+*
+         NJETRACE TYPE=TRCFWRE                                     v220
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         LA    R2,*                                                v220
+         STCM  R2,7,5(R14)             Addr of Freemain to trace   v220
+         ST    R0,8(,R14)              Len to trace                v220
+         ST    R6,12(,R14)             addr to trace               v220
+         STC   R15,8(,R14)             Trace subspool              v220
+         MVI   WRESP,X'FF'             Mark stg as freed           v220
+*
+         FREEMAIN RU,                  Free the  WRE                   x
+               LV=(0),                                                 x
+               A=(6),                                                  x
+               SP=(15)                                             v220
+         SPKA  X'80'                                               v220
+*
+*-- Done processing a WRE; get another
+*
+WRK290   EQU   *
+         LTR   R6,R8                   Get next WRE to distribute
+         BNZ   WRK030                  Yes have an addr            v220
+         B     MAIN010                 All done with WREs
+*
+*
+* Registered User Service Support Notes                            v220
+*
+* The registered user service allows an outside address space
+* operating in the same MVS system as NJE38, to 'register' or
+* establish a relationship with NJE38 where messages that would
+* ordinarily be sent to a user terminal are instead queued in
+* storage and presented to the outside address space upon request.
+*
+* Users wishing to use this service call the NJERLY interface which
+* is responsible for establishing the relationship with NJE38. This
+* is done using WREs and cross-memory POST.  In this way, a batch,
+* TSO, or STC address space can capture message traffic destined
+* for it before it would arrive at a terminal, and thereby process
+* this message or display it in the manner of their choosing.
+*
+* WREs created by NJERLY are always in CSA.  When they are used to
+* request service of NJE38, they place the WRE on the NJ38SWAP
+* compare and swap chain just like any other outside requester and
+* post NJEINIT's CSA ECB.  NJEINIT then acts on the request.
+*
+* NJEINIT never frees the WRE created by NJERLY.  That is NJERLY's
+* responsibility.
+*
+* For some functions of the service, the request is ignored if
+* important information is missing (unlikely) such as ASCB address
+* of NJERLY, or the WRE address.  Ignoring the request is all that
+* can be done since without either of those pieces, NJEINIT cannot
+* issue CM POST back to the NJERLY space to let it know of the error.
+*
+* When a user joins the service, he registers.  NJEINIT will create
+* a REGUSERB control block to establish the registration and hold
+* the NJERLY requester'e WRE and ASCB address.
+*
+* Once a user (userid) has registered, any message traffic inbound
+* destined for that user will be queued in NJE38 storage and chained
+* from REGUSERB,  The user can then request a message be returned
+* one per request.  A post code of 4 (ERNOMSG) is used to indicate
+* no messages are queued.
+*
+* When the user wants to stop using the service, it 'deregisters',
+* causing NJEINIT to freemain any queued messages for the user and
+* releasing the REGUSERB.  Message traffic destined for that user
+* resumes being presented to the terminal as before.
+*
+* In the comments below, the 'registered user WRE' refers to the
+* WRE created by NJERLY in CSA by the user address space.
+*
+*
+*
+*- WREREG
+*- Register a user for queued message services
+*
+*- Who requests this service: user address space via NJERLY
+*
+*- Steps:
+*    1. Ensure userid is not already registered on REGUSERB chain.
+*    2. Create a new REGUSERB for this user
+*    3. Issue CM POST to registered user space, function complete.
+*
+*
+*  Notes: - On entry, registered user WRE is in R6.
+*         - Registered users WREs are not freemained; we are not the
+*            owner.
+*         - If the registered user WRE has no ASCB addr, we have no
+*            choice but to ignore the request.
+*
+WRK300   EQU   *
+         L     R8,WRENEXT              -> next WRE                 v220
+         XC    WRENEXT,WRENEXT         Clear next next ptr because v220
+*                                       this is a registration WRE v220
+*                                       and wont be freemained herev220
+         CLC   WREASCB,=A(0)           Is ASCB present?            v220
+         BE    WRK810                  No, invalid. Can't respond  v220
+*
+         ICM   R1,15,REGUSER           -> first REGUSER            v220
+         BZ    WRK320                  None, let's start a chain   v220
+         USING REGUSERB,R1                                         v220
+         LA    R0,ERDUPUSR             Assume duplicate user error v220
+*
+WRK310   EQU   *                                                   v220
+         CLC   REGUSRID,WREUSER        Is this user already reg?   v220
+         BE    WRK800                  Yes, post the error in R0   v220
+         ICM   R1,15,REGNEXT           Keep looking                v220
+         BNZ   WRK310                                              v220
+*
+WRK320   EQU   *                                                   v220
+         GETMAIN RU,                   Get storage for a REGUSER   v220x
+               LV=REGSIZE,                                         v220x
+               SP=2                                                v220
+         XC    0(REGSIZE,R1),0(R1)     Init stg                    v220
+         MVC   REGEYE,=CL4'REGU'       Set eye                     v220
+         MVC   REGUSRID,WREUSER        Userid to be registered     v220
+         ST    R6,REGWRE               Save ptr to registration WREv220
+         MVC   REGNEXT,REGUSER         Chain other REGUSERs to thisv220
+         ST    R1,REGUSER              This REGUSER is first       v220
+         DROP  R1                      REGUSERB                    v220
+         SR    R0,R0                   Set RC=0 success            v220
+         B     WRK800                  User successfully registeredv220
+*
+*- WREDREG
+*- Deregister a user from queued message services
+*
+*- Who requests this service: user address space via NJERLY
+*
+*- Steps:
+*    1. Locate the REGUSERB for the userid
+*    2. Get the chain anchor for queued message WREs, if any
+*    3. Freemain the REGUSERB.
+*    4. Freemain each queued message WRE
+*    5. Issue CM POST to registered user space, function complete.
+*
+*  Notes: - On entry, registered user WRE is in R6.
+*         - Registered users WREs are not freemained; we are not the
+*            owner.
+*         - If the registered user WRE has no ASCB addr, we have no
+*            choice but to ignore the request.
+*
+WRK350   EQU   *
+         L     R8,WRENEXT              -> next WRE                 v220
+         XC    WRENEXT,WRENEXT         Clear next next ptr because v220
+*                                       this is a registration WRE v220
+*                                       and wont be freemained herev220
+         CLC   WREASCB,=A(0)           Is ASCB present?            v220
+         BE    WRK810                  No, invalid. Can't respond  v220
+*
+         LA    R0,ERUSERNF             Assume user not found       v220
+         LA    R2,REGUSER              -> 0th REGUSER entry        v220
+         ICM   R1,15,REGUSER           -> first REGUSER            v220
+         BZ    WRK800                  None, user indeed isnt foundv220
+         USING REGUSERB,R1                                         v220
+*
+WRK360   EQU   *                                                   v220
+         CLC   REGUSRID,WREUSER        Is this user we want?       v220
+         BE    WRK370                  Yes                         v220
+         LR    R2,R1                   Save this REGUSER ptr       v220
+         ICM   R1,15,REGNEXT           Get next REGUSER and continuv220
+         BNZ   WRK360                                              v220
+         B     WRK800                  Exit with user not found    v220
+*
+WRK370   EQU   *                                                   v220
+         MVC   REGNEXT-REGUSERB(,R2),REGNEXT unchain R1 REGUSER    v220
+         L     R2,REGMSGQ              -> MSG WRE chain for user   v220
+         DROP  R1                      REGUSERB                    v220
+*
+         FREEMAIN RU,                  Free storage for a REGUSERB v220x
+               LV=REGSIZE,                                         v220x
+               A=(1),                                              v220x
+               SP=2                                                v220
+*
+WRK380   EQU   *                                                   v220
+         LTR   R1,R2                   Were any WREs chained?      v220
+         BZ    WRK390                  No, we're done              v220
+         L     R2,WRENEXT-WRE(,R2)     -> next WRE                 v220
+         LA    R0,WRESIZE              Get size of WRE             v220
+*
+         NJETRACE TYPE=TRCFWRE                                     v220
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         LA    R15,*                                               v220
+         STCM  R15,7,5(R14)            Addr of Freemain to trace   v220
+         STM   R0,R1,8(R14)            Len, stg addr to trace      v220
+         MVI   8(R14),2                Trace subspool              v220
+         MVI   WRESP-WRE(R1),X'FF'     Mark stg as freed           v220
+*
+         FREEMAIN RU,                  Free storage for a WRE      v220x
+               LV=(0),                                             v220x
+               A=(1),                                              v220x
+               SP=2                                                v220
+         B     WRK380                  Free entire chain           v220
+*
+WRK390   EQU   *                                                   v220
+         SR    R0,R0                   Set RC=0 success            v220
+         B     WRK800                  User successfully deregisterv220
+*
+*
+*- WREQRM
+*- Queue a message destined for a registered user
+*
+*- Who requests this service: Internal by NJEINIT, NJECMX, NJEDRV
+*   as message traffic arrives and needs to be queued.
+*
+*- Steps:
+*    1. Locate the REGUSERB for the userid
+*    2. If REGUSERB is not found, userid is not registered. Exit
+*        with CC=0 and allow the message to go to the user terminal.
+*    3. Get the registration WRE address from REGUSERB, exit if none.
+*    4. Add this queued message WRE (in R6) to the queued message
+*        chain REGMSGQ (in REGUSERB). Do not freemain this WRE!
+*    5. Issue CM POST to registered user space that message is avail.
+*
+*  Notes: - On entry, a queued message WRE is in R6.
+*         - The WREs are added to the start of the chain (REGMSGQ)
+*           because they come to us in reverse order of issuance.
+*           This puts them back in the right order
+*
+WRK400   EQU   *
+         L     R8,WRENEXT              -> next WRE                 v220
+         ICM   R3,15,REGUSER           -> first REGUSER            v220
+         BZ    WRK810                  No one registered           v220
+         USING REGUSERB,R3                                         v220
+*
+WRK410   EQU   *                                                   v220
+         CLC   REGUSRID,WREUSER        Is this user the one?       v220
+         BE    WRK420                  Yes                         v220
+         ICM   R3,15,REGNEXT           Keep looking                v220
+         BNZ   WRK410                                              v220
+         B     WRK810                  Can't find REGUSER          v220
+*
+WRK420   EQU   *                                                   v220
+         ICM   R4,15,REGWRE            -> user's registration WRE  v220
+         BZ    WRK810                  Ignore if not there         v220
+*
+         MVC   WRENEXT,REGMSGQ         Add chain to new WRE        v220
+         ST    R6,REGMSGQ              Add WRE to anchor           v220
+         LR    R6,R4                   User registration WRE to R6 v220
+         SR    R0,R0                   Indicate success            v220
+         B     WRK800                  Tell user msg pending       v220
+*                                                                  v220
+*                                                                  v220
+*- WREDRM
+*- Dequeue message for a registered user when they request it
+*
+*- Who requests this service: user address space via NJERLY
+*
+*- Steps:
+*    1. Locate the REGUSERB for the userid
+*    2. If REGUSERB is not found, userid is not registered. Issue
+*        error to requester.
+*    3. Get the first queued message WRE from REGUSERB, issue
+*        ERNOMSG error if nothing queued.
+*    4. Copy the message text from the queued message WRE into the
+*        registered user WRE.
+*    5. Issue CM POST to registered user space, function complete.
+*
+*  Notes: - On entry, the registered user WRE is in R6.
+*
+*
+WRK450   EQU   *
+         L     R8,WRENEXT              -> next WRE                 v220
+         XC    WRENEXT,WRENEXT         Clear next next ptr because v220
+*                                       this is a registration WRE v220
+*                                       and wont be freemained herev220
+         ICM   R3,15,REGUSER           -> first REGUSER            v220
+         BZ    WRK810                  No one registered           v220
+         USING REGUSERB,R3                                         v220
+*
+WRK460   EQU   *                                                   v220
+         CLC   REGUSRID,WREUSER        Is this user the one?       v220
+         BE    WRK470                  Yes                         v220
+         ICM   R3,15,REGNEXT           Keep looking                v220
+         BNZ   WRK460                                              v220
+         B     WRK810                  Can't find REGUSER          v220
+*
+WRK470   EQU   *                                                   v220
+         LA    R0,ERNOMSG              Assume no msgs queued       v220
+         ICM   R5,15,REGMSGQ           -> first queued msg WRE     v220
+         BZ    WRK800                  No msgs available           v220
+*
+         MVC   REGMSGQ,WRENEXT-WRE(R5) Remove 1st queued from chainv220
+         DROP  R3                      REGUSERB                    v220
+*
+         MVC   WRETXT,WRETXT-WRE(R5)   Copy queued msg text to     v220
+*                                       registered user WRE        v220
+*
+         LA    R0,WRESIZE              Get size of WRE             v220
+         NJETRACE TYPE=TRCFWRE                                     v220
+         STCM  R10,7,1(R14)            Identify trace entry        v220
+         LA    R15,*                                               v220
+         STCM  R15,7,5(R14)            Addr of Freemain to trace   v220
+         ST    R0,8(,R14)              Len to trace                v220
+         MVI   8(R14),2                Trace subspool              v220
+         ST    R5,12(,R14)             Addr to trace               v220
+         MVI   WRESP-WRE(R5),X'FF'     Mark stg as freed           v220
+*
+         FREEMAIN RU,                  Free Queued msg WRE         v220x
+               LV=(0),                                             v220x
+               A=(5),                                              v220x
+               SP=2                                                v220
+*
+         SR    R0,R0                   Indicate success            v220
+         B     WRK800                  Tell user msg pending       v220
+*
+*
+WRK800   EQU   *                       USING WRE,R6                v220
+         L     R7,WREASCB              -> ASCB of requestor        v220
+         LA    R1,WREECB               -> WRE's ECB                v220
+*
+         MVC   MACLIST(POSTL),POST     Move macro model            v220
+         POST  (1),(0),                Post requestor's ECB        v220x
+               ASCB=(7),                                           v220x
+               ERRET=WRK810,                                       v220x
+               ECBKEY=0,                                           v220x
+               MF=(E,MACLIST)                                      v220
+*
+WRK810   EQU   *                                                   v220
+         B     WRK290                  All done with WRE           v220
+         DROP  R6                      WRE                         v220
+*
+*-- Address space Communications ECB was posted
+*
+COMM000  EQU   *
+         L     R4,COMMAREA             -> Communications area
+         USING IEZCOM,R4
+         L     R5,COMCIBPT             -> CIB
+         USING CIBNEXT,R5
+         CLI   CIBVERB,CIBMODFY        Modify cmd?
+         BE    MOD000                  Yes
+         CLI   CIBVERB,CIBSTOP         Stop cmd?
+         BE    STOP000                 Yes, let subtasks know
+U0038    ABEND 38,DUMP,STEP            Shouldnt happen
+*
+MOD000   EQU   *
+         MVC   CMDAREA,BLANKS          Init receiving area
+         LH    R2,CIBDATLN             Get cmd image length
+         BCTR  R2,0                    Adjust for execute
+         EX    R2,MVMOD1               Move cmd image
+         STC   R2,CMNDBLEN             IBM length of image to CMDBLOK
+*
+         QEDIT ORIGIN=COMCIBPT,BLOCK=(5)     Purge the CIB
+*
+         MVC   CMNDLINK,LCLNODE        Console operator
+         MVC   CMNDUSER,=CL8'OP'        should get any responses
+         L     R15,=A(NJECMD)          -> command processor
+         BALR  R14,R15                 Go there
+         B     MAIN010
+*
+MVMOD1   MVC   CMDAREA(0),CIBDATA      Executed instr
+*
+*
+*
+STOP000  EQU   *
+         QEDIT ORIGIN=COMCIBPT,BLOCK=(5)     Purge the CIB
+         DROP  R4                      IEZCOM
+         DROP  R5                      IEZCIB
+*
+STOP010  EQU   *
+         OI    NJFL1,NJF1STOP          Indicate STOP ordered
+         L     R2,LINKS                -> 1st entry (LOCAL entry)  v211
+         USING LINKTABL,R2
+         L     R2,LNEXT                -> first remote link        v211
+*
+STOP020  EQU   *
+         CLC   LTCBA,=A(0)             Is task active for link?
+         BE    STOP030                 Zero, skip this one
+*
+         BAL   R14,GTW000              Get a WRE
+         LR    R4,R1                   -> WRE
+         USING WRE,R4
+         MVI   WRECODE,X'81'           Code for drain link
+         DROP  R4
+         BAL   R14,PST000              Queue the WRE to link
+*
+STOP030  EQU   *
+         ICM   R2,15,LNEXT             -> next LINKTABL entry
+         BNZ   STOP020                 Scan them all
+         DROP  R2                      LINKTABL
+*
+         B     MAIN010
+*
+*
+*-- Open then Close NETSPOOL dataset to determine status
+*
+* NCBRTNCD/ERRCD after call to NCBOPEN
+*    0474 = dataset not closed properly (do verify)
+*    0874 = dataset not formatted
+*
+NET000   EQU   *
+         ST    R14,SV14                Save return
+*
+         MVC   JFCBDCB(NSPOOLN),NSPOOL Move DCB for RDJFCB use
+         LA    R1,JFCB                 -> JFCB return area
+         ST    R1,JEXLST               Set addr in exit list
+         MVI   JEXLST,X'87'            Set exlst for JFCB return
+         LA    R1,JFCBDCB              -> DCB
+         USING IHADCB,R1
+         LA    R0,JEXLST               -> exit list
+         STCM  R0,7,DCBEXLSA           Store it into DCB
+         DROP  R1
+*
+         MVC   MACLIST(RDJFCBL),RDJFCB Move model
+         RDJFCB JFCBDCB,MF=(E,MACLIST) Get NETSPOOL DSN
+*
+         LA    R3,NCB1
+         USING NCB,R3
+*
+         NSIO  TYPE=OPEN,              Open NETSPOOL                   x
+               NCB=(R3),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         LTR   R15,R15
+         BZ    NET040
+         BAL   R14,FMT000
+*
+NET040   EQU   *
+         NSIO  TYPE=CLOSE,                                             x
+               NCB=(R3),                                           v210x
+               ENTRY=ANJESPL                                       v210
+         DROP  R3
+         TM    NJFL1,NJF1VSER          Did VSAM error occur?
+         BZ    NET090                  No
+         CLC   LASTRC(2),=X'0474'      NETSPOOL needs verify?
+         BE    NET080
+         CLC   LASTRC(2),=X'0874'      NETSPOOL not formatted?
+         BNE   NET070
+         MVC   MACLIST(WTOMSGL),WTOMSG Move macro model
+         MVC   MACLIST+4(L'NJE007I),NJE007I  Not formatted msg
+         WTO   ,MF=(E,MACLIST)
+         B     NET090
+*
+NET070   EQU   *
+         MVC   MACLIST(WTOMSGL),WTOMSG Move macro model
+         MVC   MACLIST+4(L'NJE006I),NJE006I  Open failed
+         WTO   ,MF=(E,MACLIST)
+         B     NET090
+*
+NET080   EQU   *
+         MVC   MACLIST(WTOMSGL),WTOMSG Move macro model
+         MVC   MACLIST+4(L'NJE008I),NJE008I  Do verify
+         WTO   ,MF=(E,MACLIST)
+         MVC   MACLIST(WTOMSGL),WTOMSG Move macro model
+         MVC   MACLIST+4(L'NJE009I),NJE009I  verify complete
+         WTO   ,MF=(E,MACLIST)
+*
+NET090   EQU   *
+         TM    NJFL1,NJF1VSER          Set CC: Did VSAM error occur?
+         L     R14,SV14                Reload return
+         BR    R14                     Return
+*
+ERR999   EQU   *
+         WTO   'NJE999I NJE38 is already active'
+*
+QUIT000  EQU   *
+         ESTAE 0                       Turn off ESTAE
+*
+         TTIMER CANCEL                 Cancel the timer
+*
+         FREEMAIN RU,SP=1              Free all CONFIG related stg
+         FREEMAIN RU,SP=2              Free all WRE related stg
+*
+QUIT020  EQU   *
+         DELETE EP=NJECMX              Delete command processor
+         DELETE EP=NJESPOOL            Delete spool interface      v210
+*
+         ICM   R1,15,ARQESTG           -> RQE stg area
+         BZ    QUIT030                 Skip free if none           v212
+         FREEMAIN RU,                  Free it                         x
+               LV=RQESZ*RQELIM,                                        x
+               A=(1)
+*
+QUIT030  EQU   *                                                   v212
+         ICM   R1,15,ATRACE            -> Trace table stg          v212
+         BZ    QUIT070                 Skip free if none           v212
+         FREEMAIN RU,                  Free it                     v212x
+               LV=TRACESZ*1024,                                    v212x
+               A=(1)                                               v212
+*
+QUIT070  EQU   *
+         TM    NJFL1,NJF1ENQ           Is NJE38 ENQ active?
+         BZ    QUIT080                 No
+         LA    R5,NJERNAME             -> RNAME
+         MVC   MACLIST(ENQL),ENQ       Move macro model
+         DEQ   (NJE38Q,(5),56,SYSTEM),                                 x
+               RET=NONE,                                               x
+               MF=(E,MACLIST)
+*
+QUIT080  EQU   *
+         ICM   R5,15,CSABLK            -> CSA stg area
+         BZ    QUIT090                 Not present
+*
+         SPKA  0
+*
+         FREEMAIN RU,LV=NJ38CSAZ,A=(5),SP=241  Free CSA area
+         XC    CSABLK,CSABLK
+*
+         SPKA  X'80'
+*
+QUIT090  EQU   *
+         LR    R1,R10                  -> NJEWK main work area page
+         L     R13,4(,R13)             -> caller's sa
+         FREEMAIN RU,                                                  x
+               LV=4096,                                                x
+               A=(1)
+         LM    R14,R12,12(R13)         Reload system's regs
+         XR    R15,R15                 RC=0
+         BR    R14                     Return
+*
+U0039    EQU   *
+         STM   R0,R1,DBLE              Save regs across abend SVC
+         ABEND 39,DUMP,STEP
+*
+         LTORG
+*                  HHMMSSTH
+         DS    0D                                                  v200
+ATTDLY   DC    CL8'00000050'           1/2 sec
+*
+EXTRACT  EXTRACT MF=L
+EXTRACTL EQU   *-EXTRACT
+ESTAE    ESTAE 0,MF=L
+ESTAEL   EQU   *-ESTAE
+*
+ENQ      ENQ   (0),MF=L
+ENQL     EQU   *-ENQ
+*
+DEQ      DEQ   (0),MF=L
+DEQL     EQU   *-DEQ
+*
+RDJFCB   RDJFCB 0,MF=L
+RDJFCBL  EQU   *-RDJFCB
+*
+NJE38Q   DC    CL8'NJE38'
+NJERCON  DC    CL8'NJEINIT'
+*
+NSPOOL   DCB   DDNAME=NETSPOOL,DSORG=PS,MACRF=GL,EXLST=0
+NSPOOLN  EQU   *-NSPOOL
+*
+*                456789012345678901234567890123456789012345678901
+NJE000I  DC    C'NJE000I NJE38  &VERS'
+NJE001I  DC    C'NJE001I Initialization complete for local node'
+NJE006I  DC    C'NJE006I Open failed for DD NETSPOOL'
+NJE007I  DC    C'NJE007I NETSPOOL dataset has not been formatted'
+NJE008I  DC    C'NJE008I The NETSPOOL dataset required verification befx
+               ore start-up'
+NJE009I  DC    C'NJE009I Verification complete.  Please restart NJE38'
+NJE010I  DC    C'NJE010I Line xxx is drained'
+NJE022I  DC    C'NJE022I Config member NJECFG dated dd mmm 20yy hh.mm ix
+               n effect'
+*
+         DROP  R12
+*
+*********************
+*  N J E C O M      *               NJECOM hosts small routines and
+*                   *               frequently used constants that
+*  Common routines  *               are available to all NJExxx csects
+*  and constants    *               via base register 11
+*                   *
+*********************
+*
+NJECOM   CSECT
+         DC    A(0)                 No branch around constants
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECOM'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         USING NJECOM,R11
+         USING NJEMWK,R10
+*
+* FLNK000 - Locate a link table entry by link name
+*
+*  Entry:  R1 -> Link name to find (CL8 field padded with blanks)
+*  Exit:   CC=0 link was not found
+*          CC<>0 link table entry address is in R2
+*
+*
+*
+FLNK000  EQU   *
+         L     R2,LINKS                -> 1st entry (LOCAL entry)  v211
+         USING LINKTABL,R2
+         L     R2,LNEXT                -> first remote link        v211
+*
+FLNK010  EQU   *
+         CLC   LINKID,0(R1)            Find the link entry by name
+         BE    FLNK020                 Got it
+         ICM   R2,15,LNEXT             -> next LINKTABL entry
+         BZR   R14                     Exit CC=0 if not found
+         B     FLNK010                 Keep searching
+         DROP  R2                      LINKTABL
+*
+FLNK020  EQU   *
+         LTR   R2,R2                   Set CC non-zero
+         BR    R14                     Return w/LINKTABL entry -> R2
+*
+* RLNK000 - Locate a name in the route table
+*
+*  Entry:  R1 -> Routed name to find (CL8 field padded with blanks)
+*  Exit:   CC=0 link was not found
+*          CC<>0 Associated link name address is in R1
+*          CC<>0 Named route address is in R15
+*
+*-- First determine if the route name we are looking up is actually
+*-- a link name.
+*
+RLNK000  EQU   *
+         ICM   R15,15,ROUTES       -> RTE list                     v211
+         BZR   R14                 Exit CC=0 if no RTE list        v211
+         USING RTE,R15                                             v211
+*
+         L     R2,LINKS            1st entry (LOCAL entry)         v211
+         USING LINKTABL,R2
+         ICM   R2,15,LNEXT         Skip over local entry           v211
+         BZR   R14                 Fail the request if none        v211
+         SR    R0,R0               R0=0 assume name not a link     v211
+*
+RLNK010  EQU   *                                                   v211
+         CLC   LINKID,0(R1)        Find the link entry by name     v211
+         BE    RLNK020             Got it                          v211
+         ICM   R2,15,LNEXT         -> next LINKTABL entry          v211
+         BNZ   RLNK010             Keep looking                    v211
+         B     RLNK030             Didn't find a matching link     v211
+         DROP  R2                  LINKTABL                        v211
+*
+*-- Here if route we want is a link name too (dont use wildcards)  v211
+*
+RLNK020  EQU   *                                                   v211
+         BCTR  R0,0                Indic route is explicit link nm v211
+*                                                                  v211
+*-- Search the RTEs for the route name                             v211
+*                                                                  v211
+RLNK030  EQU   *
+         STM   R4,R7,12(R13)       Save work regs                  v211
+*
+RLNK040  EQU   *                                                   v211
+         LA    R4,ROUTNAME         -> name from route list         v211
+         LA    R5,8                max length                      v211
+         LR    R6,R1               -> selected name to locate      v211
+         LR    R7,R5               copy length                     v211
+         CLCL  R4,R6               Did we locate the name?         v211
+         BE    RLNK400             Yes, exact match                v211
+         LTR   R0,R0               Must be explicit link name?     v211
+         BNZ   RLNK050             Yes, no wildcard checking       v211
+         CLI   0(R4),C'*'          Wildcard was in the name?       v211
+         BE    RLNK400             Then we matched to that point   v211
+*
+RLNK050  EQU   *
+         ICM   R15,15,ROUTPTR      -> Next route entry             v211
+         BNZ   RLNK040             Keep looking                    v211
+         LM    R4,R7,12(R13)       Restore work regs               v211
+         BR    R14                 No matching route               v211
+*
+*-- Found the RTE with a matching name, now determine what link    v211
+*-- to route to.                                                   v211
+*
+RLNK400  EQU   *                                                   v211
+         LM    R4,R7,12(R13)       Restore work regs               v211
+         LA    R0,4                # possible routed-to names      v211
+         LA    R1,ROUTNEXT         -> first possible name          v211
+*
+RLNK410  EQU   *                                                   v211
+         L     R2,LINKS            -> first LINKTABL entry         v211
+         USING LINKTABL,R2                                         v211
+         ICM   R2,15,LNEXT         Skip over local entry           v211
+         BZR   R14                 Fail the request if none        v211
+*
+RLNK420  EQU   *                                                   v211
+         CLC   0(8,R1),BLANKS      No route-to name?               v211
+         BE    RLNK499             Fail the request                v211
+         CLC   0(8,R1),LINKID      Look for destination link       v211
+         BE    RLNK440             Found it                        v211
+         ICM   R2,15,LNEXT         -> next LINKTABL entry          v211
+         BNZ   RLNK420             Keep searching                  v211
+*
+RLNK430  EQU   *                                                   v211
+         LA    R1,8(,R1)           Next alternate route-to         v211
+         BCT   R0,RLNK410          Rescan for matching link        v211
+         B     RLNK499             None found, fail the request    v211
+*
+RLNK440  EQU   *                                                   v211
+         TM    LFLAG,LCONNECT      Is the link active?             v211
+         BZ    RLNK430             N, try next route-to link       v211
+         DROP  R2,R15              LINKTABL, RTE                   v211
+*
+RLNK490  EQU   *                                                   v211
+         CLI   *,0                 Set CC to non-zero              v211
+         BR    R14                 Return with link name -> R1     v211
+*
+RLNK499  EQU   *                                                   v211
+         CLI   *+1,0               Set CC to 0                     v211
+         BR    R14                 No matching route/act link foundv211
+*
+* SLNK000 - Start a link
+*
+*  Entry:  R2 -> LINKTABL entry to be started
+*  Exit:   CC=0 link was started
+*          CC<>0 link was already started
+*
+*
+*
+         USING LINKTABL,R2
+SLNK000  EQU   *
+         STM   R14,R9,BALRSAVE         Save regs used
+         CLC   LTCBA,=A(0)             Is link already started?
+         BNE   SLNK090                 Exit w/ CC<>0 if addr present
+*
+         XC    LTRMECB,LTRMECB         Clear from any prior use
+         LA    R1,INITPARM             -> INITPARM mapping area
+         ST    R1,LPOINTER             Pass addr of area to subtask
+         L     R5,=A(NJEDMP)           -> ESTAI exit
+         LA    R9,LTRMECB
+         LR    R1,R2                   LINKTABL entry is parameter
+*
+         MVC   MACLIST(ATTACHL),ATTACH Move macro model
+         ATTACH EP=NJEDRV,             Attach                          X
+               SZERO=YES,              Ok to share SP 0                X
+               SHSPL=SPLIST,           Shared subpool list         v220X
+               DPMOD=0,                Run task same prty              X
+               SM=SUPV,                Run task in Supervisor state    X
+               KEY=PROP,               Run task in key 8               X
+               ECB=(R9),               Subtask termination ECB         X
+               ESTAI=((5),(10)),       ESTAI exit, work area is param  X
+               SF=(E,MACLIST),         Attach macro plist              X
+               MF=(E,(1))              Param plist area
+*
+         ST    R1,LTCBA                Save attached TCB address
+         SR    R15,R15                 Set CC=0
+         B     SLNK090                 Exit with task attached
+         DROP  R2                      LINKTABL
+*
+SLNK090  EQU   *
+         LM    R14,R9,BALRSAVE         Restore caller regs
+         BR    R14                     Exit with CC set
+*
+SPLIST   DC    X'02'                   Number of shared subpools   v220
+         DC    X'01'                    Share SP 1                 v220
+         DC    X'02'                    Share SP 2                 v220
+         DS    X                        Reserved                   v220
+*
+*-- Get a new command type WRE
+*
+*-- Entry:  None
+*   Exit:   R1 -> WRE
+*
+*
+GTW000   EQU   *
+         ST    R14,SV14            Save return addr
+         GETMAIN RU,               Get CSA for WRE TYPE=WRECMD         x
+               LV=WRESIZE,                                         v220x
+               SP=2                                                v220
+         XC    0(WRESIZE,R1),0(R1)    Clear stg area               v220
+         USING WRE,R1
+         MVI   WRESP,2             Save subpool                    v220
+         MVI   WRETYPE,WRECMD      CMD/MSG WRE
+*
+         NJETRACE TYPE=TRCGWRE
+         STCM  R10,7,1(R14)        Identify trace entry            v220
+         MVC   5(3,R14),SV14+1     Addr of GTW000 caller           v220
+         STM   R0,R1,8(R14)        Len, stg addr to trace          v220
+         MVI   8(R14),2            Trace subpool #                 v220
+         DROP  R1
+         L     R14,SV14            Load return addr
+         BR    R14
+*
+*-- Queue the WRE on the Link and post link's ECB
+*-- Caller must be PSW key 0
+*
+*-- Entry:  R2 -> LINKTABL entry
+*--         R4 -> WRE
+*-- Exit:   None
+*
+PST000   EQU   *
+         USING LINKTABL,R2
+         USING WRE,R4
+         ST    R14,SV14            Save return addr
+         LM    R0,R1,LWRESWAP      Get first WRE ptr, sync count
+*
+PST020   EQU   *
+         ST    R0,WRENEXT          First WRE becomes next
+         LA    R5,1(,R1)           Incr synchronization count
+         CDS   R0,R4,LWRESWAP      Update LINK WRE anchor, sync
+         BC    7,PST020            Gotta try again
+*
+         LA    R1,LECB             -> link task notification ECB
+         POST  (1)                 Tell subtask WRE is queued
+         L     R14,SV14            Load return addr
+         BR    R14
+*
+         DROP  R2                  LINKTABL
+         DROP  R4                  WRE
+*
+*
+*-- Message response to console or local TSO user
+*
+*=== NOTE ===
+*=== At present this routine (RSP000) is not called or used, but
+*=== is retained here for possible future use.
+*
+*
+*-- Entry:  Area "MACLIST" contains a WTO format msg
+*           Area CMNDUSER=BLANKS send to console
+*           Area CMNDUSER=userid send to that userid
+*-- Exit:   None
+*
+*           Area "CMDAREA" is used by this call.
+*
+*
+RSP000   EQU   *
+         ST    R14,SV14                 Save return addr
+         CLC   CMNDUSER,BLANKS          Is there a userid?
+         BE    RSP010                   No, respond to console
+         CLC   CMNDUSER,=CL8'OP'        Respond to operator
+         BE    RSP010                   Y
+*
+         LA    R15,CMNDUSER             -> userid to locate
+         BAL   R14,USR800               See if TSO user logged on
+         BZ    RSP090                   Skip msg if not
+         MVC   CMDAREA,MACLIST+4        Save message text
+         MVC   MACLIST+4(4),=C'SE '''
+         MVC   MACLIST+8(104),CMDAREA                              v102
+         MVC   MACLIST+112(8),=C''',USER=('                        v102
+         MVC   MACLIST+120(12),BLANKS     Ensure trailer initted   v102
+         MVC   MACLIST+120(7),CMNDUSER    Max for TSO userid is 7  v102
+         LA    R1,MACLIST+127                                      v102
+         TRT   MACLIST+120(7),BLANK                                v102
+         MVI   0(R1),C')'
+         MVI   1(R1),C' '
+         MVC   MACLIST(4),=AL2(129,0)   max len + 4 overhead       v102
+*
+         SPKA  0
+         LA    R1,MACLIST
+         SR    R0,R0
+         SVC   34                       Issue MGCR SVC
+         SPKA  X'80'
+         B     RSP090
+*
+RSP010   EQU   *
+         WTO   ,MF=(E,MACLIST)
+*
+RSP090   EQU   *
+         L     R14,SV14                 Reload return addr
+         BR    R14
+*
+*-- Search CSCB chain to see if TSO user is logged on
+*-- Entry:  R15->8-byte padded field containing TSO userid to find
+*-- Exit:  CC=0  user was not logged on
+*--        CC<>0 user is logged on
+*
+USR800   EQU   *
+         CLC   =CL8'OP',0(R15)     Is the userid the operator?
+         BE    USR890              Yes, let it thru
+         L     R1,16               Get CVT ptr
+         USING CVT,R1
+         L     R1,CVTASCBH         -> highest prty ASCB
+         USING ASCB,R1
+*
+USR810   EQU   *
+         L     R2,ASCBCSCB         -> CSCB
+         USING CSCB,R2
+         LTR   R2,R2               Is there a CSCB?
+         BZ    USR840              No, get next ASCB
+*
+USR820   EQU   *
+         CLC   CHKEY,=XL8'00'      Jobname zeroed?
+         BE    USR830              Y, skip this CSCB
+         CLC   CHKEY,=CL8' '       Jobname is blank?
+         BE    USR830              Y, skip this CSCB
+         CLC   CHKEY,0(R15)        Is this the userid?
+         BE    USR890              Yes
+USR830   EQU   *
+         L     R2,CHPTR            -> next CSCB
+         LA    R2,0(,R2)           Clear high order
+         LTR   R2,R2               Last CSCB?
+         BNZ   USR820              No
+         BR    R14                 Return with CC=0 (not found)
+*
+USR840   EQU   *
+         L     R1,ASCBFWDP         -> next ASCB
+         LTR   R1,R1               last one?
+         BNZ   USR810              No
+         BR    R14                 Return with CC=0 (not found)
+*
+USR890   EQU   *
+         LTR   R14,R14             Set CC=non zero (userid found)
+         BR    R14                 Return to caller
+*
+         DROP  R1                  ASCB
+         DROP  R2                  CSCB
+*
+*-- Special code to intercept messages destined for                v220
+*-- registered users                                               v220
+*
+*
+REG000   EQU   *                                                   v220
+         L     R2,AREGUSER         -> registered user anchor word  v220
+         ICM   R2,15,0(R2)         -> registered user queue        v220
+         BZR   R14                 No registered users             v220
+*
+         USING REGUSERB,R2                                         v220
+REG010   EQU   *                                                   v220
+         CLC   REGUSRID,0(R15)     Find a matching registered user v220
+         BE    REG020              Found it                        v220
+         ICM   R2,15,REGNEXT       -> next REGUSER entry           v220
+         BNZ   REG010              Keep looking                    v220
+         BR    R14                 Userid was not registered       v220
+*
+REG020   EQU   *                                                   v220
+         ST    R14,SVR14R          Save return addr                v220
+         BAL   R14,GTW000          Get a WRE                       v220
+         LR    R4,R1                                               v220
+         USING WRE,R4                                              v220
+         MVI   WRETYPE,WREQRM      Queue registered msg WRE        v220
+*
+         MVC   WRELINK,LCLNODE     Target WRE to local node task   v220
+         MVC   WREUSER,REGUSRID    Dest= registered user id        v220
+         MVC   WREORIG,BLANKS      No originating node             v220
+         MVC   WRETXT,BLANKS       Init first part                 v220
+         MVC   WRETXT(5),=C'From '                                 v220
+         MVC   WRETXT+5(8),WREORIG-WRE(R6)  From original msg      v220
+         TRT   WRETXT+5(9),BLANK   Look for end of orig userid     v220
+         MVI   0(R1),C':'                                          v220
+         LA    R1,2(,R1)           -> area for msg                 v220
+         MVC   0(104,R1),WRETXT-WRE(R6)  Copy msg text             v220
+         MVI   WRETXTLN,L'WRETXT   Set the max possible len        v220
+*
+         SPKA  0                                                   v220
+         L     R15,CSABLK          -> NJE38 CSA block              v220
+         USING NJ38CSA,R15                                         v220
+         LM    R0,R1,NJ38SWAP      Get first WRE ptr, sync count   v220
+*
+REG030   EQU   *                                                   v220
+         ST    R0,WRENEXT          First WRE becomes next          v220
+         LA    R5,1(,R1)           Incr synchronization count      v220
+         CDS   R0,R4,NJ38SWAP      Update LINK WRE anchor, sync    v220
+         BC    7,REG030            Gotta try again                 v220
+*
+         LA    R1,NJ38ECB          -> main task notification ECB   v220
+         POST  (1)                 Wake him up                     v220
+*
+         SPKA  X'80'                                               v220
+*
+         DROP  R2,R4,R15           REGUSERB,WRE,NJ38CSA            v220
+*                                                                  v220
+REG090   EQU   *                                                   v220
+         L     R14,SVR14R          Load return addr                v220
+         LTR   R14,R14             Set non-zero CC                 v220
+         BR    R14                 Ret w/CC non-zero (msg queued)  v220
+*
+*
+*-- Format and display VSAM errors
+*
+FMT000   EQU   *
+         STM   R14,R2,BALRSAVE         Save regs used
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(L'NJE079I),NJE079I   Move msg text
+         MVC   MACLIST+55(8),5(R12)    Move csect name
+         TRT   MACLIST+55(9),BLANK     Look for end of csect name
+         MVI   0(R1),C'+'
+*
+         LA    R15,0(,R14)  Clear high, Get addr of call to this rtn
+         LA    R12,0(,R12)             Clear high byte
+         SR    R15,R12                 Compute offset of call
+         ST    R15,DBLE                Save to work area
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   1(4,R1),TWRK            Move call offset to msg
+*
+         LA    R15,NCB1
+         UNPK  TWRK(5),NCBRTNCD-NCB(3,R15)  Add zones
+         TR    TWRK(4),HEXTRAN-240
+         MVC   MACLIST+35(4),TWRK      Move rtncd/errcd
+*
+         UNPK  TWRK(3),NCBREQ-NCB(2,R15)  Add zones
+         TR    TWRK(2),HEXTRAN-240
+         MVC   MACLIST+45(2),TWRK      Move req code
+*
+         L     R1,NCBMACAD-NCB(,R15)   Get failing VSAM macro addr
+         LA    R1,0(,R1)               Clear high byte
+         S     R1,ANJESPL              offset into NJESPOOL rtn v210
+         ST    R1,DBLE
+         UNPK  TWRK(5),DBLE+2(3)       Add zones
+         TR    TWRK(4),HEXTRAN-240     Display hex
+         MVC   MACLIST+50(4),TWRK      Move NJESPOOL offset to msg
+*
+         MVC   LASTRC(2),NCBRTNCD-NCB(R15)  Save off rtncd/errcd
+         OI    NJFL1,NJF1VSER          Indicate VSAM error occurred
+*
+         WTO   ,MF=(E,MACLIST)
+*
+FMT090   EQU   *
+         LM    R14,R2,BALRSAVE         Restore caller regs
+         BR    R14                     Exit with CC set
+*
+*
+*
+ATTACH   ATTACH SF=L
+ATTACHL  EQU   *-ATTACH
+POST     POST  0,ASCB=0,ERRET=0,MF=L                               v220
+POSTL    EQU   *-POST                                              v220
+WTOMSG   WTO   '                                                       x
+                                             ',MF=L
+WTOMSGL  EQU   *-WTOMSG
+*
+BLANKS   DC    CL120' '
+NONBLANK DC    64X'FF',X'00',191X'FF'   TR Table to locate nonblank
+BLANK    DC    64X'00',X'FF',191X'00'   TR Table to locate blanks
+ASTER    DC    92X'00',X'FF',163X'00'   TR Table to locate asteriskv211
+HEXTRAN  DC    CL16'0123456789ABCDEF'  Translate table
+*                      1         2         3           4         5
+*                456789012345678901234567890123 45678 90123456789012345
+NJE079I  DC    C'NJE079I NETSPOOL RTNCD/ERRCD=X''0000'',REQ=01,O=1234,Mx
+               MMMMMMM     '
+*
+         LTORG
+*
+*                                                                     *
+***********************************************************************
+**                                                                   **
+**                        TASK ESTAI EXIT                            **
+**                                                                   **
+** This csect handles all abends trapped by ESTAE during the normal  **
+** execution of the subtask.          This exit does not attempt     **
+** any recovery other than to terminate processing.                  **
+** An SVC dump is taken on abends.                                   **
+**                                                                   **
+** On entry:  R0=ESTAE provide entry code                            **
+**            R1=SDWA address                                        **
+**            R2=parameter passed on ESTAE macro                     **
+**                                                                   **
+**                                                                   **
+** On exit: If SDWACLUP is 1, then no retry is allowed and this      **
+**             exit will allow percolation back to system routines   **
+**             to terminate the task.                                **
+**                                                                   **
+**          If SDWACLUP is 0, then retry is allowed.                 **
+**                                                                   **
+** Security:  N/A.                                                   **
+**                                                                   **
+** Register usage:                                                   **
+**                                                                   **
+**   R1  = SDWA address                                              **
+**   R3  = SDWA address                                              **
+**   R10 = Dynamic storage area base                                 **
+**   R12 = This program base                                         **
+**                                                                   **
+**                                                                   **
+**                                                                   **
+***********************************************************************
+*
+NJEDMP   CSECT
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJEDMP'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+*
+         LR    R12,R15                SET UP BASE REG
+         USING NJEDMP,R12             ESTABLISH ADDRESSABILITY
+         LR    R8,R14                 SAVE RETURN ADDRESS TO SYSTEM
+*
+         L     R10,0(,R1)             GET VALUE PASSED TO US (WORKA)
+         USING NJEMWK,R10
+         L     R11,ANJECOM            -> common code and constants
+         USING NJECOM,R11
+*
+         LR    R3,R1                  SAVE R1 ENTRY CONTENTS
+         USING SDWA,R3
+         LR    R5,R0                  Save R0 entry code
+*
+         LTR   R3,R3                  Do we have an SDWA?
+         BZ    NOSDWA                 Exit if no SDWA
+         LA    R13,MVSSAVE            Save area
+*
+         MODESET MODE=SUP,            Run this ESTAI exit privileged   x
+               KEY=ZERO                to access PSW -> storage
+*
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         L     R6,PSATOLD-PSA(0)      -> my TCB
+         L     R5,TCBTIO-TCB(,R6)     -> TIOT
+         MVC   MACLIST+4(8),0(R5)         Plug in job name
+         MVC   MACLIST+14(5),=C'LINK '
+         MVC   LKNAME,=CL8' '           Init receiving field
+*
+         L     R2,LINKS                -> 1st entry (LOCAL entry)  v211
+         USING LINKTABL,R2
+         ICM   R2,15,LNEXT             -> 1st non-lcl LINKTABL     v211
+         BZ    LNK005                  Skip if not there           v211
+*
+LNK000   EQU   *
+         CLM   R6,7,LTCBA+1             Look for TCB of failing link
+         BE    LNK010                   Found it
+         ICM   R2,15,LNEXT              -> next LINKTABL entry
+         BNZ   LNK000                   Keep searching
+*
+LNK005   EQU   *                                                   v211
+         MVC   MACLIST+14(5),=C'LMOD '
+         MVC   MACLIST+19(8),=CL8'NJEINIT' Else it is main task
+         OI    NJFL1,NJF1INIT           This is the NJEINIT task
+         B     LNK020                   No TCB/link found
+*
+LNK010   EQU   *
+         MVC   MACLIST+19(8),LINKID     Move link name
+         MVC   LKNAME,LINKID            Save copy of link name
+         DROP  R2
+*
+LNK020   EQU   *
+         MVC   MACLIST+29(5),=C'ABEND'
+         L     R5,SDWAABCC              GET ABEND CODE INFO WORD
+         N     R5,=X'00FFF000'          KEEP ONLY THE SYSTEM CODE
+         BZ    USERCDE                  NONE THERE, MUST BE A USER CODE
+         C     R5,=X'00222000'          Operator cancel, no dump?
+         BE    SDUMP040                 no
+         C     R5,=X'00013000'          013-OPEN abend?            v211
+         BE    SDUMP040                 no dump                    v211
+*
+         MVI   MACLIST+35,C'S'          INDICATE SYSTEM CODE
+         UNPK  FWORK(5),SDWACMPC(3)     GET SYSTEM CMP CODE
+         TR    FWORK(3),HEXTRAN-240
+         MVC   FWORK+3(5),=CL5' '       CLEAR REST OF ABEND CODE
+         B     NOREAS
+*
+USERCDE  EQU   *
+         MVI   MACLIST+35,C'U'         INDICATE USER ABEND CODE
+         L     R5,SDWAABCC             GET ABEND CODE
+         N     R5,=X'00000FFF'         KEEP USER ABEND CODE
+         CVD   R5,FSAVE                CONVERT CODE TO DECIMAL
+         UNPK  FWORK(4),FSAVE          UNPK THE CODE
+         OI    FWORK+3,X'F0'           FIX SIGN
+         MVC   FWORK+4(2),=CL2' '      BLANKS AT END OF ABEND CODE
+*
+NOREAS   EQU   *
+         MVC   MACLIST+36(6),FWORK     MOVE ABEND-REASON TO LINE
+         MVC   ABCODE,MACLIST+36       Save a copy of formatted abcode
+*
+         WTO   ,MF=(E,MACLIST)
+*
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(3),=C'PSW'
+         UNPK  FSAVE(9),SDWAEC1(5)    Add zones to PSW word 1
+         TR    FSAVE(8),HEXTRAN-240
+         MVC   MACLIST+10(8),FSAVE
+         UNPK  FSAVE(9),SDWAEC1+4(5)  Add zones to PSW word 2
+         TR    FSAVE(8),HEXTRAN-240
+         MVC   MACLIST+19(8),FSAVE
+*
+         SR    R5,R5                   CLEAR FOR IC
+         IC    R5,SDWAILC1             GET THE ILC
+         CVD   R5,FWORK                MAKE DECIMAL
+         MVC   MACLIST+29(3),=C'ILC'
+         UNPK  MACLIST+33(2),FWORK     UNPK
+         OI    MACLIST+34,X'F0'        FIX THE SIGN
+*
+         MVC   MACLIST+37(4),=C'INTC'
+         UNPK  FWORK(5),SDWAINC1(3)    MAKE INTC DISPLAYABLE
+         TR    FWORK(4),HEXTRAN-240
+         MVC   MACLIST+42(4),FWORK     MOVE INTC TO LINE
+*
+         WTO   ,MF=(E,MACLIST)
+*
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(13),=C'DATA NEAR PSW'
+         MVC   MACLIST+19(8),=CL8'UNAVAIL'  ASSUME WE CANT GET DATA
+         L     R4,SDWAEC1+4            Get PSW IA
+         LA    R4,0(,R4)               Clear high bit
+         C     R4,=F'8'                1st 8 bytes of storage?
+         BH    LOC010                  No, its higher than that
+         SR    R4,R4                   Yes, just use 0
+         B     LOC020
+*
+LOC010   EQU   *
+         S     R4,=F'8'                BACK UP BEFORE INTERRUPT ADDR
+*
+LOC020   EQU   *
+         LRA   R0,0(,R4)               Do we have access?
+         BNZ   UNAVAIL                 No translation, better not
+         LRA   R0,14(,R4)              Do we have access?
+         BNZ   UNAVAIL                 No translation, better not
+*
+         ST    R4,FWORK                SAVE FOR CONVERSION
+         UNPK  FSAVE(9),FWORK(5)       ADD ZONES TO ADDRESS
+         TR    FSAVE(8),HEXTRAN-240    MAKE DISPLAYABLE HEX
+         MVC   MACLIST+19(8),FSAVE     MOVE DISPLAYABLE
+*
+         MVC   FWORK(4),0(R4)          MOVE 4 WORDS AT PSW
+         UNPK  FSAVE(9),FWORK(5)       ADD ZONES
+         TR    FSAVE(8),HEXTRAN-240    MAKE DISPLAYABLE HEX
+         MVC   MACLIST+29(8),FSAVE     MOVE TO LINE
+*
+         MVC   FWORK(4),4(R4)          MOVE 4 WORDS AT PSW
+         UNPK  FSAVE(9),FWORK(5)       ADD ZONES
+         TR    FSAVE(8),HEXTRAN-240    MAKE DISPLAYABLE HEX
+         MVC   MACLIST+38(8),FSAVE     MOVE TO LINE
+*
+         MVC   FWORK(4),8(R4)          MOVE 4 WORDS AT PSW
+         UNPK  FSAVE(9),FWORK(5)       ADD ZONES
+         TR    FSAVE(8),HEXTRAN-240    MAKE DISPLAYABLE HEX
+         MVC   MACLIST+47(8),FSAVE     MOVE TO LINE
+*
+         MVC   FWORK(4),12(R4)         MOVE 4 WORDS AT PSW
+         UNPK  FSAVE(9),FWORK(5)       ADD ZONES
+         TR    FSAVE(8),HEXTRAN-240    MAKE DISPLAYABLE HEX
+         MVC   MACLIST+56(8),FSAVE     MOVE TO LINE
+*
+UNAVAIL  EQU   *
+         WTO   ,MF=(E,MACLIST)
+*----
+         LA    R4,4                    4 ROWS OF REGISTERS
+         LA    R5,SDWAGR00             POINT TO ABEND REGS
+         LA    R6,REGLIST              POINT TO REGISTER ID LITERALS
+*
+GPR000   EQU   *                                                   v220
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(8),0(R6)      MOVE REGISTERS ID
+         LA    R15,MACLIST+13          WHERE 1ST REG GOES ON LINE
+         LA    R14,4                   4 REGS PER LINE
+*
+GPR010   EQU   *                                                   v220
+         UNPK  FSAVE(9),0(5,R5)        UNPK A REGISTER
+         TR    FSAVE(8),HEXTRAN-240    MAKE DISPLAYABLE HEX
+         MVC   0(8,R15),FSAVE          MOVE TO THE LINE
+         LA    R15,10(,R15)            NEXT SPOT ON PRINT LINE
+         LA    R5,4(,R5)               NEXT REGISTER
+         BCT   R14,GPR010              KEEP DOING REGS             v220
+         WTO   ,MF=(E,MACLIST)
+         LA    R6,8(,R6)               NEXT REGISTER ID
+         BCT   R4,GPR000               GO DISPLAY THE NEXT ROW     v220
+*
+*
+SDUMP000 EQU   *
+         MVI   DHDR,C' '
+         MVC   DHDR+1(29),DHDR
+         MVI   DHDR,29                IBM length of header
+         L     R5,PSATOLD-PSA(0)      -> my TCB
+         L     R5,TCBTIO-TCB(,R5)     -> TIOT
+         MVC   DHDR+1(8),0(R5)        Use jobname in description
+         MVC   DHDR+11(8),LKNAME      Use link name
+         MVC   DHDR+21(7),ABCODE
+*
+         MVC   MACLIST(SDUMPL),SDUMP    MOVE SDUMP LIST TO WORK
+         LA    R1,MACLIST
+         SDUMP HDRAD=DHDR,              ISSUE SDUMP TO RECORD STATUS   x
+               BUFFER=NO,                                              x
+               QUIESCE=NO,                                             x
+               SDATA=(RGN,CSA,LPA,SUM),                                x
+               MF=(E,(1))
+*
+*
+SDUMP040 EQU   *
+         TM    NJFL1,NJF1INIT          Is this the NJEINIT task?
+         BZ    SDUMP090                No
+         ICM   R5,15,CSABLK            -> CSA stg area
+         BZ    SDUMP090                Not present
+*
+         FREEMAIN RU,LV=16,A=(5),SP=241  Free CSA area
+         XC    CSABLK,CSABLK
+*
+SDUMP090 EQU   *
+         LR    R1,R3                  SDWA BACK TO R1
+*                                 **  SDWA ADDR MUST BE IN R1 FOR SETRP
+         SETRP RC=0,                  No retry                         X
+               DUMP=NO                Suppress any further dumps
+*
+NOSDWA   EQU   *                  **  NO RETRY AVAILABLE (OR DESIRED)
+         SR    R15,R15                REQUEST PERCOLATION
+         LR    R14,R8                 RESTORE RETURN ADDRESS
+         BR    R14                    RETURN TO SYSTEM
+*
+         LTORG
+*
+SDUMP    SDUMP MF=L
+SDUMPL   EQU   *-SDUMP
+*
+REGLIST  DC    CL8'GR 0-3'
+         DC    CL8'GR 4-7'
+         DC    CL8'GR 8-11'
+         DC    CL8'GR 12-15'
+*
+         LTORG
+*
+*
+*
+*********************
+*  N J E C M D      *       Commands issued by TSO users via command
+*                   *       module NJE38 also arrive here
+*  MVS Modify cmd   *
+*  processing       *
+*                   *
+*********************
+*
+NJECMD   CSECT
+         B     28(,R15)               BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                LENGTH OF EYECATCHERS
+         DC    CL9'NJECMD'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R13)
+         LR    R12,R15                 Base
+         USING NJECMD,R12              ADDRESS IT
+         USING NJECOM,R11
+         USING NJEMWK,R10
+*
+         ST    R13,NJECMDSA+4
+         LA    R13,NJECMDSA
+*
+CMD000   EQU   *
+         BAL   R14,LOC000          Announce command being executed
+*
+CMD010   EQU   *
+         LA    R0,TGTCONS          Console gets response
+         LA    R1,CMNDBLOK         -> local CMDBLOK area
+         ST    R1,ACMDBLOK         Set addr in cmd parm list
+         LA    R1,INITPARM         -> parm list
+         L     R15,ANJECMX         -> Command processor
+         BALR  R14,R15
+         B     XITCMD00
+*
+*
+LOC000   EQU   *
+         CLC   CMNDUSER,=CL8'OP'       Command from operator?
+         BER   R14                     Yes, skip location msg
+*
+         ST    R14,SV14                 Save return addr
+         MVC   MACLIST(WTOMSGL),WTOMSG
+         MVC   MACLIST+4(L'NJE005I),NJE005I
+         LA    R1,MACLIST+4+L'NJE005I   -> next byte
+         MVC   0(8,R1),LCLNODE         Local node
+         TRT   0(9,R1),BLANK           Look for end
+         MVI   0(R1),C'('
+         MVC   1(8,R1),CMNDUSER        Local userid
+         TRT   1(9,R1),BLANK           Look for end
+         MVC   0(12,R1),=CL12') executing:'
+         LA    R1,13(,R1)              -> area for msg
+         SR    R15,R15                 Clear for IC
+         IC    R15,CMNDBLEN            Len of cmd text
+         C     R15,=F'50'              Allow 50 char max
+         BL    *+8                     We're ok
+         LA    R15,50                  Use 50
+         EX    R15,MVCMTXT1            Move command text to msg
+*
+         WTO   ,MF=(E,MACLIST)         Issue location executing msg
+*
+LOC090   EQU   *
+         L     R14,SV14                Reload return
+         BR    R14                     Return
+*
+MVCMTXT1 MVC   0(0,R1),CMDAREA         executed instr
+*
+*
+*
+*
+*
+XITCMD00 EQU   *
+         L     R13,4(,R13)         -> NJEREQ save area
+         LM    R14,R12,12(R13)     Reload callers regs
+         SR    R15,R15
+         BR    R14                 Return to NJEREQ
+*
+         LTORG
+*
+*                456789012345678901234567890123456789012345678901
+NJE005I  DC    C'NJE005I Location '             Location executing
+*
+*
+*
+*
+***************
+* TIMER       *                        THIS EXIT WILL KEEP THE JOB
+* EXPIRATION  *                        ACTIVE EVERY 20 MINUTES, AND
+* EXIT        *                        WILL KEEP THE JOB FROM ABENDING
+***************                        WITH AN S 522 ABEND (WAIT LIMIT)
+*
+NJETMR   CSECT
+         B     28(,R15)                BRANCH AROUND EYECATCHERS
+         DC    AL1(23)                 LENGTH OF EYECATCHERS
+         DC    CL9'NJETMR'
+         DC    CL9'&SYSDATE'
+         DC    CL5'&SYSTIME'
+         STM   R14,R12,12(R13)
+         LR    R12,R15
+         USING NJETMR,R12
+*
+         STIMER REAL,                  RESET THE TIMER AGAIN           X
+               (12),                   POINT TO THE EXIT ROUTINE       X
+               DINTVL=INTVL            INTERVAL
+*
+         LM    R14,R12,12(R13)         RELOAD REGS
+         SR    R15,R15
+         BR    R14                     RETURN TO SYSTEM
+*
+         DS    0D
+*                  HHMMSSTH
+INTVL    DC    CL8'00200000'           20 MINUTE TIMER
+*
+         DROP  R12
+         LTORG
+*
+*
+***************                                                    v212
+* GET         *                                                    v212
+* TRACE       *                                                    v212
+* ENTRY       *                                                    v212
+***************                                                    v212
+*
+NJETRC   CSECT                                                     v212
+         B     28(,R15)                BRANCH AROUND EYECATCHERS   v212
+         DC    AL1(23)                 LENGTH OF EYECATCHERS       v212
+         DC    CL9'NJETRC'                                         v212
+         DC    CL9'&SYSDATE'                                       v212
+         DC    CL5'&SYSTIME'                                       v212
+         USING NJETRC,R15                                          v212
+         LR    R0,R14                  Save return addr            v212
+*
+TRC000   EQU   *                                                   v212
+         USING TRCCTL,R2                                           v212
+         L     R1,TRCCURR              -> current trace slot       v212
+         LA    R14,TRCSZ(,R1)          -> next slot                v212
+         C     R14,TRCEND              At end of table?            v212
+         BL    TRC010                  No                          v212
+         L     R14,TRCSTRT             Y, wrap to beginning        v212
+         LA    R14,TRCSZ(,R14)         -> Skip over first slot     v212
+*
+TRC010   EQU   *                                                   v212
+         CS    R1,R14,TRCCURR          Set new current             v212
+         BC    4,TRC000                CC=1; no match; try again   v212
+*
+         XC    0(TRCSZ,R14),0(R14)     Clear slot                  v212
+         DROP  R2,R15                                              v212
+*
+         LR    R15,R0                  Load return addr to.. R15  !v212
+         LM    R0,R2,20(R13)           Reload the rest             v212
+         BR    R15                     Return via R15;             v212
+*                                       New trace entry -> R14     v212
+*
+*
+*
+****  Main work area common
+****  to all NJExxx CSECTs.
+*
+NJEMWK   DSECT
+NJEEYE   DS    CL4'NJEM'           Eyecatcher; main task work area
+NJEWKLEN DS    F                   Getmain size of this area
+*
+DEFUSER  DS    CL8                 Default userid from CONFIG      v200
+RELAYID  DS    CL8                 Relay entity id                 v220
+DBLE     DS    D                   Work area
+TWRK     DS    2D                  Work area
+NCB1     DS    XL48                NETSPOOL CB
+*
+         NJEPARMS                  Define passed parameter list    v220
+*
+MACLIST  DS    XL160               Macro expansion area
+ANJECOM  DS    A                   -> NJECOM csect
+COMMAREA DS    A                   -> Console communications area
+COMMECBA DS    A                   -> Console communications ECB
+REGUSER  DS    A                   -> REGUSER chain anchor         v220
+LINKS    DS    A                   -> LINKTABL chain anchor        v211
+ROUTES   DS    A                   -> RTE chain anchor             v211
+AUTHS    DS    A                   -> AUTHLIST chain anchor        v211
+CSAECBAD DS    A                   -> WRE ECB in CSA (same as NJ38ECB)
+*
+ECBLIST  DS    66A                 ECB list, 64 links + 2 COMM ECBs
+*
+NJFL1    DS    X                   Flag byte
+NJF1STOP EQU   X'80'   1... ....    Console STOP issued
+NJF1ENQ  EQU   X'40'   .1.. ....    NJE38 system ENQ issued
+NJF1VSER EQU   X'02'   .... ..1.    NETSPOOL VSAM error occurred
+NJF1INIT EQU   X'01'   .... ...1    NJEINIT task in RTM
+*                      ..xx xx..    Available
+*
+NJFL2    DS    X                   Flag byte
+*                      xxxx xxxx    Available
+*
+LASTRC   DS    X                   Last RC from NCBRTNCD
+LASTERRC DS    X                   Last errcd from NCBERRCD
+*
+FSAVE    DS    2D
+FWORK    DS    D
+DHDR     DS    CL30
+ABCODE   DS    CL7
+FLAGS    DS    X
+LKNAME   DS    CL8                 Name of failing link
+*
+*
+*                                  Command response target
+TGTUSER  EQU   0                    remote user
+TGTCONS  EQU   4                    MVS system console
+CMNDBLOK DS    0XL140              CMDBLOK
+CMNDBLEN DS    AL1                 Command image ibm length
+CMNDDMY  DS    XL3                 Rest of CMDBLOK (unused here)
+CMNDLINK DS    CL8                 Node of issuer
+CMNDUSER DS    CL8                 yserid of issuer
+CMDAREA  DS    CL120               Modify command image
+*
+CMDBLNK  DS    CL120               For TRT overflow, all blanks
+*
+JFCBDCB  DS    (NSPOOLN)X          Space for DCB
+JEXLST   DS    A                   DCB EXLST
+*
+NJERNAME DS    CL12                12 ENQ RNAME,+44 for DSN in JFCB
+JFCB     DS    XL176               Space for JFCB
+*
+SV14     DS    A                   General use R14 save
+SVR14R   DS    A                   General use R14 save
+NJESA    DS    18F                 NJEINIT OS save area
+NJECMDSA DS    18F                 NJECMD OS save area
+MVSSAVE  DS    18F                 ESTAE exit OS save
+BALRSAVE DS    16F                 Local register save area
+*
+         DS    0D                      Force doubleword size
+NJEWKSZ  EQU   *-NJEMWK
+*
+*
+*-- System DSECTs
+*
+*
+IEZCOM   DSECT
+         IEZCOM
+IEZCIB   IEZCIB
+         IHAPSA
+         IHASDWA
+         IKJTCB
+         IHAASCB
+*
+CSCB     DSECT
+         IEECHAIN                      MAP FOR A CSCB
+         CVT   DSECT=YES,LIST=NO
+         DCBD  DEVD=DA,DSORG=PS
+*
+         COPY  LINKTABL
+         COPY  RTE
+         COPY  AUTHLIST
+         COPY  NETSPOOL
+*
+*-- NJE38 DSECTs
+*
+         NJEWRE                                                    v220
+         NJERUSER                                                  v220
+         NJETRACE TYPE=DSECT                                       v220
+*
+         END   NJEINIT

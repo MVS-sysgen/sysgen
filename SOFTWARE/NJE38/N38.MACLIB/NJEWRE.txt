@@ -1,0 +1,40 @@
+         MACRO
+&X       NJEWRE
+.*
+.* Change log:
+.*
+.* 10 Dec 20 - Support for registered users and message queuing    v220
+.*
+WRE      DSECT
+WRENEXT  DS    A                    -> next WRE or 0
+WRETYPE  DS    X                    WRE type
+WRENEW   EQU   X'04'                 New file added to NETSPOOL
+WRECMD   EQU   X'08'                 CMD type
+WREMSG   EQU   X'0C'                 MSG type
+WRESTAR  EQU   X'10'                 START type
+WREREG   EQU   X'14'                 Registration request          v220
+WREDREG  EQU   X'18'                 Deregistration request        v220
+WREQRM   EQU   X'1C'                 Queue registered user msg     v220
+WREDRM   EQU   X'20'                 Dequeue registered user msg   v220
+WRECODE  DS    X                    Command code for link driver
+WRETXTLN DS    X                    CMD or MSG text length
+WRESP    DS    X                    Getmained subpool number       v220
+WRELINK  DS    CL8                  Target link name for this WRE
+WREUSER  DS    CL8                  Target user name for this WRE
+WREORIG  DS    0CL8                 Originating userid of MSG      v220
+WREASCB  DS    A                    Originating ASCB addr          v220
+WREECB   DS    F                    Originator ECB for CM POST     v220
+WRETXT   DS    CL120                Command or message text
+WRESIZE  EQU   *-WRE                Size of WRE                    v220
+*
+*- Error codes for registered user services (POST code in WREECB)  v220
+ERNOERR  EQU   0                    No errors                      v220
+ERNOMSG  EQU   4                    No more messages               v220
+ERSTOP   EQU   8                    STOP command issued            v220
+ERINVREQ EQU   12                   Invalid request                v220
+ERINACT  EQU   16                   NJE38 is not active            v220
+ERPOST   EQU   20                   CM POST to NJE38 failure       v220
+ERDUPUSR EQU   24                   User already registered        v220
+ERUSERNF EQU   28                   Userid is not registered       v220
+ERECBPST EQU   32                   User ECB was posted            v220
+         MEND

@@ -1,0 +1,531 @@
+*
+*
+*-- NJE38 - NETSPOOL Formatter
+*
+*
+*   This program formats the NETSPOOL dataset.
+*
+*
+*
+*
+         REGEQU
+NJEFMT   CSECT
+         NJEVER
+         STM   R14,R12,12(R13)         SAVE CMS REGS
+         LR    R12,R15                 BASE
+         USING NJEFMT,R12              ADDRESS IT
+*
+         GETMAIN RU,                   GET LOCAL STG AREA              X
+               LV=NJEFSZ
+         LR    R10,R1
+         LR    R1,R0                   COPY LENGTH
+         LR    R2,R0                   COPY LENGTH
+         LR    R0,R10                  -> NEW STG AREA
+         SR    R15,R15                 SET PAD
+         MVCL  R0,R14                  CLEAR THE PAGE
+*
+         USING NJEFWK,R10
+         ST    R13,NJESA+4             SAVE PRV S.A. ADDR
+         LA    R1,NJESA                -> MY SAVE AREA
+         ST    R1,8(,R13)              PLUG IT INTO PRIOR SA
+         LR    R13,R1
+*
+         MVC   NJEEYE,=CL4'NJEF'       Work area eyecatcher
+         ST    R2,NJEWKLEN             Save size of area
+         MVC   SYSPRINT(DMYPRTL),DMYPRT Set up DCB
+         MVC   LIST,BLANKS             Init print line
+*
+         MVC   MACLIST(OPENL),OPEN     Move OPEN list
+         OPEN  (SYSPRINT,OUTPUT),      Open the print dataset          X
+               MF=(E,MACLIST)
+*
+         MVC   LIST(L'MSG001),MSG001
+         BAL   R14,PUT                 Write the line
+         BAL   R14,PUT                 Write blank line
+*
+         GETMAIN RU,                   Get storage for NETSPOOL block  x
+               LV=4089,                                                x
+               BNDRY=PAGE
+         ST    R1,BLK                  Save address
+         LR    R8,R1                   Keep in R8
+*
+         LR    R1,R0                   Copy length
+         LR    R0,R8                   Copy address
+         SR    R15,R15                 Clear pad
+         MVCL  R0,R14                  Clear the stg
+*
+         GENCB BLK=ACB,                                                x
+               DDNAME=NETSPOOL,                                        x
+               MACRF=(OUT,KEY,SEQ),                                    x
+               MF=(G,MACLIST)
+         STM   R0,R1,ACBL              Save len, addr
+*
+         LA    R9,KEY                  -> block number argument
+         GENCB BLK=RPL,                                                x
+               ACB=(*,ACB),                                            x
+               AREA=(R8),              -> block area                   x
+               AREALEN=4089,                                           x
+               RECLEN=4089,                                            x
+               ARG=(R9),                                               x
+               OPTCD=(KEY,SEQ,MVE),                                    x
+               MF=(G,MACLIST)
+         STM   R0,R1,RPLL              Save len, addr
+*
+         L     R7,ACB                  -> ACB
+         MVC   MACLIST(OPENL),OPEN     Move macro model
+         OPEN  ((R7)),                 Open NETSPOOL                   x
+               MF=(E,MACLIST)
+         LTR   R15,R15                 Did open succeed?
+         BNZ   OPENFAIL                No
+         OI    FLAGS1,FL1OPEN          Indic ACB open
+*
+         LA    R5,HIRBA                -> SHOWCB receipt fields
+         SHOWCB ACB=(R7),                                              x
+               AREA=(R5),                                              x
+               LENGTH=8,                                               x
+               FIELDS=(HALCRBA,CINV),  Hi alloc RBA + CISZ             x
+               MF=(G,MACLIST)
+*
+         CLC   CISZ,=F'4096'           Ensure CISZ is 4096
+         BNE   BADCISZ                 It is not
+         L     R5,HIRBA                Get high allocated RBA
+         SRL   R5,12                   Divide by 4096
+         ST    R5,BLKS                 Save number of blocks in d.set
+*
+         L     R6,RPL
+         USING IFGRPL,R6
+         LA    R4,1                    Init block counter
+*
+FMT000   EQU   *
+         PUT   RPL=(R6)                Write a block
+*
+         LTR   R15,R15                 Any errors?
+         BZ    FMT010                  No
+         CLI   RPLRTNCD,X'08'          Logical error?
+         BNE   PUTFAIL                 No, display error
+         CLI   RPLERRCD,X'08'          Duplicate block?
+         BE    FMT100                  Cluster is already formatted
+         B     PUTFAIL                 Display all other errors
+*
+FMT010   EQU   *
+         LA    R4,1(,R4)               Count blocks
+         BCT   R5,FMT000               Format exact amount
+         B     FMT200                  Now go write images
+*
+*-- Here if NETSPOOL was previously formatted
+*
+FMT100   EQU   *
+         WTO   'NJEFMT - NETSPOOL dataset is already formatted'
+         WTO   'NJEFMT - Reformatting will cause loss of all data'
+*
+FMT110   EQU   *
+         XC    OPECB,OPECB             Reinit ECB
+         LA    R2,DBLE                 -> reply area
+         LA    R3,OPECB                -> WTOR ECB
+         MVC   MACLIST(WTORDMYL),WTORDMY  Move model WTOR
+         WTOR  ,(R2),6,(R3),MF=(E,MACLIST)
+*
+         WAIT  1,ECB=OPECB
+         CLC   DBLE(6),=C'CANCEL'      Was cancel chosen?
+         BE    OPERCAN                 Yes
+         CLI   DBLE,C'U'               Was U chosen
+         BNE   FMT110                  Reissue msg
+*
+*-- Switch to direct processing and rewrite fresh initial images
+*-- to the directory and allocation map to be a newly formatted file.
+*
+FMT200   EQU   *
+         MVC   MACLIST(CLOSEL),CLOSE   Move close list
+         CLOSE ((R7)),                 Close ACB                       X
+               MF=(E,MACLIST)
+         NI    FLAGS1,255-FL1OPEN      Indic ACB closed
+*
+         MODCB ACB=(R7),               Switch to direct                x
+               MACRF=(KEY,DIR,OUT),                                    x
+               MF=(G,MACLIST)
+*
+         MODCB RPL=(R6),                                               x
+               OPTCD=(KEY,DIR,UPD),    Switch to direct update         x
+               MF=(G,MACLIST)
+*
+         MVC   MACLIST(OPENL),OPEN     Move macro model
+         OPEN  ((R7)),                 Open NETSPOOL                   x
+               MF=(E,MACLIST)
+         LTR   R15,R15                 Did open succeed?
+         BNZ   OPENFAIL                No
+         OI    FLAGS1,FL1OPEN          Indic ACB open
+*
+         L     R2,BLK                  -> VSAM area
+*
+FMT210   EQU   *
+         MVC   KEY,=F'1'               Set block # argument
+         GET   RPL=(6)
+         LTR   R15,R15                 Any errors?
+         BNZ   GETFAIL                 YES
+*
+         LR    R0,R2                   -> block area
+         LA    R1,4089                 Size of block
+         LM    R14,R15,BLK1            Get block data addr, pad+len
+         MVCL  R0,R14                  Init the block, SPL ID=0
+         MVC   8(4,R2),BLKS            Set max # blocks in dataset
+*
+         PUT   RPL=(6)                 Update the block
+         LTR   R15,R15                 Any errors?
+         BNZ   PUTFAIL2                YES
+*
+FMT220   EQU   *
+         MVC   KEY,=F'2'               Set block # argument
+         GET   RPL=(6)
+         LTR   R15,R15                 Any errors?
+         BNZ   GETFAIL                 YES
+*
+         LR    R0,R2                   -> block area
+         LA    R1,4089                 Size of block
+         LM    R14,R15,BLK2            Get block data addr, pad+len
+         MVCL  R0,R14                  Init the block
+*
+         PUT   RPL=(6)                 Update the block
+         LTR   R15,R15                 Any errors?
+         BNZ   PUTFAIL2                YES
+*
+FMT230   EQU   *
+         MVC   KEY,=F'3'               Set block # argument
+         GET   RPL=(6)
+         LTR   R15,R15                 Any errors?
+         BNZ   GETFAIL                 YES
+*
+         LR    R0,R2                   -> block area
+         LA    R1,4089                 Size of block
+         LM    R14,R15,BLK3            Get block data addr, pad+len
+         MVCL  R0,R14                  Init the block
+*
+         PUT   RPL=(6)                 Update the block
+         LTR   R15,R15                 Any errors?
+         BNZ   PUTFAIL2                YES
+*
+*-- Set up allocation map
+*
+* The allocation map is a bit map, 1 bit for each block in the
+* NETSPOOL dataset.  A "1" bit means the block is in use.  Initially,
+* blocks 1-7 will be marked in use as they contain upon formatting:
+*   block 1 - pointer to directory (A or B) and allocation blocks
+*   block 2 - initial directory block A
+*   block 3 - initial directory block B
+*   blocks 4-7 - allocation bit map
+*
+* The bitmap contains 4 * 4096 bytes * 8 bits = 130,848 bits.  Thus,
+* the largest supported NETSPOOL size is about 874 cylinders on a
+* 3380 DASD.
+*
+* The size of the NETSPOOL dataset can of course be smaller and all
+* bits past the end of the file should be marked as "in-use" in the
+* bitmap so they would never be allocated.
+*
+* The calculation for this is at FMT250.
+* Example:  assume 10 cylinder file on 3380 = 150 blocks per cyl,
+* or 1500 total blocks in file.
+*
+* Starting from block 1501 (the first block past the end of the
+* dataset) divide by 8 to compute the byte number in the bitmap
+* representing block 1501:
+*
+* 1. 1501 / 8 = 187 remainder 5
+* 2. Make a byte image of X'FF' (all records unavail in byte).
+* 3. Shift it to the right by the remainder (adding 0's on the left):
+*       X'FF' shifted right by 5 = X'07'
+* 4. Store the X'07' computed value into byte 187 of the bitmap.
+* 5. All subsequent bytes 188 through the end of four blocks are X'FF'
+* 6. Write the four blocks to disk.
+*
+FMT240   EQU   *
+         GETMAIN RU,LV=16384           4 blocks of size
+         LR    R4,R1
+         LR    R1,R0                   COPY LENGTH
+         LR    R0,R4                   -> NEW STG AREA
+         SR    R15,R15                 SET PAD
+         MVCL  R0,R14                  CLEAR THE PAGES
+*
+         MVC   0(1,R4),DATA4           Set up allocation; blocks 1-7
+*                                       are initially in use
+FMT250   EQU   *
+         L     R7,BLKS                 Get # blocks in dataset
+         LA    R7,1(,R7)               block # of first unavail blk
+         SR    R6,R6                   Clear for divide
+         D     R6,=F'8'                Get byte offset remainder bits
+*
+         AR    R7,R4                   -> byte containing bit for
+*                                       first record beyond file size
+         ICM   R1,8,=X'FF'             Assume all recs in byte unavail
+         SRL   R1,0(R6)                Adjust for actual blocks that
+*                                       do exist in same byte
+         STCM  R1,8,0(R7)              Store it in map
+*
+         LA    R0,1(,R7)               -> next byte in map
+         L     R1,=F'16384'            Stg size
+         AR    R1,R4                   Point to end of it
+         SR    R1,R0                   Compute length to end
+         L     R15,=X'FF000000'        Set all FFs pad char
+         MVCL  R0,R14                  All FFs to the end
+*
+*
+         LA    R3,4                    Blk # of allocation map
+         LA    R7,4                    # of blocks to process
+         L     R6,RPL                  -> RPL
+*
+FMT270   EQU   *               Write map blocks 4 through 7
+         ST    R3,KEY                  Set block # argument
+         GET   RPL=(6)
+         LTR   R15,R15                 Any errors?
+         BNZ   GETFAIL                 YES
+*
+         LR    R0,R2                   -> block area
+         LA    R1,4089                 Size of block
+         LA    R5,4089                 Size of block
+         MVCL  R0,R4                   Init the block
+*
+         PUT   RPL=(6)                 Update the block
+         LTR   R15,R15                 Any errors?
+         BNZ   PUTFAIL2                YES
+*
+         LA    R3,1(,R3)               next blk #
+         BCT   R7,FMT270
+         B     EXIT0                   Format success
+*
+*-- Error routines
+*
+OPENFAIL EQU   *
+         MVC   LIST(L'MSG002),MSG002   Open failed
+         CVD   R15,DBLE                Convert RC
+         UNPK  LIST+29(2),DBLE
+         OI    LIST+30,X'F0'
+         USING IFGACB,R7
+         UNPK  DBLE(3),ACBERFLG(2)
+         TR    DBLE(2),HEXTRAN-240
+         MVC   LIST+43(2),DBLE         Move error value to line
+         DROP  R7
+         BAL   R14,PUT                 Write open fail msg
+         B     EXIT8
+*
+BADCISZ  EQU   *
+         MVC   LIST(L'MSG004),MSG004   NETSPOOL dataset definition err
+         BAL   R14,PUT                 Write msg
+         MVC   LIST(L'MSG005),MSG005   CISZ must be 4096
+         BAL   R14,PUT                 Write msg
+         B     EXIT8
+*
+OPERCAN  EQU   *
+         MVC   LIST(L'MSG006),MSG006   Formatting terminated by oper
+         BAL   R14,PUT                 Write msg
+         B     EXIT8
+*
+PUTFAIL  EQU   *
+         MVC   LIST(L'MSG003),MSG003   PUT failed
+         CVD   R5,DBLE                 Convert block number
+         MVC   LIST+25(8),=X'4020202020202120'  Move edit mask
+         ED    LIST+25(8),DBLE+4       Edit block count
+         USING IFGRPL,R6
+         UNPK  TWRK(9),RPLFDBWD(5)
+         TR    TWRK(8),HEXTRAN-240
+         MVC   LIST+48(2),TWRK+2       Move RTNCD value to line
+         MVC   LIST+50(2),TWRK+6       Move FDBK value to line
+         DROP  R6
+         BAL   R14,PUT                 Write open fail msg
+         B     EXIT8
+*
+GETFAIL  EQU   *
+         MVC   LIST(L'MSG007),MSG007   Get failed
+         CVD   R3,DBLE                 Convert block number
+         MVC   LIST+25(8),=X'4020202020202120'  Move edit mask
+         ED    LIST+25(8),DBLE+4       Edit block count
+         USING IFGRPL,R6
+         UNPK  TWRK(9),RPLFDBWD(5)
+         TR    TWRK(8),HEXTRAN-240
+         MVC   LIST+48(2),TWRK+2       Move RTNCD value to line
+         MVC   LIST+50(2),TWRK+6       Move FDBK value to line
+         DROP  R6
+         BAL   R14,PUT                 Write open fail msg
+         B     EXIT8
+*
+PUTFAIL2 EQU   *
+         MVC   LIST(L'MSG008),MSG008   PUT failed
+         CVD   R5,DBLE                 Convert block number
+         MVC   LIST+26(8),=X'4020202020202120'  Move edit mask
+         ED    LIST+26(8),DBLE+4       Edit block count
+         USING IFGRPL,R6
+         UNPK  TWRK(9),RPLFDBWD(5)
+         TR    TWRK(8),HEXTRAN-240
+         MVC   LIST+49(2),TWRK+2       Move RTNCD value to line
+         MVC   LIST+51(2),TWRK+6       Move FDBK value to line
+         DROP  R6
+         BAL   R14,PUT                 Write open fail msg
+         B     EXIT8
+*
+PUT      EQU   *
+         ST    R14,SV14                Save return addr
+         PUT   SYSPRINT,LIST
+         MVC   LIST,BLANKS
+         L     R14,SV14                Load return addr
+         BR    R14                     Return
+*
+EXIT8    EQU   *
+         BAL   R14,PUT                 Write blank
+         MVC   LIST(L'MSG999),MSG999   Exited with errors
+         BAL   R14,PUT                 Write msg
+*
+         LA    R15,8
+         B     QUIT000
+*
+EXIT0    EQU   *
+         BAL   R14,PUT                 Write blank
+         MVC   LIST(L'MSG900),MSG900   Exited with success
+         BAL   R14,PUT                 Write msg
+*
+         SR    R15,R15
+*
+QUIT000  EQU   *
+         LR    R5,R15                  Copy exit RC
+*
+         TM    FLAGS1,FL1OPEN          Is ACB open?
+         BZ    QUIT010                 No, skip close
+         MVC   MACLIST(CLOSEL),CLOSE   Move close list
+         L     R7,ACB                  -> ACB
+         CLOSE ((R7)),                 Close ACB                       X
+               MF=(E,MACLIST)
+*
+QUIT010  EQU   *
+         MVC   MACLIST(CLOSEL),CLOSE   Move close list
+         CLOSE (SYSPRINT),                                             X
+               MF=(E,MACLIST)
+*
+         LM    R0,R1,RPLL
+         FREEMAIN RU,LV=(0),A=(1)
+*
+         LM    R0,R1,ACBL
+         FREEMAIN RU,LV=(0),A=(1)
+*
+         L     R1,BLK
+         FREEMAIN RU,LV=4089,A=(1)
+*
+         LR    R1,R10                  -> NJEFWK work area
+         L     R13,4(,R13)             -> CALLER'S SA
+         FREEMAIN RU,                  Free the work area              X
+               LV=NJEFSZ,                                              X
+               A=(1)
+*
+         ST    R5,16(,R13)             Save R15 RC
+         LM    R14,R12,12(R13)         RELOAD SYSTEM'S REGS
+         BR    R14                     Return
+*
+         LTORG
+*
+DMYPRT   DCB   DDNAME=SYSPRINT,                                        X
+               MACRF=(PM),                                             X
+               DSORG=PS,                                               X
+               LRECL=80,                                               X
+               RECFM=FB,                                               X
+               BLKSIZE=800
+DMYPRTL  EQU   *-DMYPRT
+*
+OPEN     OPEN  0,MF=L
+OPENL    EQU   *-OPEN
+CLOSE    CLOSE 0,MF=L
+CLOSEL   EQU   *-CLOSE
+*
+WTORDMY  WTOR  'NJEFMT - Reply U to proceed with format, or CANCEL',   x
+               MF=L
+WTORDMYL EQU   *-WTORDMY
+*
+MSG001   DC    C'NJEFMT - NJE38 NETSPOOL FORMAT UTILITY'
+*                0123456789012345678901234567890123456789012 345 6789
+MSG002   DC    C'Open failed for NETSPOOL, RC=xx,ACBERFLG=X''xx'''
+*                012345678901234567890123456789012345678901234567 8901
+MSG003   DC    C'PUT failed writing record xxxxxxx, RTNCD-FDBK=X''xxxx'x
+               ''
+MSG004   DC    C'NETSPOOL dataset definition error:'
+MSG005   DC    C'  CONTROLINTERVALSIZE must be exactly 4096 bytes'
+MSG006   DC    C'Formatting terminated by system operator'
+MSG007   DC    C'GET failed reading record xxxxxxx, RTNCD-FDBK=X''xxxx'x
+               ''
+MSG008   DC    C'PUT failed updating record xxxxxxx, RTNCD-FDBK=X''xxxxX
+               '''
+MSG900   DC    C'Format utility completed successfully'
+MSG999   DC    C'Format utility terminated with errors'
+*
+BLANKS   DC    CL80' '
+HEXTRAN  DC    CL16'0123456789ABCDEF'
+*
+*
+*
+*
+BLK1     DC    A(DATA1),A(DATA1L)      Addr and length
+DATA1    DC    F'2'                    Blk # of current directory
+         DC    F'4'                    Blk # of allocation map
+         DC    F'0'                    # blks in dataset
+         DC    F'0'                    Last assigned spool file id #
+DATA1L   EQU   *-DATA1
+*
+BLK2     DC    A(DATA2),A(DATA2L)      Addr and length
+DATA2    EQU   *
+         DC    AL2(NSDIRLN)     LEN    Length of record
+         DC    AL2(0)           RESV1  reserved
+         DC    F'2'             BLK    blk # of 1st block of file
+         DC    CL8'NETSPOOL'    INLOC
+         DC    CL16' '          LINK/INTOD
+         DC    CL8'DIR'         INVM
+         DC    AL4(1)           RECNM  No. records in the file
+*                                      Remainder of block is zeros
+*
+DATA2L   EQU   *-DATA2
+*
+BLK3     DC    A(DATA3),A(DATA3L)      Addr and length
+DATA3    EQU   *
+         DC    AL2(NSDIRLN)     LEN    Length of record
+         DC    AL2(0)           RESV1  reserved
+         DC    F'3'             BLK    blk # of 1st block of file
+         DC    CL8'NETSPOOL'    INLOC
+         DC    CL16' '          LINK/INTOD
+         DC    CL8'DIR'         INVM
+         DC    AL4(1)           RECNM  No. records in the file
+*                                      Remainder of block is zeros
+DATA3L   EQU   *-DATA3
+*
+DATA4    DC    B'11111110'             Blocks initially allocated are
+*                                        blocks 1-7
+*
+* The rest of blocks 4 and 5,6,7 are computed at FMT250 and written
+* at FMT270.
+*
+*
+*
+NJEFWK   DSECT
+NJEEYE   DS    CL4'NJEF'               EYECATCHER
+NJEWKLEN DS    F                       SIZE OF WORK AREA
+*
+NJESA    DS    18F
+DBLE     DS    D
+TWRK     DS    XL16
+MACLIST  DS    XL128
+LIST     DS    CL80                    PRINT LINE
+SV14     DS    F                       R14 save area
+OPECB    DS    F                       Operator reply ECB
+BLK      DS    A                       -> NETSPOOL block stg area
+KEY      DS    F                       Relative block number key
+ACBL     DS    F                       ACB length
+ACB      DS    A                       -> ACB
+RPLL     DS    F                       RPL length
+RPL      DS    A                       -> RPL
+HIRBA    DS    F                       High allocated RBA
+CISZ     DS    F                       CI Size
+BLKS     DS    F                       Number of relative blocks
+*
+FLAGS1   DS    X
+FL1OPEN  EQU   X'80'      1... ....    ACB is open
+*
+SYSPRINT DS    (DMYPRTL)X              SYSPRINT DCB
+         DS    0D                      Force doubleword boundary
+NJEFSZ   EQU   *-NJEFWK                Size of work area
+*
+         COPY  NETSPOOL
+         IFGACB
+         IFGRPL
+         END
