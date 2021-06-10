@@ -5,11 +5,6 @@
 //             MSGLEVEL=(1,1),
 //             USER=IBMUSER,
 //             PASSWORD=SYS1
-//ALLOC03  EXEC PGM=IEFBR14
-//PARMLIB  DD  DSN=SYS2.PARMLIB,DISP=(,CATLG,),
-//             UNIT=3350,VOL=SER=MVS000,
-//             SPACE=(CYL,(10,5,50)),
-//             DCB=(SYS1.PARMLIB)
 //*
 //* CREATE THE NJE38 NETSPOOL DATASET
 //*
