@@ -12,15 +12,19 @@ rm queue38j.zip*
 
 cat <<EOF > 01_install_queue.jcl
 //QUEUE1   JOB (TSO),
-//             'Recieve XMI',
+//             'Install Q',
 //             CLASS=A,
 //             MSGCLASS=A,
-//             MSGLEVEL=(1,1)
+//             MSGLEVEL=(1,1),
 //             USER=IBMUSER,PASSWORD=SYS1
 //* First step is to make an alias for QUEUE
 //ALIAS1   EXEC PGM=IDCAMS
 //SYSIN    DD *
+  DELETE QUEUE.ASM
+  DELETE QUEUE.OBJ
   DEFINE ALIAS(NAME(QUEUE) RELATE(UCPUB000))
+  SET MAXCC=00
+  SET LASTCC=00
 //SYSPRINT DD  SYSOUT=*
 EOF
 
@@ -34,7 +38,7 @@ tail -n +2 queue38j.jcl |
 sed "s/GREG\.//g" |
 sed "s/GREGQ    /QUEUEINS /" |
 sed "s/CLASS=A,MSGCLASS=X/CLASS=A,MSGCLASS=A/" |
-sed "s/NOTIFY=GREG/NOTIFY=HMVS01/"|
+sed "s/NOTIFY=GREG/USER=IBMUSER,PASSWORD=SYS1/"|
 sed "s/SYS1.PPLIB/SYS2.CMDLIB/"|
 sed "s/\/\/STEP1   EXEC PGM=PDSLOAD/\/\/STEP1   EXEC PGM=PDSLOAD\n\/\/STEPLIB  DD  DSN=SYSC.LINKLIB,DISP=SHR/" |
 sed -e '$a\' >> 01_install_queue.jcl
@@ -49,8 +53,3 @@ cat <<EOF >> 01_install_queue.jcl
  SUBMIT 'QUEUE.ASM(C)'
 /*
 EOF
-
-
-
-
-
