@@ -29,9 +29,14 @@ done
 
 sysgen_dasd=$(ls -Art ../sysgen/dasd.04.customization.*.tar | tail -n 1)
 sysgen_rakf_dasd=$(ls -Art ../sysgen/dasd.05.rakf.*.tar | tail -n 1)
+sysgen_software=$(ls -Art ../sysgen/dasd.06.software.*.tar | tail -n 1)
+
 
 echo "[+] Copying sysgen_all dasd"
-cp -rv ../sysgen/dasd ./sysgen_all/sysgen
+cd ./sysgen_all/sysgen
+tar -xvf ../../$sysgen_software
+cd ../..
+
 
 echo "[+] Extracting sysgen $sysgen_dasd"
 cd sysgen/sysgen
