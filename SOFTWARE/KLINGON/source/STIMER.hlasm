@@ -1,0 +1,19 @@
+STIMER   CSECT
+***********************************************************************
+*
+*  ROUTINE TO SIMPLY "WAIT"
+*
+***********************************************************************
+         STM    14,12,12(13)      SAVE REGS
+         LR     12,15             SET PROGRAM
+         USING  STIMER,12         SET BASE
+         L      1,0(,1)           ADDRESS PARM
+         ICM    0,B'1111',1       IS PARM ZERO?
+         BZ     RETURN
+         STIMER WAIT,BINTVL=(1)   WAIT
+RETURN   DS     0H
+         LM     14,15,12(13)      RESTORE REGS
+         LM     1,12,24(13)       RESTORE SOME MORE
+         MVI    12(13),X'FF'      SET RETURN FLAG
+         BR     14
+         END

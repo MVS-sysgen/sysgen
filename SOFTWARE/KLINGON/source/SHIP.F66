@@ -1,0 +1,38 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+      SUBROUTINE SHIP
+C
+C  WRITE A PRETTY KLINGON SHIP TO THE CERTIFICATE FILE
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      CALL DBUGIN ('SHIP ENTERED',IW(12),0)
+      WRITE (8,50000)
+      WRITE (8,50010)
+      WRITE (8,50020)
+      WRITE (8,50030)
+      WRITE (8,50040)
+      WRITE (8,50050)
+      WRITE (8,50060)
+      WRITE (8,50070)
+      WRITE (8,50080)
+      WRITE (8,50090)
+      WRITE (8,50090)
+      WRITE (8,50080)
+      CALL DBUGIN ('SHIP EXITED',IW(11),0)
+      RETURN
+C
+50000 FORMAT (3X,7X,'*****************')
+50010 FORMAT (3X,4X,'**********************',42X,'*****')
+50020 FORMAT (3X,1X,'***********************',40X,'***********')
+50030 FORMAT (3X,4X,'********',
+     *12X,'*********************************',
+     *'*******           *')
+50040 FORMAT (3X,10X,'*',13X,'*********************************',
+     *19X,'*')
+50050 FORMAT (3X,9X,'**************',34X,'******',13X,'*')
+50060 FORMAT (3X,11X,'*',11X,'*',39X,'*******',5X,'*')
+50070 FORMAT (3X,13X,'*',10X,'*',45X,'*****')
+50080 FORMAT (3X,5X,'***********************')
+50090 FORMAT (3X,5X,'*',22X,'*')
+C
+      END

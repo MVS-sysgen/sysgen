@@ -1,0 +1,231 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+      SUBROUTINE BATTLE
+C
+C  CHECK TO SEE IF WE ARE CURRENTLY IN BATTLE, IF SO:
+C
+C  LET THE ENEMY ATTACK, THEN TALLY UP THE RESULTS
+C  NEXT, OUR FRIENDS (COMMANDERS) WILL FIRE AT ANYTHING HANDY
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+      COMMON /MISC/ BATTER,ISSAVE,IDUM,WFACT,IDATF,ILEV,CSDATE,TGIVEN
+C
+      COMMON /INFO/ ICOND(2),ENERGY,ISHUPD,ISHENG,IAPDEV,IPOF,IOVER
+C
+      COMMON /TRACOM/ TARX,TARY,ISCPX2,ISCPY2,NSECE(10,10),IHIT,ISBC,
+     *     IFSC,IKCC,ITORCT,ISB,IFS,IKC,IPR,ISCPX1,ISCPY1,ICHC,IPLC,ISTC
+     *     ,ET,ISECT(10,10),TVX,TVY,ICMC
+C
+      COMMON /PADDED/ IPAD1(9),ICHART(8,8),IPAD2(9),IPLNET(8,8),
+     *     IKY(8,8),INPUT(50),IPAD3
+C
+      COMMON /NUMBER/ NSTARS,NPLNTS,NSBASE,NFED,NCOMM,IFX(9),IFY(9),NCX(
+     *     9),NCY(9)
+C
+      COMMON /SHIPS/ IUSFED(15,13)
+C
+      DIMENSION NFX(9),NFY(9),IDMSG(11)
+C
+      DATA IZGRE / 'GREE'/ ,IZCLER / 'CLEA'/ ,ICRDOT / '.'/ ,KZF /'F'
+     *     / ,KZB / 'B'/ ,KZC / 'C'/
+C
+      DATA IDMSG / '** S','TARS','HIP ','U.S.','S. ',0,0,0,
+     *             'AT S','ECTO','R: '/
+C
+      CALL DBUGIN ('ROUTINE BATTLE ENTERED',IW(22),0)
+      CALL SHECON
+      IF (ICROG(ICHART(ISCPX1,ISCPY1)).EQ.IZGRE) GO TO 260
+      NMCALL = 0
+      GO TO 20
+10    CONTINUE
+20    CONTINUE
+      CALL ITERPT
+      IF (NFED.EQ.0) GO TO 90
+      CALL LOCATE (KZF,INONE,INONE2)
+      CALL RESORT (IFX,IFY,NFX,NFY,NFED)
+      DO 80 J = 1, NFED
+           MFX = NFX(J)
+           MFY = NFY(J)
+           CALL INTERC (MFX,MFY,IRTN)
+           IF (IRTN.EQ.IZCLER) GO TO 40
+30         CONTINUE
+           IAFIRE = NSECE(MFX,MFY)/2
+           IF (IPOF.EQ.1) IAFIRE = IAFIRE*1.2
+           FIRE = IAFIRE*PERHIT(ISCPX2,ISCPY2,MFX,MFY)
+           CALL ABSORB (FIRE,SHIP,SHE)
+           JS = IFIX(SHIP+.5)
+           JE = IFIX(SHE+.5)
+           CALL LINEF
+           CALL PRHIT (
+     *     JS,JE,'UNIT HIT FROM FEDERATION STARSHIP AT: ',
+     *          38,IW(38),MFY,MFX)
+           CALL DAMAGE (SHIP)
+           NSECE(MFX,MFY) = NSECE(MFX,MFY)-IAFIRE/3
+           GO TO 70
+40         CONTINUE
+           IF (RAND(100.0).LT.20.0.OR.IPOF.EQ.1) GO TO 30
+           IF (PERHIT(ISCPX2,ISCPY2,MFX,MFY).LT..6) GO TO 30
+           CALL LINEF
+           CALL PRMSM ('=== INCOMING PHOTON TORPEDOS FROM: ',
+     *          35,IW(35),MFY,MFX,' ',0,1)
+           DO 60 N = 1, 3
+                CALL LINEF
+                CALL PRMSG ('### TRACKING INCOMING PHOTON TORPEDO',
+     *                       IW(36))
+                IF (IAPDEV.EQ.1) GO TO 50
+                CALL ABSORB (RAND(50.0)+650.0,SHIP,SHE)
+                JS = IFIX(SHIP+.5)
+                JE = IFIX(SHE+.5)
+                CALL LINEF
+                CALL PRHIT (JS,JE,'UNIT HIT, PHOTON TORPEDO FROM ',
+     *               30,IW(30),MFY,MFX)
+                CALL DAMAGE (SHIP)
+                GO TO 60
+50              CONTINUE
+                CALL PRMSG (
+     *            '*** ANTI-PHOTON DEVICE ABSORBS PHOTON TORPEDO',
+     *            IW(45))
+60         CONTINUE
+70         CONTINUE
+           IAPDEV = 0
+80    CONTINUE
+90    CONTINUE
+      IF (NSBASE.EQ.0) GO TO 100
+      CALL LOCATE (KZB,IIXB,IIYB)
+      FIRE = (RAND(50.0)+750.0)*PERHIT(ISCPX2,ISCPY2,IIXB,IIYB)
+      CALL ABSORB (FIRE,SHIP,SHE)
+      JS = IFIX(SHIP+.5)
+      JE = IFIX(SHE+.5)
+      CALL LINEF
+      CALL PRHIT (
+     *     JS,JE,'UNIT HIT FROM STARBASE AT: ',27,IW(27),IIYB,IIXB)
+      CALL DAMAGE (SHIP)
+100   CONTINUE
+      IF (NCOMM.EQ.0) GO TO 180
+      CALL LOCATE (KZC,NONE,NONE2)
+      DO 170 M = 1, NCOMM
+           IIXC = NCX(M)
+           IIYC = NCY(M)
+           IFA = -NSECE(IIXC,IIYC)/2
+           IF (NFED.EQ.0) GO TO 130
+           IFA = IFA/NFED
+           DO 120 NF = 1, NFED
+                JFX = NFX(NF)
+                JFY = NFY(NF)
+                FIRE = IFA*PERHIT(IIXC,IIYC,JFX,JFY)
+                IP1 = IFIX(FIRE)/3
+                IP2D = IP1*2
+                CALL LINEF
+                CALL PRHIT (
+     *               IP2D,IP1,'HIT ON FEDERATION STARSHIP AT: ',
+     *               31,IW(31),JFY,JFX)
+                CALL PRMSM (
+     *              'FROM COMMANDER AT: ',19,IW(19),
+     *              IIYC,IIXC,' ',0,1)
+                NSECE(JFX,JFY) = NSECE(JFX,JFY)-IFIX(FIRE)
+                IF (NSECE(JFX,JFY).GT.0) GO TO 110
+                ET = ET+.3
+                IFS = IFS-1
+                IFSC = IFSC+1
+                ICHART(ISCPX1,ISCPY1) = ICHART(ISCPX1,ISCPY1)-100
+                NSECE(JFX,JFY) = 0
+                ISECT(JFX,JFY) = ICRDOT
+                CALL SSDEST (IUSFED,ISCPX1,ISCPY1,JFX,JFY,IDMSG(6))
+                CALL PRMSM (
+     *          IDMSG,44,IWV(44),JFY,JFX,'DESTROYED',9,IW(9))
+                CALL ITERPT
+                GO TO 170
+110             CONTINUE
+120        CONTINUE
+           GO TO 160
+130        CONTINUE
+           IF (NSBASE.EQ.0) GO TO 160
+           CALL LOCATE (KZB,IIXB,IIYB)
+           FIRE = IFA*PERHIT(IIXC,IIYC,IIXB,IIYB)
+           IP1 = IFIX(FIRE)/3
+           IP2D = IP1*2
+           CALL LINEF
+           CALL PRHIT (
+     *         IP2D,IP1,'HIT ON STARBASE AT: ',20,IW(20),IIYB,IIXB)
+           CALL PRMSM (
+     *         'FROM COMMANDER AT: ',19,IW(19),IIYC,IIXC,' ',0,1)
+           NSECE(IIXB,IIYB) = NSECE(IIXB,IIYB)-IFIX(FIRE)
+           IF (NSECE(IIXB,IIYB).GT.0) GO TO 140
+           CALL PRMSM ('*** STARBASE AT: ',17,IW(17),IIYB,IIXB,
+     *          'DESTROYED',9,IW(9))
+           NSECE(IIXB,IIYB) = 0
+           ISECT(IIXB,IIYB) = ICRDOT
+           ET = ET+.5
+           ISB = ISB-1
+           ISBC = ISBC+1
+           ICHART(ISCPX1,ISCPY1) = ICHART(ISCPX1,ISCPY1)-10
+           CALL ITERPT
+           GO TO 150
+140        CONTINUE
+           IF (NMCALL.EQ.1) GO TO 160
+           IF (ILEV.NE.3) GO TO 150
+           CALL DRAGCC
+           NMCALL = 1
+           CALL ITERPT
+           IF (NFED.GT.0) GO TO 10
+150        CONTINUE
+160        CONTINUE
+170   CONTINUE
+180   CONTINUE
+      CALL ITERPT
+      CALL LOCATE (KZF,IDUM,IDUM2)
+      CALL LOCATE (KZC,IDUM,IDUM2)
+      IF (NFED.EQ.0.AND.NSBASE.EQ.0) GO TO 260
+      IF (IPOF.NE.1) GO TO 250
+190   CONTINUE
+      IF (NCOMM.EQ.0.OR.NFED.EQ.0) GO TO 240
+      MC = MIN0(NFED,NCOMM)
+      DO 230 N = 1, MC
+           IF (NSECE(IFX(N),IFY(N))+NSECE(NCX(N),NCY(N))) 200 , 210 ,
+     *           210
+200        CONTINUE
+           ICHART(ISCPX1,ISCPY1) = ICHART(ISCPX1,ISCPY1)-100
+           NSECE(IFX(N),IFY(N)) = 0
+           ISECT(IFX(N),IFY(N)) = ICRDOT
+           ET = ET+.3
+           IFS = IFS-1
+           IFSC = IFSC+1
+           CALL SSDEST (IUSFED,ISCPX1,ISCPY1,IFX(N),IFY(N),IDMSG(6))
+           CALL PRMSM (
+     *        IDMSG,44,IWV(44),IFY(N),IFX(N),'DESTROYED IN BATTLE',
+     *        19,IW(19))
+           GO TO 220
+210        CONTINUE
+           CALL PRMSM ('*** COMMANDER AT ',17,IW(17),NCY(N),NCX(N),
+     *          'DESTROYED IN BATTLE',19,IW(19))
+           ICHART(ISCPX1,ISCPY1) = ICHART(ISCPX1,ISCPY1)-1000
+           NSECE(NCX(N),NCY(N)) = 0
+           ISECT(NCX(N),NCY(N)) = ICRDOT
+           IKC = IKC-1
+220        CONTINUE
+230   CONTINUE
+      CALL ITERPT
+      CALL LOCATE (KZC,IDUM,IDUM2)
+      CALL LOCATE (KZF,IDUM,IDUM2)
+      GO TO 190
+240   CONTINUE
+      CALL ITERPT
+      IF (NSBASE.EQ.0.OR.NCOMM.EQ.0) GO TO 250
+      CALL LOCATE (KZB,IIXB,IIYB)
+      CALL PRMSM ('*** STARBASE AT ',16,IW(16),IIYB,IIXB,
+     *     'DESTROYED BY COMMANDER',22,IW(22))
+      ISB = ISB-1
+      ISBC = ISBC+1
+      ET = ET+.5
+      ICHART(ISCPX1,ISCPY1) = ICHART(ISCPX1,ISCPY1)-10
+      ISECT(IIXB,IIYB) = ICRDOT
+      NSECE(IIXB,IIYB) = 0
+250   CONTINUE
+      IPCT = IFIX((FLOAT(ISHENG)/25.0)+.5)
+      CALL BSTAT (ENERGY,ISHUPD,IPCT)
+      IF (ENERGY.LE.-500.0) IPAD1(1) = -1000000
+260   CONTINUE
+      CALL DBUGIN ('ROUTINE BATTLE EXITED',IW(21),0)
+      RETURN
+      END

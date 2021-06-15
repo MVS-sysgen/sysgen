@@ -1,0 +1,1188 @@
+\pagebreak
+
+
+
+                                   K L I N G O N
+                                   _____________
+
+                  A  S P A C E   W A R   S T A R   T R E K   G A M E
+
+                                        by
+
+                                  LARRY WILLIAMS
+
+          RULES ADAPTED  FROM A  GAME "SUPER  STAR TREK,"   WRITTEN BY
+          DAVID MATUSZEK AND  PAUL REYNOLDS,  REWRITTEN FOR THE HARRIS
+          220 AT  PENN STATE UNIVERSITY BY  ROD HILLS AND  EXTENDED BY
+          JOHN MCLAUGHLIN.
+
+          NO PORTION  OF THE  CODE FROM  SUPER STAR  TREK WAS  USED IN
+          WRITING KLINGON.
+
+          PERMISSION IS HEREBY GRANTED FOR THE COPYING,  DISTRIBUTION,
+          MODIFICATION  AND   USE  OF  THIS  PROGRAM   AND  ASSOCIATED
+          DOCUMENTATION FOR RECREATIONAL PURPOSES,   PROVIDED THAT ALL
+          REFERENCES TO THE AUTHOR ARE RETAINED.   HOWEVER, PERMISSION
+          IS NOT AND  WILL NOT BE GRANTED FOR THE  SALE OR PROMOTIONAL
+          USE OF THIS PROGRAM OR PROGRAM DOCUMENTATION,  OR FOR USE IN
+          ANY  SITUATION  IN   WHICH  PROFIT  MAY  BE   CONSIDERED  AN
+          OBJECTIVE,  SINCE IT IS THE DESIRE  OF THE AUTHOR TO RESPECT
+          THE COPYRIGHTS OF THE ORIGINATORS OF STAR TREK.
+\pagebreak
+
+                                                                PAGE 2
+
+          THE ORGANIAN PEACE TREATY HAS COLLAPSED,  AND THE FEDERATION
+          IS  AT  WAR WITH  THE  KLINGON  EMPIRE,    AND YOU  ARE  THE
+          COMMANDER  OF  THE  FLAGSHIP OF  THE  KLINGON  EMPIRE:   THE
+          SUPERCOMMANDER KAZH, THE MIGHEST SHIP IN THE KNOWN GALAXY.
+
+          YOUR BATTLEGROUND IS FEDERATION SPACE, WHICH FOR CONVENIENCE
+          IS DIVIDED UP INTO EIGHT ROWS OF EIGHT QUADRANTS EACH,  LIKE
+          A CHECKERBOARD.   ROWS ARE NUMBERED FROM TOP TO BOTTOM,  AND
+          COLUMNS ARE NUMBERED LEFT TO RIGHT,  SO QUADRANT 1 - 8 WOULD
+          BE IN THE UPPER RIGHT HAND CORNER OF THE GALAXY.
+
+          DURING BATTLE YOU WILL BE CONCERNED ONLY WITH THOSE ENEMIES,
+          THAT  IS  TO  SAY,  FEDERATION  STARBASES,   AND  FEDERATION
+          STARSHIPS,   THAT  OCCUPY  THE SAME  QUADRANT  AS  YOURSELF.
+          QUADRANTS  ARE DIVIDED  UP INTO  SECTORS,  TEN  ROWS OF  TEN
+          SECTORS  EACH.   SECTORS  ARE NUMBERED  IN THE  SAME WAY  AS
+          QUADRANTS, SO THE SECTOR IN THE UPPER RIGHT CORNER IS SECTOR
+          1 - 10.   YOU HAVE A SHORT-RANGE SCANNER WHICH ALLOWS YOU TO
+          LOOK AT THE ENTIRE QUADRANT IN A SINGLE DISPLAY.
+
+          ENEMIES  RECHARGE DURING  YOUR  ABSENCE.    IF YOU  LEAVE  A
+          QUADRANT CONTAINING  A WEAKENED ENEMY,   WHEN YOU  RETURN TO
+          THAT QUADRANT HE WILL BE STRONG AGAIN.   ALSO, EACH TIME YOU
+          ENTER  A  QUADRANT,   THE POSITIONS  OF  EVERYTHING  IN  THE
+          QUADRANT (EXCEPT YOUR SHIP) ARE RANDOMIZED,  TO SAVE YOU THE
+          TROUBLE  OF  TRYING  TO REMEMBER  WHERE  EVERYTHING  IN  THE
+          QUADRANT IS.   NOTICE THAT THIS REFERS ONLY TO THE POSITIONS
+          OF THINGS IN THE QUADRANT--THE NUMBERS OF EACH KIND OF THING
+          ARE NOT CHANGED (EXCEPT BLACK HOLES)  IF YOU KILL SOMETHING,
+          IT STAYS DEAD.
+
+          THERE ARE TWO KINDS OF KLINGONS-  COMMANDERS,  AND YOURSELF,
+          THE SUPER-COMMANDER KAZH,    THE COMMANDERS ARE NOT  QUITE A
+          MATCH FOR A FEDERATION STARSHIP, BUT THEY CAN DO QUITE A BIT
+          OF DAMAGE.
+
+          YOUR  SHIP CONTAINS  THE MOST  ADVANCED KLINGON  ENGINEERING
+          FEATURES, INCLUDING  A LONG  RANGE TRACTOR  BEAM,  AN  ANTI-
+          PHOTON DEVICE, AND A DILITHIUM RE-ENERGIZER THAT CAN REFOCUS
+          ENERGY FROM YOUR MAIN  ENERGY CELLS,  BACK INTO  THE MATTER-
+          ANTIMATTER CONVERTERS  TO CREATE  ENERGY AT  A RATE  OF 1024
+          UNITS/STARDATES,  RECHARGING YOUR SHIP.   THIS RECHARGING IS
+          ESSENTIAL TO  YOUR POSSIBILITY OF  SUCCESS FOR YOU  AND YOUR
+          STRIKE FORCE,  SINCE HOME IS TWO  WEEKS AWAY,  AND YOU CAN'T
+          STOP ANYPLACE FOR ENERGY.
+
+          THERE  IS YET  ANOTHER PROBLEM,   TOO,  YOU  DON'T HAVE  THE
+          ELEMENT OF  SURPRISE FOREVER,   YOU MUST  BREAK THROUGH  THE
+\pagebreak
+
+                                                                PAGE 3
+
+          FEDERATION DEFENSES,   AND DESTROY ALL STARBASES  BEFORE THE
+          FEDERATION  HAS TIME  TO  MUSTER A  DEFENSE  TO YOUR  STRIKE
+          FORCE, IN ABOUT 7 STARDATES.
+
+          IN LIGHT OF THIS ENERGY SHORTAGE,  YOUR SHIP IS NOT EQUIPPED
+          WITH  ANY KIND  OF ENERGY  WEAPONS,  SUCH  AS PHASERS,   BUT
+          INSTEAD  IS   EQUIPPED  WITH  ULTRA  HIGH   POWER  DISRUPTOR
+          TORPEDOES, EACH CONTAINING OVER TEN GRAMS OF ANTI-MATTER.
+
+          IF YOU SUCCEED  IN YOUR MISSION,  WHICH IS NOT  AN EASY ONE,
+          THEN MANY RICHES OF THE GALAXY  WILL BE YOURS,  AND YOU WILL
+          HAVE COMPLETE CONTROL OVER ALL FEDERATION SPACE,  MAKING THE
+          GALAXY SAFE FOR TREACHERY FOREVER.
+\pagebreak
+
+                                                                PAGE 4
+
+          SPACE IS VAST,  AND IT TAKES  PRECIOUS TIME TO MOVE FROM ONE
+          PLACE TO ANOTHER.    IN COMPARISON,  OTHER THINGS  HAPPEN SO
+          QUICKLY THAT WE ASSUME THEY TAKE  NO TIME AT ALL.   TWO WAYS
+          THAT TIME CAN PASS  ARE WHEN YOU MOVE,  OR WHEN  YOU ISSUE A
+          COMMAND TO  SIT STILL AND REST  FOR A PERIOD OF  TIME.   YOU
+          WILL SOMETIMES  WANT TO  DO THE  LATTER,  SINCE  THE VARIOUS
+          DEVICES ABOARD YOUR STARSHIP MAY BE DAMAGED AND REQUIRE TIME
+          TO REPAIR.
+
+          IN ADDITION TO STARSHIPS AND STARBASES,  THE GALAXY CONTAINS
+          (SURPRISE) STARS.  MOSTLY, STARS ARE A NUISANCE AND JUST GET
+          IN YOUR WAY.  HOWEVER, STARS CAN BE VERY USEFUL WHEN NEXT TO
+          AN INTENDED  TARGET,  AS THEY CAN  THEN BE MADE TO  GO NOVA,
+          CAUSING HEAVY DAMAGE TO ANY  NEARBY SHIPS OR STARBASES.   IF
+          ANOTHER STAR  IS ADJACENT TO A  NOVA,  IT TOO WILL  GO NOVA.
+          STARS MAY ALSO OCCASIONALLY GO  SUPERNOVA;  A SUPERNOVA IN A
+          QUADRANT DESTROYS EVERYTHING  IN THE QUADRANT AND  MAKES THE
+          QUADRANT PERMANENTLY UNINHABITABLE.   YOU  MAY 'JUMP OVER' A
+          QUADRANT  CONTAINING A  SUPERNOVA WHEN  YOU  MOVE,  BUT  YOU
+          SHOULD NOT STOP THERE.
+
+          SUPERNOVAS ARE A RARE NATURAL EVENT, THE MOST LIKELY WAY FOR
+          A  STAR  TO  GO  SUPERNOVA IS  FOR  ONE  OF  YOUR  DISRUPTOR
+          TORPEDOES TO SET IT OFF.  IN THE EVENT YOU DO SET OFF A STAR
+          (10%)  AND IT GOES SUPERNOVA,   NAVIGATIONAL CONTROL OF YOUR
+          SHIP WILL  BE TAKEN OVER BY  YOUR BATTLE COMPUTER,   AND YOU
+          WILL BE  PILOTED OUT OF THE  QUADRANT,  PICKING AS  A TARGET
+          QUADRANT, ONE OF THE FOLLOWING: (IN ORDER OF PREFERENCE)
+
+               1.  THE NEAREST QUADRANT THAT DOES NOT CONTAIN AN ENEMY
+               STARBASE OR STARSHIP.
+
+               2.   A  QUADRANT SLIGHTLY  MORE DISTANT  THAT DOES  NOT
+               CONTAIN AN ENEMY.
+
+               3.  THE NEAREST QUADRANT TO WHICH THE PATH IS CLEAR.
+
+               4.  ANY QUADRANT TO WHICH YOU CAN MOVE.
+
+          IF YOUR  BATTLE COMPUTER  IS DAMAGED,  YOU  WILL BE  GIVEN A
+          RANDOM COURSE TO A RANDOM NEARBY QUADRANT.
+
+          ALSO A FEW PLANETS ARE SCATTERED THROUGH THE GALAXY.   THESE
+          CAN BE VERY  HELPFUL,  AND YOU GET TIME BONUS  (WHICH CAN BE
+          TURNED INTO ENERGY BY RESTING,   WHICH INCREASES YOUR ENERGY
+          SUPPLY)   DEPENDING ON  THE BILLIONS  OF  PEOPLE KILLED  AND
+          WHETHER  THE PLANET  HAD DILITHIUM  WHEN YOU  BLOW UP  THESE
+          PLANETS.    PLANETS  CAN  BE  DETECTED  ON  THE  LONG  RANGE
+\pagebreak
+
+                                                                PAGE 5
+
+          SCANNERS.
+
+          FINALLY, EACH QUADRANT WILL CONTAIN FROM 0 TO 3 BLACK HOLES.
+          THESE CAN  SWALLOW TORPEDOES PASSING  NEAR THEM.    THEY ARE
+          JUST SOMETHING  TO GET  IN YOUR  WAY,  AND  SERVE NO  USEFUL
+          PURPOSE.
+\pagebreak
+
+                                                                PAGE 6
+
+                     ----------HOW TO ISSUE COMMANDS----------
+
+          (IBM 327X TSO USERS SHOULD SEE  "APPENDIX T - NOTES FOR FULL
+          SCREEN USERS")  WHEN THE GAME IS  WAITING FOR YOU TO ENTER A
+          COMMAND, IT WILL PRINT OUT
+
+                     COMMAND - ?
+
+          YOU MAY THEN TYPE IN YOUR COMMAND.  ALL YOU HAVE TO REMEMBER
+          FOR EACH COMMAND IS THE MNEMONIC.   FOR EXAMPLE, IF YOU WANT
+          TO MOVE STRAIGHT  UP FOR ONE QUADRANT,  YOU CAN  TYPE IN THE
+          MNEMONIC "MOVE"
+
+          AND THE COMPUTER WILL PROMPT YOU WITH
+
+                     MANUAL OR AUTOMATIC?
+
+          SAY YOU TYPE IN 'MANUAL'.  THE COMPUTER THEN RESPONDS
+
+                     X AND Y DISPLACEMENTS-
+
+          NOW YOU TYPE  IN 0 1 WHICH  SPECIFIES AN X MOVEMENT  OF ZERO
+          AND A Y MOVEMENT OF 1.
+
+          WHEN YOU  HAVE LEARNED  THE COMMANDS,   YOU CAN  AVOID BEING
+          PROMPTED BY SIMPLY TYPING IN THE INFORMATION WITHOUT WAITING
+          TO BE ASKED FOR IT.   FOR EXAMPLE, IN THE ABOVE EXAMPLE, YOU
+          COULD SIMPLY TYPE IN
+
+                     MOVE MANUAL 0 1
+
+          AND IT WILL BE DONE.  OR YOU COULD TYPE IN
+
+                     MOVE MANUAL
+
+          AND WHEN THE COMPUTER RESPONDS WITH
+
+                     X AND Y DISPLACEMENTS-
+
+          YOU CAN TYPE IN
+
+                     0 1
+
+          AND IT WILL UNDERSTAND.
+
+          YOU CAN ABBREVIATE MOST MNEMONICS.   FOR 'MOVE', YOU CAN USE
+          ANY OF
+\pagebreak
+
+                                                                PAGE 7
+
+                     MOVE     MOV     MO     M
+
+          SUCCESSFULLY.   FOR YOUR SAFETY,   CERTAIN CRITICAL COMMANDS
+          (SUCH AS TO TERMINATE)  MUST BE WRITTEN OUT IN FULL.   ALSO,
+          IN A  FEW CASES  TWO OR  MORE COMMANDS  BEGIN WITH  THE SAME
+          LETTER,  AND IN THIS CASE THAT LETTER REFERS TO A PARTICULAR
+          ONE OF THE  COMMANDS;  TO GET THE  OTHER,  YOUR ABBREVIATION
+          MUST BE TWO OR MORE LETTERS LONG.   THIS SOUNDS COMPLICATED,
+          BUT YOU WILL LEARN THE ABBREVIATIONS QUICKLY ENOUGH.
+
+          WHAT THIS ALL BOILS DOWN TO IS-
+
+               (1) YOU CAN ABBREVIATE PRACTICALLY ANYTHING,
+
+               (2) IF YOU FORGET, THE COMPUTER WILL PROMPT YOU,
+
+               (3) IF YOU REMEMBER, YOU CAN TYPE IT ALL ON ONE LINE.
+
+          IF  YOU ARE  PART WAY  THROUGH  ENTERING A  COMMAND AND  YOU
+          CHANGE YOUR MIND,  YOU CAN CANCEL THE COMMAND BY TYPING A -1
+          AS ONE OF THE PARAMETERS,  WITH  THE EXCEPTION OF THE MANUAL
+          MOVE COMMAND (TYPE X AND Y OF 0 0 TO CANCEL A MOVE MANUAL.)
+
+          IF ANYTHING IS NOT CLEAR TO YOU, EXPERIMENT.   THE WORST YOU
+          CAN DO IS LOSE A GAME OR TWO.
+\pagebreak
+
+                                                                PAGE 8
+
+          ****************
+          * ABANDON SHIP *
+          ****************
+
+              MNEMONIC-  ABANDON
+              (NO ABBREVIATION)
+
+          YOU MAY NOT ABANDON SHIP, THAT IS UNWORTHY OF A KLINGON.
+\pagebreak
+
+                                                                PAGE 9
+
+          **********************
+          * ANTI-PHOTON DEVICE *
+          **********************
+
+            MNENONIC-  ANTI PHOTON
+            SHORTEST ABBREVIATION-  A P
+            FULL COMMAND-  ANTI PHOTON
+
+          LIKE ALL KLINGON COMMANDERS,  YOUR  SHIP IS EQUIPPED WITH AN
+          ANTI-PHOTON DEVICE.  THIS A.P.D.   WILL PROTECT YOU FROM ONE
+          ROUND  OF  FEDERATION  PHOTON TORPEDOES  (3.)    THE  A.P.D.
+          REQUIRES 500  UNITS OF SHIELD  ENERGY TO ACTIVATE  IT.   TWO
+          THINGS CAN DISARM THE ANTI-PHOTON DEVICE,  1.   IT ABSORBS A
+          FULL ROUND OF TORPEDOES OR  2.   A FEDERATION STARSHIP FIRES
+          PHASERS  AT YOU  (THE  A.P.D.  IS  RUN  BY  THE SHIP'S  MAIN
+          COMPUTER,   NOT THE  BATTLE COMPUTER,   AND AS  SUCH IS  NOT
+          AFFECTED WHEN THE BATTLE COMPUTER IS DAMAGED AND CAN BE USED
+          EVEN IF YOUR SHIELDS ARE DOWN.)
+
+          THE USE OF THE  ANTI PHOTON DEVICE DOES NOT COUNT  AS A TURN
+          AND CAN BE ACTIVATED INSTANTLY,   EVEN DURING BATTLE,  AT NO
+          COST IN TIME, AND DOES NOT ALLOW ENEMIES TO ATTACK.
+\pagebreak
+
+                                                               PAGE 10
+
+          ***********
+          * BATTERY *
+          ***********
+
+          MNEMONIC- BATTERY
+          SHORTEST ABBREVIATION- BATT
+
+          THE  BATTERY COMMAND  PROVIDES INFORMATION  OF WHETHER  YOUR
+          BATTERIES (USED IF YOU FALL  BELOW ZERO ENERGY)  ARE CHARGED
+          OR NOT,  ONCE  THE BATTERIES ARE DRAINED THERE IS  NO WAY TO
+          RECHARGE THEM.  THEY CONTAIN 750.0 UNITS OF ENERGY.
+\pagebreak
+
+                                                               PAGE 11
+
+          *********
+          * CHART *
+          *********
+
+              MNEMONIC-  CHART
+              SHORTEST ABBREVIATION-  C
+
+          AS YOU PROCEED  IN THE GAME,  YOU LEARN MORE  AND MORE ABOUT
+          WHAT THINGS ARE  WHERE IN THE GALAXY.    THIS INFORMATION IS
+          AUTOMATICALLY RECORDED FOR YOU IN YOUR STAR CHART.
+
+          THE CHART  LOOKS LIKE AN  8 BY  8 ARRAY OF  NUMBERS.   THESE
+          NUMBERS ARE INTERPRETED EXACTLY AS  THEY ARE ON A LONG-RANGE
+          SCAN.   A PERIOD (.)   IN PLACE OF A DIGIT MEANS  YOU DO NOT
+          KNOW THAT INFORMATION YET.  FOR EXAMPLE, ...  MEANS YOU KNOW
+          NOTHING ABOUT THE QUADRANT.
+
+          LOOKING AT THE STAR CHART IS A FREE OPERATION.  IT COSTS YOU
+          NEITHER TIME NOR ENERGY,  AND CAN  BE DONE SAFELY WHETHER IN
+          OR OUT OF BATTLE.
+\pagebreak
+
+                                                               PAGE 12
+
+          ********************
+          * COMPUTE MOVEMENT *
+          ********************
+
+              MNEMONIC-  COMPUTE
+              SHORTEST ABBREVIATION-  CO
+              FULL COMMANDS-  COMPUTE AUTOMATIC <ROWSEC> <COLSEC>
+                              COMPUTE AUTOMATIC <RQUAD> <CQUAD> <RSEC> <CSEC>
+                              COMPUTE MANUAL  <X-DISP> <Y-DISP>
+
+          THE SHIP'S COMPUTER ALLOWS YOU TO GET SOME INFORMATION ABOUT
+          MOVEMENT,   BEFORE  YOU  ACTUALLY   MOVE.    YOU  ENTER  THE
+          DESTINATION YOU ARE CONSIDERING IN THE SAME FORMAT AS MOVE .
+          THE COMPUTER WILL THEN CALCULATE AND  REPORT TO YOU THE TIME
+          AND ENERGY REQUIRED FOR SUCH A TRIP.
+
+          THIS COMMAND REQUIRES NO TIME OR  ENERGY,  SO YOU MAY USE IT
+          ANYTIME YOUR SHIP'S COMPUTER IS UNDAMAGED.
+\pagebreak
+
+                                                               PAGE 13
+
+          *********************
+          * COMPUTER (BATTLE) *
+          *********************
+
+              MNEMONIC - *NONE*
+              (NOT A COMMAND)
+
+          WHILE  NOT A  COMMAND,   THIS SECTION  IS  TO DOCUMENT  WHAT
+          FUNCTIONS ARE HANDLED  BY THE "SHIP'S COMPUTER"  WHICH IS IN
+          THE HEART OF THE  SHIP AND NOT OPEN TO ATTACK,   AND WHAT IS
+          CONTROLLED BY THE "BATTLE COMPUTER"  (CAN'T DO EVERYTHING ON
+          ONE COMPUTER!)
+
+          USUALLY THE FUNCTIONS CONTROLLED BY  THE BATTLE COMPUTER ARE
+          LESS CRITICAL.
+
+          CONTROLLED BY THE BATTLE COMPUTER:
+
+          COMPUTE OF MOVEMENT
+          COMPUTE OF PATH OUT OF WAY OF SUPERNOVA
+          CONTROL OF BATTERY IF POWER BELOW ZERO
+          MOVE AUTOMATIC FUNCTIONS
+
+
+          FUNCTIONS HANDLED BY "SHIP'S COMPUTER" (NOT OPEN TO ATTACK)
+
+          DEFLECTOR SCREEN CONTROL (CONSIDERED VITAL)
+          CONTROL OF SHIP'S ENERGY ALLOWING TRANSFER OF ENERGY
+          AUTOMATING  DAMPENING   SYSTEM  (WHEN   DISRUPTOR  TORPEDOES
+          EXPLODE IN THE FIRING TUBES)
+          STAR CHART
+          WARP ENGINE CONTROL
+          ANTI-PHOTON DEVICE
+\pagebreak
+
+                                                               PAGE 14
+
+          *****************
+          * DAMAGE REPORT *
+          *****************
+
+              MNEMONIC-  DAMAGES
+              SHORTEST ABBREVIATION-  DA
+
+          AT ANY TIME YOU MAY ASK FOR A DAMAGE REPORT TO FIND OUT WHAT
+          DEVICES ARE  DAMAGED AND  HOW LONG  IT WILL  TAKE TO  REPAIR
+          THEM.
+
+          IF  YOU SUFFER  DAMAGES AND  MOVE,   IT IS  POSSIBLE THAT  A
+          SUBSEQUENT DAMAGE  REPORT WILL NOT  SHOW ANY  DAMAGE.   THIS
+          HAPPENS IF  THE TIME  SPENT ON THE  MOVE EXCEEDS  THE REPAIR
+          TIME,  SINCE IN THIS CASE THE  DAMAGED DEVICES WERE FIXED EN
+          ROUTE.
+
+          DAMAGE REPORTS ARE FREE.   THEY USE  NO ENERGY OR TIME,  AND
+          CAN BE DONE SAFELY EVEN IN THE MIDST OF BATTLE.
+\pagebreak
+
+                                                               PAGE 15
+
+          *********************
+          * DEFLECTOR SHIELDS *
+          *********************
+
+              MNEMONIC-  SHIELDS
+              SHORTEST ABBREVIATION-  SH
+              FULL COMMANDS-  SHIELDS UP
+                              SHIELDS DOWN
+                              SHIELDS TRANSFER (AMOUNT OF ENERGY TO TRANSFER)
+
+          YOUR DEFLECTOR SHIELDS ARE A DEFENSIVE DEVICE TO PROTECT YOU
+          FROM FEDERATION ATTACKS (AND NEARBY NOVAS).   AS THE SHIELDS
+          PROTECT YOU, THEY GRADUALLY WEAKEN.  A SHIELD STRENGTH OF 75
+          PERCENT,  FOR  EXAMPLE,  MEANS  THAT THE  NEXT TIME  YOU ARE
+          ATTACKED,  YOUR SHIELDS WILL DEFLECT  75 PERCENT OF THE HIT,
+          AND LET 25 PERCENT GET THROUGH TO HURT YOU.
+
+          IT COSTS  50 UNITS OF ENERGY  TO RAISE SHIELDS,   NOTHING TO
+          LOWER THEM.
+
+          YOU SHOULD NEVER HAVE TO RAISE OR LOWER SHIELDS MANUALLY, AS
+          YOUR AUTOMATIC  DEFLECTOR SCREEN  CONTROL WILL  DO THIS  FOR
+          YOU, AS YOU GO INTO BATTLE, AND LEAVE BATTLE.
+
+          YOU MAY TRANSFER ENERGY BETWEEN  THE SHIP'S ENERGY (GIVEN AS
+          (ENERGY)  IN STATUS)  AND THE  SHIELDS.   (TRANSFER)  MAY BE
+          ABBREVIATED (T).    (AMOUNT OF ENERGY  TO TRANSFER)   IS THE
+          NUMBER OF UNITS  OF ENERGY YOU WISH TO TAKE  FROM THE SHIP'S
+          ENERGY AND PUT INTO THE SHIELDS.   IF YOU SPECIFY A NEGATIVE
+          NUMBER,  ENERGY  IS DRAINED  FROM THE  SHIELDS TO  THE SHIP.
+          TRANSFERRING ENERGY  CONSTITUTES A  TURN.   IF  YOU TRANSFER
+          ENERGY TO THE  SHIELDS WHILE UNDER ATTACK,  THEY  WILL BE AT
+          THE NEW ENERGY LEVEL WHEN YOU ARE NEXT HIT.
+
+          ENEMY TORPEDOES  HITTING YOUR SHIP  EXPLODE ON  YOUR SHIELDS
+          (IF THEY  ARE UP)  AND HAVE  ESSENTIALLY THE SAME  EFFECT AS
+          PHASER HITS.
+\pagebreak
+
+                                                               PAGE 16
+
+          ************************
+          * DISRUPTOR TORPEDOES  *
+          ************************
+
+              MNEMONIC-  DISRUPTOR
+              SHORTEST ABBREVIATION-  DIS
+              FULL COMMANDS-  DISRUPTOR (NUMBER),(T1),(T2),(T3),(T4)
+              (T1, T2... MEANS "TARGET NUMBER")
+
+          DISRUPTOR TORPEDOES  ARE PROJECTILE WEAPONS--YOU  EITHER HIT
+          WHAT YOU AIM AT, OR YOU DON'T.  THERE ARE NO 'PARTIAL HITS'.
+
+          YOU MAY FIRE DISRUPTOR TORPEDOES SINGLY, OR IN BURSTS OF TWO
+          THREE OR  FOUR.   EACH  TORPEDO IS  INDIVIDUALLY TARGETABLE.
+          THE COMPUTER WILL PROMPT YOU,   ASKING FOR THE TARGET SECTOR
+          FOR EACH TORPEDO.   ALTERNATELY, YOU MAY SPECIFY EACH TARGET
+          IN THE COMMAND LINE.
+
+          IF MORE THAN ONE TORPEDO IS FIRED AND ONLY ONE TARGET SECTOR
+          IS SPECIFIED,  ALL TORPEDOES ARE FIRED AT THAT SECTOR.   FOR
+          EXAMPLE, TO FIRE TWO TORPEDOES AT SECTOR 3 - 4, YOU TYPE
+
+              DIS 2 3 4           (OR)           DIS 2 3 4 3 4
+
+          TO FIRE TORPEDOES AT, CONSECUTIVELY, SECTORS 2 - 6,  1 - 10,
+          AND 4 - 7, TYPE:
+
+              DIS 3 2 6 1 10 4 7
+
+          THERE IS NO RESTRICTION TO FIRE  DIRECTLY AT A SECTOR.   FOR
+          EXAMPLE, YOU CAN ENTER:
+
+                DIS 1 3 2.5
+
+          TO AIM BETWEEN TWO SECTORS.  HOWEVER, SECTOR NUMBERS MUST BE
+          1 TO 10 INCLUSIVE.
+
+          TORPEDOES  GOING WITHIN  0.5  SECTORS OF  A  BLACK HOLE  ARE
+          SWALLOWED.  IF YOUR DISRUPTOR TORPEDO TUBES ARE DAMAGED LESS
+          THAN 3 STARDATES, YOU CAN STILL FIRE 2 TORPEDOES (INSTEAD OF
+          4)
+\pagebreak
+
+                                                               PAGE 17
+
+          ************
+          * DESTRUCT *
+          ************
+
+              MNEMONIC-  DESTRUCT
+
+              (NO ABBREVIATION)
+
+          YOU MAY SELF-DESTRUCT,  THUS KILLING YOURSELF AND ENDING THE
+          GAME.
+\pagebreak
+
+                                                               PAGE 18
+
+          ************
+          * EXTERNAL *
+          ************
+
+          MNEMONIC- EXTERNAL
+          SHORTEST ABBREVIATION- EX
+
+          (This command is valid for Full-screen users only)
+
+          The  "EXTERNAL"  command  toggles the  display  of  external
+          views, that is, the graphics features of KLINGON.
+
+          To turn  the displays off,  if  displays are "on"  enter the
+          "EXTERNAL" command, to turn them back on,  enter the command
+          again.
+\pagebreak
+
+                                                               PAGE 19
+
+          **********
+          * FREEZE *
+          **********
+
+              MNEMONIC-  FREEZE
+              (NO ABBREVIATION)
+
+          THE PURPOSE OF THE (FREEZE)  COMMAND IS TO ALLOW A PLAYER TO
+          SAVE  THE CURRENT  STATE OF  THE GAME,   SO THAT  IT CAN  BE
+          FINISHED LATER.  ALL PERTINANT INFORMATION ABOUT THE GAME IS
+          WRITTEN TO A FREEZE FILE,  SAVED  ON THE USERS CATALOG,  AND
+          THE GAME STOPS.
+
+          TO RESTART A GAME CREATED BY THE 'FREEZE' COMMAND,  THE USER
+          NEED ONLY  TYPE 'OLD'  IN RESPONSE  TO THE  INITIAL QUESTION
+          ABOUT THE TYPE OF GAME DESIRED, FOLLOWED BY THE (FILE NAME).
+
+          NOTE-  A 'TOURNAMENT' GAME IS LIKE  A FROZEN GAME,  WITH THE
+          FOLLOWING DIFFERENCES.   (1)   TOURNAMENT GAMES ALWAYS START
+          FROM THE  BEGINNING,  WHILE A FROZEN  GAME CAN START  AT ANY
+          POINT.   (2)   TOURNAMENT GAMES REQUIRE ONLY THAT THE PLAYER
+          REMEMBER THE  NAME OR NUMBER  OF THE TOURNAMENT,   WHILE THE
+          INFORMATION ABOUT A FROZEN GAME MUST BE KEPT ON A FILE.
+\pagebreak
+
+                                                               PAGE 20
+
+          ********
+          * HELP *
+          ********
+
+              MNEMONIC-  HELP
+              (NO ABBREVIATION)
+
+          HELP COMMAND CONNECTS  YOU WITH THE KLINGON  HELP DATA BASE,
+          FOR QUICK HELP ON USING A COMMAND.
+\pagebreak
+
+                                                               PAGE 21
+
+          *******************
+          * IMPULSE ENGINES *
+          *******************
+
+              MNEMONIC-  IMPULSE
+              SHORTEST ABBREVIATION-  I
+              FULL COMMAND-  IMPULSE (MANUAL OR AUTOMATIC),(DISP OR DEST)
+              ("DISP" MEANS DISPLACEMENT, "DEST" IS DESTINATION)
+
+          THE IMPULSE  ENGINES GIVE YOU A  WAY TO MOVE WHEN  YOUR WARP
+          ENGINES ARE  DAMAGED.   THEY  MOVE YOU  AT A  SPEED OF  0.95
+          SECTORS PER  STARDATE,  WHICH  IS THE  EQUIVALENT OF  A WARP
+          FACTOR OF  ABOUT 0.975,  SO  THEY ARE  MUCH TOO SLOW  TO USE
+          EXCEPT IN EMERGENCIES.
+
+          MOVEMENT  COMMANDS  ARE  INDICATED JUST  AS  IN  THE  'MOVE'
+          COMMAND.
+
+          THE IMPULSE  ENGINES REQUIRE 20  UNITS OF ENERGY  TO ENGAGE,
+          PLUS 10 UNITS PER SECTOR (100 UNITS PER QUADRANT) TRAVELLED.
+\pagebreak
+
+                                                               PAGE 22
+
+          *******************
+          * LONG-RANGE SCAN *
+          *******************
+
+              MNEMONIC-  LRSCAN
+              SHORTEST ABBREVIATION-  L
+
+          A LONG-RANGE SCAN GIVES YOU  GENERAL INFORMATION ABOUT WHERE
+          YOU ARE AND WHAT IS AROUND YOU.  HERE IS AN EXAMPLE OUTPUT.
+
+            LONG RANGE SCAN FOR AREA:  1 - 4
+
+               ****   ****   ****
+
+                102      2   9999
+
+               1007      3     19
+
+            PLANET DETECTED IN QUADRANT:  2 - 5
+
+          THIS SCAN SAYS THAT YOU ARE IN ROW 1, COLUMN 4 OF THE 8 BY 8
+          GALAXY.   THE NUMBERS IN THE SCAN  INDICATE HOW MANY OF EACH
+          KIND OF  THING THERE  IS IN YOUR  QUADRANT AND  ALL ADJACENT
+          QUADRANTS.  THE DIGITS ARE INTERPRETED AS FOLLOWS.
+
+              THOUSANDS DIGIT-  1000 INDICATES A KLINGON COMMANDER
+              HUNDREDS DIGIT-   NUMBER OF FEDERATION STARSHIPS
+              TENS DIGIT-       NUMBER OF STARBASES PRESENT
+              ONES DIGIT-       NUMBER OF STARS PRESENT
+              9999      -       INDICATES SUPERNOVA
+              ****      -       EDGE OF FEDERATION SPACE.
+
+          FOR EXAMPLE, IN YOUR QUADRANT (1 - 4) THE NUMBER IS 2, WHICH
+          INDICATES 2 STARS, YOU,  AND NOTHING ELSE (YOU ARE ALWAYS IN
+          THE CENTER QUADRANT OF THESE SCANS.)   THERE IS A FEDERATION
+          STARSHIP IN  QUADRANT 1  - 3 (102),   A COMMANDER  AND SEVEN
+          STARS IN QUADRANT 2 - 3 (1007),  A SUPERNOVA IN QUADRANT 1 -
+          5 (9999) AND A STARBASE, AND NINE STARS IN 2 - 5 (19)
+
+          YOU MIGHT ALSO NOTICE A REPORT ON A PLANET IN QUADRANT 2 - 5
+          UNLIKE SUPER STAR TREK, PLANETS ARE DETECTABLE BY LONG RANGE
+          SCAN, SO THAT IF THEY ARE IN YOUR FLIGHT PATH,  YOU CAN STOP
+          AND KILL IT IF YOU WISH.
+
+          SINCE YOU ARE  IN ROW 1,  THERE ARE NO  QUADRANTS ABOVE YOU.
+          THE  ****'S INDICATE  THE THE  BORDER  OF FEDERATION  SPACE,
+          WHICH YOU ARE NOT PERMITTED TO CROSS.
+\pagebreak
+
+                                                               PAGE 23
+
+          LONG-RANGE SCANS ARE FREE.   THEY USE  UP NO ENERGY OR TIME,
+          AND CAN BE DONE SAFELY REGARDLESS OF BATTLE CONDITIONS.
+\pagebreak
+
+                                                               PAGE 24
+
+          *************************
+          * MOVE UNDER WARP DRIVE *
+          *************************
+
+              MNEMONIC-  MOVE
+              SHORTEST ABBREVIATION-  M
+              FULL COMMAND-  MOVE MANUAL (DISPLACEMENT)
+                             MOVE AUTOMATIC (DESTINATION)
+
+          THIS COMMAND  IS THE  USUAL WAY  TO MOVE  FROM ONE  PLACE TO
+          ANOTHER  WITHIN THE  GALAXY.   YOU  MOVE  UNDER WARP  DRIVE,
+          ACCORDING TO THE CURRENT WARP FACTOR (SEE 'WARP FACTOR').
+
+          THERE  ARE  TWO  COMMAND MODES  FOR  MOVEMENT;   MANUAL  AND
+          AUTOMATIC.  THE MANUAL MODE REQUIRES THE FOLLOWING FORMAT-
+
+                   MOVE MANUAL (DELTX),(DELTY)
+
+          (DELTX)   AND  (DELTY)   ARE  THE  HORIZONTAL  AND  VERTICAL
+          DISPLACEMENTS   FOR  YOUR   STARSHIP,    IN  QUADRANTS;    A
+          DISPLACEMENT OF  ONE SECTOR  IS 0.1  QUADRANTS.   SPECIFYING
+          (DELTX)  AND (DELTY)  CAUSES YOUR SHIP TO MOVE IN A STRAIGHT
+          LINE TO THE SPECIFIED DESTINATION.   IF (DELTY)  IS OMITTED,
+          IT IS  ASSUMED ZERO.   FOR  EXAMPLE,  THE  SHORTEST POSSIBLE
+          COMMAND TO MOVE 1 SECTOR TO THE RIGHT WOULD BE
+
+                   M M .1
+
+          THE  FOLLOWING EXAMPLES  OF  MANUAL  MOVEMENT REFER  TO  THE
+          SHORT-RANGE SCAN EXAMPLE.
+
+              DESTINATION SECTOR      MANUAL MOVEMENT COMMAND
+
+                    3 - 1                    M M -.3 .1
+                    2 - 1                    M M -.3 .2
+                    1 - 2                    M M -.2 .3
+                    3 - 4                    M M 0 .1
+              (LEAVING QUADRANT)             M M .7
+                    3 - 5                    M M .1 .1
+                    4 - 10                   M M .6
+                    6 - 6                    M M .2 -.2
+                    5 - 4                    M M 0 -.1
+
+          THE AUTOMATIC MODE IS AS FOLLOWS-
+
+                   MOVE AUTOMATIC (QROW),(QCOL),(SROW),(SCOL)
+
+          WHERE (QROW)  AND (QCOL)  ARE THE  ROW AND COLUMN NUMBERS OF
+\pagebreak
+
+                                                               PAGE 25
+
+          THE DESTINATION QUADRANT, AND (SROW) AND (SCOL)  ARE THE ROW
+          AND COLUMN  NUMBERS OF  THE DESTINATION  SECTOR WITHIN  THAT
+          QUADRANT.   THIS COMMAND ALSO MOVES  YOUR SHIP IN A STRAIGHT
+          LINE PATH TO THE DESTINATION.  FOR MOVING WITHIN A QUADRANT,
+          (QROW) AND (QCOL) MAY BE OMITTED.   FOR EXAMPLE,  TO MOVE TO
+          SECTOR 2 - 9 IN THE  CURRENT QUADRANT,  THE SHORTEST COMMAND
+          WOULD BE
+
+                   M A 2 9
+
+          TO MOVE TO QUADRANT 3 - 7, SECTOR 5 - 8, TYPE
+
+                   M A 3 7 5 8
+
+          AND IT WILL BE DONE.   IN AUTOMATIC MODE, EITHER TWO OR FOUR
+          NUMBERS MUST BE SUPPLIED.
+
+          AUTOMATIC MODE  UTILIZES THE SHIP'S 'BATTLE  COMPUTER'.   IF
+          THE COMPUTER IS DAMAGED, MANUAL MOVEMENT MUST BE USED.
+
+          IF WARP  ENGINES ARE DAMAGED LESS  THAN 5 STARDATES  YOU CAN
+          STILL GO WARP FIVE.
+
+          IT USES TIME AND ENERGY TO MOVE.  HOW MUCH TIME AND HOW MUCH
+          ENERGY DEPENDS ON YOUR CURRENT  WARP FACTOR AND THE DISTANCE
+          YOU MOVE.   THE HIGHER THE WARP FACTOR, THE FASTER YOU MOVE,
+          AND THE MORE ENERGY YOU USE,   BUT THE WARP ENGINES ARE MORE
+          EFFICIENT AT HIGH SPEEDS.
+
+          IN OTHER  WORDS,  TO GET  THERE TWICE  AS FAST DOES  NOT USE
+          TWICE AS MUCH ENERGY.
+
+          THE SUGGESTED  WARP SPEED  IS WARP  10,  THE  FASTEST "SAFE"
+          SPEED.
+\pagebreak
+
+                                                               PAGE 26
+
+          ********************
+          * PHOTON TORPEDOES *
+          ********************
+
+          SEE DISRUPTOR TORPEDO COMMAND.
+\pagebreak
+
+                                                               PAGE 27
+
+          ********
+          * REST *
+          ********
+
+              MNEMONIC-  REST
+              SHORTEST ABBREVIATION-  RES
+              FULL COMMAND-  REST (NUMBER OF STARDATES)
+
+          THIS COMMAND SIMPLY ALLOWS THE SPECIFIED NUMBER OF STARDATES
+          TO GO BY.   THIS IS USEFUL  IF YOU HAVE SUFFERED DAMAGES AND
+          WISH TO WAIT UNTIL REPAIRS ARE  MADE BEFORE YOU GO BACK INTO
+          BATTLE,   OR  YOU  WISH  TO REST  TO  RESTORE  ENERGY  (1024
+          UNITS/STARDATE)
+
+          IT IS  NOT GENERALLY ADVISABLE TO  REST WHILE YOU  ARE UNDER
+          ATTACK BY THE FEDERATION.
+\pagebreak
+
+                                                               PAGE 28
+
+          ***************
+          * SENSOR-SCAN *
+          ***************
+
+              MNEMONIC-  SENSORS
+              SHORTEST ABBREVIATION-  SE
+
+          UTILIZING THE SHORT-RANGE SENSORS,  YOUR FIRST OFFICER GIVES
+          YOU A READOUT ON ANY PLANET IN YOUR QUADRANT.
+\pagebreak
+
+                                                               PAGE 29
+
+          ********************
+          * SHORT-RANGE SCAN *
+          ********************
+
+              MNEMONIC-  SRSCAN
+              SHORTEST ABBREVIATION-  S
+              FULL COMMANDS-  SRSCAN
+                              SRSCAN NO
+
+          (TSO 327X USERS  SHOULD REFER TO APPENDIX T -  NOTES FOR TSO
+          FULLSCREEN USERS)
+
+          THE  SHORT-RANGE SCAN  GIVES YOU  A  CONSIDERABLE AMOUNT  OF
+          INFORMATION ABOUT THE QUADRANT YOUR STARSHIP IS IN.  A SHORT
+          RANGE SCAN IS BEST DESCRIBED BY AN EXAMPLE.
+
+
+              1 2 3 4 5 6 7 8 9 10
+            1 * . . . . . . . . .  TORPEDOES    150 CONDITION: READY
+            2 . . . F . . . . . .  POSITION    5 - 1, 4 - 4
+            3 . . . . . * . B . .  STARDATE    4300.00
+            4 . . . S . . . . . .  REMAINING      6.93
+            5 . . . . . . . . . .  CONDITION   RED   A.P.D.  ARMED
+            6 . . . # . . . . * .  ENERGY      2176.25
+            7 . . . . . P . . . .  SHIELDS   UP  3472 PCT 11800 UNTS
+            8 . . . . * . . . . .  WARP FACTOR   10.00
+            9 . * . . * . . . C .  FEDERATION  BASES 6  STARSHIPS 4
+           10 . . . . . . . . . .  KLINGON     COMMANDERS  4
+
+          THE LEFT PART IS A PICTURE OF THE QUADRANT.  THE S AT SECTOR
+          4 - 4 REPRESENTS THE SUPERCOMMANDER KAZH;  THE B AT SECTOR 3
+          - 8  IS A STARBASE.   THERE  IS A KLINGON COMMANDER  (C)  AT
+          SECTOR 9 - 9, AND A PLANET AT SECTOR 7 - 6.   OTHER FEATURES
+          IN THE QUADRANT ARE A FEDERATION STARSHIP (F), AT 2 - 4, AND
+          A BLACK HOLE AT 6 - 4 (#).  THE STARS (*) ARE LOCATED AT 1 -
+          1, 3 - 6, 6 - 9, 8 - 5, 9 - 2, AND 9 - 5.
+
+          THE PERIODS (.)   ARE JUST EMPTY SPACE--THEY  ARE PRINTED TO
+          HELP YOU GET YOUR BEARINGS.
+
+          THE INFORMATION ON THE RIGHT IS ASSORTED STATUS INFORMATION.
+          THE STATUS INFORMATION WILL BE ABSENT IF YOU TYPE NO)  AFTER
+          SRSCAN.  OTHERWISE, STATUS INFORMATION WILL BE PRESENTED.
+
+          SHORT-RANGE SCANS ARE FREE.   THAT IS, THEY USE UP NO ENERGY
+          AND NO TIME.  IF YOU ARE IN BATTLE, DOING A SHORT-RANGE SCAN
+          DOES NOT GIVE  THE ENEMIES ANOTHER CHANCE TO  HIT YOU.   YOU
+          CAN SAFELY DO A SHORT-RANGE SCAN ANYTIME YOU LIKE.
+\pagebreak
+
+                                                               PAGE 30
+
+          *****************
+          * STATUS REPORT *
+          *****************
+
+              MNEMONIC-  STATUS
+              SHORTEST ABBREVIATION-  ST
+
+          (TSO 327X USERS SHOULD REFER TO APPENDIX T - NOTES FOR TSO FULLSCREEN
+          USERS)
+
+          THIS COMMAND GIVES  YOU INFORMATION ABOUT THE  CURRENT STATE
+          OF YOUR STARSHIP, AS FOLLOWS-
+
+                    STARDATE - THE  CURRENT DATE.   A STARDATE  IS THE
+                    SAME AS A DAY.
+
+                    CONDITION - THERE ARE FOUR POSSIBLE CONDITIONS-
+
+                         RED    - IN BATTLE.
+                         YELLOW - LOW ON ENERGY (0/1000 UNITS).
+                         GREEN  - NONE OF THE ABOVE.
+
+                    POSITION - QUADRANT IS GIVEN FIRST, THEN SECTOR.
+
+                    FEDERATION    -  GIVES  THE NUMBERS  ON  HOW  MANY
+                    STARSHIPS   AND  STARSHIPS   ARE   LEFT  FOR   THE
+                    FEDERATION
+
+                    WARP FACTOR -  WHAT YOUR WARP FACTOR  IS CURRENTLY
+                    SET TO.
+
+                    ENERGY - THE AMOUNT OF  ENERGY YOU HAVE LEFT.   IF
+                    IT  DROPS TO  ZERO,  ONE  DOSE OF  750.0 UNITS  OF
+                    ENERGY WILL BE TAKEN FROM YOUR BATTERIES, PROVIDED
+                    YOUR BATTLE COMPUTER IS WORKING, AND THE BATTERIES
+                    ARE CHARGED.
+
+                    TORPEDOES - HOW MANY  DISRUPTOR TORPEDOES YOU HAVE
+                    LEFT.    ALSO  TELLS  WHAT   THE  STATUS  OF  YOUR
+                    DISRUPTOR TORPEDO TUBES ARE.
+
+                         OUT - NO TORPEDOES LEFT,
+                         READY - TORPEDOES STANDING BY TO FIRE
+                         DAMAGED - TORPEDO TUBES ARE DAMAGED.
+
+                    SHIELDS - WHETHER YOUR SHIELDS ARE UP OR DOWN, HOW
+                    STRONG THEY  ARE (WHAT PERCENT  OF A HIT  THEY CAN
+                    DEFLECT), AND SHIELD ENERGY.
+\pagebreak
+
+                                                               PAGE 31
+
+                    KLINGON   -  HOW MANY OF  YOUR FRIENDLY  SHIPS ARE
+                    OUT THERE.
+
+                    REMAINING  -  HOW  LONG  YOU  HAVE  TO  CRUSH  THE
+                    FEDERATION  IF IT  REACHES  ZERO,  THE  FEDERATION
+                    WINS, AND YOU WILL THEN BE OPENING SEALED ORDERS.
+
+          STATUS INFORMATION IS FREE--IT USES  NO TIME OR ENERGY,  AND
+          IF YOU ARE  IN BATTLE,  THE FEDERATION IS  NOT GIVEN ANOTHER
+          CHANCE TO HIT YOU.
+
+          STATUS INFORMATION CAN  ALSO BE OBTAINED  BY DOING  A SHORT-
+          RANGE SCAN.  SEE THE (SRSCAN) COMMAND FOR DETAILS.
+\pagebreak
+
+                                                               PAGE 32
+
+          ******************************
+          * TERMINATE THE CURRENT GAME *
+          ******************************
+
+              MNEMONIC-  TERMINATE
+              (NO ABBREVIATION)
+
+          IMMEDIATELY  CANCEL THE  CURRENT  GAME.    NO CONCLUSION  IS
+          REACHED AND  NO SCORE  IS COMPUTED.   YOU  WILL BE  GIVEN AN
+          OPPORTUNITY TO  START A NEW GAME  OR TO LEAVE THE  STAR TREK
+          PROGRAM.
+\pagebreak
+
+                                                               PAGE 33
+
+          ****************
+          * TRACTOR BEAM *
+          ****************
+
+          MNEMONIC- TRACTOR
+          SHORTEST ABBREVIATION- TRAC
+          FULL COMMAND-  TRACTOR (TARGET QUADRANT)
+
+          THE TRACTOR  COMMAND ALLOWS YOU TO  PULL A SHIP  ACROSS SOME
+          DISTANCE IN SPACE.   WHEN THIS COMMAND IS ISSUED YOU WILL BE
+          PROMPTED WITH THE  AMOUNT OF ENERGY IT WOULD TAKE  TO PULL A
+          SHIP THAT  FAR,  AND ASKED IF  YOU STILL WISH TO  ENGAGE THE
+          TRACTOR BEAM,   IF A SHIP IS FOUND AT THE TARGET QUADRANT IT
+          WILL BE PULLED TO YOUR QUADRANT.   IF THERE IS MORE THAN ONE
+          AT THE TARGET QUADRANT, ONE WILL BE SELECTED RANDOMLY.
+
+          IF THERE  IS NO SHIP  AT THE  TARGET QUADRANT,  YOU  WILL BE
+          NOTIFIED OF  THIS FACT,  AND THE  POWER DRAIN CAUSED  BY THE
+          TRACTOR BEAM WILL BE CUT BY 50%
+
+          IT IS POSSIBLE TO TRACTOR EITHER  COMMANDERS (TO HELP OUT IN
+          A  FIGHT PERHAPS)    OR  FEDERATION STARSHIPS,    STARBASES,
+          PLANETS,  STARS,   AND BLACK HOLES  ARE NOT EFFECTED  BY THE
+          TRACTORS.
+
+          THE USE OF THE TRACTOR BEAM CONSTITUTES A TURN,  AND ENEMIES
+          WILL ATTACK.
+\pagebreak
+
+                                                               PAGE 34
+
+          ***************
+          * WARP FACTOR *
+          ***************
+
+              MNEMONIC-  WARP
+              SHORTEST ABBREVIATION-  W
+              FULL COMMAND-  WARP (NUMBER)
+
+          YOUR WARP FACTOR CONTROLS THE  SPEED OF YOUR STARSHIP.   THE
+          LARGER THE  WARP FACTOR,   THE FASTER  YOU GO  AND THE  MORE
+          ENERGY YOU USE.
+
+          YOUR MINIMUM WARP FACTOR IS 1.0 AND YOUR MAXIMUM WARP FACTOR
+          IS 12.0.   AT  SPEEDS ABOVE WARP 10 THERE IS  SOME DANGER OF
+          CAUSING DAMAGE TO YOUR WARP  ENGINES;  THIS DAMAGE IS LARGER
+          AT HIGHER WARP FACTORS AND ALSO DEPENDS ON HOW FAR YOU GO AT
+          THAT WARP FACTOR.
+\pagebreak
+
+                                                               PAGE 35
+
+          **********
+          * XDEBUG *
+          **********
+
+              MNEMONIC-  XDEBUG
+              SHORTEST ABBREVIATION-  XDEBUG
+              FULL COMMAND-  XDEBUG
+
+          The Extended debugging  feature is used (under  advisment of
+          the user  maintaining the  game program)   to provide  trace
+          information on routine flow.
+
+          If  you enter  this command  by mistake,   enter any  random
+          password,   the program  will then  reject  the command  and
+          proceed with play.
+\pagebreak
+
+                                                               PAGE 36
+
+                        ----------MISCELLANEOUS NOTES----------
+
+          IF A  FEDERATION STARBASE  OR PLANET  IS ATTACKED,   BUT NOT
+          DESTROYED (AND THERE IS ANYONE ALIVE TO DO IT,)   A SUBSPACE
+          RADIO CALL  ON THE STAR FLEET  PRIORITY ONE CHANNEL  WILL GO
+          OUT,  MEANING  THAT IF  THERE ARE  ANY FEDERATION  STARSHIPS
+          NEARBY, YOU WILL SOON HAVE LOTS OF COMPANY...
+
+          BLACK HOLES MOVE ABOUT, RANDOMLY.
+
+          THE TYPE OF DISRUPTOR TORPEDOES YOU CARRY HAVE BEEN KNOWN TO
+          EXPLODE IN THE FIRING TUBE, BUT THAT IS RATHER RARE.
+
+          WHEN HITS ARE SHOT AT THE  SUPPERCOMMANDER KAZH,  THE HIT IS
+          SHOWN AS TWO NUMBERS, EXAMPLE:
+
+          (112,1832)  UNIT HIT FROM FEDERATION STARSHIP AT 1 - 1
+
+          THIS MEANS THAT YOUR SHIELDS  ABSORBED 1832 UNITS,  AND YOUR
+          SHIP GOT HIT WITH 112 UNITS.
+\pagebreak
+
+                                                               PAGE 37
+
+                              ----------SCORING----------
+
+          SCORING IS FAIRLY SIMPLE.   YOU  GET POINTS FOR GOOD THINGS,
+          AND YOU LOSE POINTS FOR BAD THINGS.
+
+          YOU GAIN--
+
+             (1)  200 POINTS FOR EACH FEDERATION STARBASE
+             (2)  100 POINTS FOR EACH FEDERATION STARSHIP YOU DESTROY
+             (3)  YOU GET A WIN BONUS BASED ON YOUR SKILL LEVEL,
+                  10000-GOOD, 20000-EXPERT, 30000-EMERITUS
+             (4)  A SPECIAL WIN BONUS FOR TIME REMAINING.
+             (5)  A PROMOTION TO THE NEXT LEVEL, FOR ANY WIN.
+             (6)  A POINT BONUS FOR BILLIONS OF PEOPLE KILLED
+                  ON PLANETS, AND AN EXTRA BONUS FOR DILITHIUM.
+
+          YOU LOSE:
+
+             (7)  75 POINTS FOR EACH COMMANDER DESTROYED.
+             (8)  1000 POINTS IF YOU GET YOURSELF KILLED.
+
+          YOU CAN  BE PROMOTED  FROM ANY LEVEL.    THERE IS  A SPECIAL
+          PROMOTION AVAILABLE  IF YOU  GO BEYOND  THE 'EXPERT'  RANGE.
+          YOU CAN ALSO  HAVE A CERTIFICATE OF MERIT  PRINTED WITH YOUR
+          NAME,  AND  DATE PROVIDED YOU  ARE PROMOTED FROM  EITHER THE
+          'EXPERT' OR 'EMERITUS' LEVELS.
+
+          YOU SHOULD PROBABLY START OUT AT THE GOOD LEVEL, EVEN IF YOU
+          ARE ALREADY FAMILIAR  WITH ONE OF THE OTHER  VERSIONS OF THE
+          STAR TREK GAME--BUT,  OF COURSE,  THE LEVEL OF GAME YOU PLAY
+          IS UP TO YOU.   IF YOU WANT TO START AT THE EXPERT LEVEL, GO
+          AHEAD.  IT'S YOUR FUNERAL.   THE EMERITUS GAME IS CONSIDERED
+          IMPOSSIBLE BY SOME  (ALTHOUGH IT IS RUMORED  THAT THE AUTHOR
+          WINS ABOUT 10 PERCENT OF THE TIME)
+\pagebreak
+
+                                                               PAGE 38
+
+                    ----------HANDY REFERENCE PAGE----------
+          ABBREV    FULL COMMAND                      DEVICE USED
+          ------    ------------                      -----------
+          A P       ANTI PHOTON                       (NONE)
+          BATT      BATTERY                           (NONE)
+          C         CHART                             (NONE)
+          CO        COMPUTE AUTO (DESTINATION)        COMPUTER
+                    COMPUTE MANUAL (X-DISP) (Y-DISP)   "
+          DA        DAMAGES                           (NONE)
+          DIS       DISRUPTOR (NUMBER) (TARGETS)      DISRUPTOR TORPEDOES
+          DESTRUCT  DESTRUCT                          (NONE)
+          EXT       EXTERNAL (Turn off graphics)      (NONE)
+          FREEZE    FREEZE                            (NONE)
+          HELP      HELP                              (NONE)
+          I         IMPULSE MANUAL (DISPLACEMENT)     IMPULSE ENGINES
+                    IMPULSE AUTOMATIC (DESTINATION)   IMPULSE ENGINES/COMPUTER
+          L         LRSCAN                            LONG-RANGE SENSORS
+          M         MOVE MANUAL (DISPLACEMENT)        WARP ENGINES
+                    MOVE AUTOMATIC (DESTINATION)      WARP ENGINES/COMPUTER
+          P         SAME AS DISRUPTOR                   -
+          RES       REST (NUMBER OF STARDATES)        (NONE)
+          SE        SENSORS                           SHORT-RANGE SENSORS
+          SH        SHIELDS (UP, DOWN, OR TRANSFER)   DEFLECTOR SHIELDS
+          S         SRSCAN (NO)                       SHORT-RANGE SENSORS
+          ST        STATUS                            (NONE)
+          TERMINATE TERMINATE                         (NONE)
+
+          L. R. SCAN-   THOUSANDS DIGIT-   COMMANDERS
+                        HUNDREDS DIGIT-    FEDERATION STARSHIPS
+                        TENS DIGIT-        STARBASES
+                        ONES DIGIT-        STARS
+                        ****-              EDGE OF FEDERATION SPACE
+                        9999-              SUPERNOVA
+                        PERIOD (.)-        DIGIT NOT KNOWN (STAR CHART ONLY)
+
+          COURSES ARE GIVEN IN MANUAL MODE IN X - Y DISPLACEMENTS;  IN
+          AUTOMATIC  MODE  AS  DESTINATION   QUADRANT  AND/OR  SECTOR.
+          DISTANCES ARE GIVEN IN QUADRANTS.   A DISTANCE OF ONE SECTOR
+          IS 0.1  QUADRANT.   STARBASES  REQUIRE 4  TO 6  TORPEDOES TO
+          KILL,  WHILE  A FEDERATION REQUIRES  2-4 TORPEDOES  TO KILL,
+          AND  PLANETS  ANYWHERE  FROM   1-4  TORPEDOES  DEPENDING  ON
+          POPULATION AND PRESENCE OF DILITHIUM.
+
+          WARP 10 IS THE FASTEST SAFE SPEED.  AT HIGHER SPEEDS, ENGINE
+          DAMAGE MAY OCCUR.  SHIELDS COST 50 UNITS OF ENERGY TO RAISE.
+\pagebreak
+
+                                                               PAGE 39
+
+                        ----------ACKNOWLEDGMENTS----------
+
+          THE AUTHOR  WOULD LIKE TO  THANK MARK STEVENS  OF GOVERNER'S
+          STATE UNIVERSITY,   LOCATED IN PARK FOREST,   ILLINOIS,  FOR
+          PROGRAMMING ASSISTANCE AND SUPPORT.   OTHER THANKS GO TO TIM
+          LYON OF NORTHERN ILLINOIS UNIVERSITY, AND RAYMOND POWERS FOR
+          EXTENSIVE PLAYTESTING  OF THE PROTOTYPES  OF THE  GAME (THEY
+          FOUND MOST OF THE BUGS, FIRSTHAND.)
+
+          AND DEEPEST  THANKS GO TO  DAVID MATUSZEK AND  PAUL REYNOLDS
+          (WHOM I HAVE NEVER MET)  FOR GIVING PERMISSION  IN THE RULES
+          OF SUPER STAR TREK, THE GAME ON WHICH THIS ONE IS BASED, FOR
+          ALLOWING THE COPYING OR MODIFICATION  OF THEIR RULES WITHOUT
+          CHARGE.   A MAJORITY OF THESE  RULES ARE TAKEN DIRECTLY FROM
+          THE TEXT OF THEIR RULES, WORD FOR WORD.
+
+          AND  THANKS  AS  WELL  TO  WES  PALMER  OF  THE  EDUCATIONAL
+          COMPUTING NETWORK,  FOR  PUTTING UP WITH MY  QUESTIONS ABOUT
+          THE PROGRAM "SUPER STAR TREK"
+
+              THANKS ALL....
+                                       YOURS TRULY,
+
+                                   LARRY WILLIAMS
+                                   AUTHOR OF THE KLINGON PROGRAM.
+\pagebreak
+
+                                                               PAGE 40
+
+                          ----------REFERENCES----------
+
+          1.   STAR TREK (THE ORIGINAL TELEVISION SERIES), PRODUCED BY
+          GENE RODENBERRY.
+
+          2.   STAR TREK (THE ANIMATED TELEVISION SERIES), PRODUCED BY
+          GENE RODENBERRY AND HAL SUTHERLAND.
+
+          3.  THE MAKING OF STAR TREK, BY STEVEN E. WHITFIELD AND GENE
+          RODENBERRY.   THE  BEST AND MOST COMPLETE  READILY AVAILABLE
+          BOOK ABOUT STAR TREK.  (BALLANTINE BOOKS)
+
+          4.   THE WORLD OF STAR TREK, BY DAVID GERROLD.   SIMILIAR IN
+          SCOPE TO THE ABOVE BOOK.  (BANTAM)
+
+          5.   THE STAR TREK GUIDE,   THIRD REVISION 4/17/67,  BY GENE
+          RODENBERRY.   THE ORIGINAL WRITER'S GUIDE FOR THE TELEVISION
+          SERIES,  BUT  LESS COMPREHENSIVE THAN (3)   ABOVE.   (NORWAY
+          PRODUCTIONS)
+
+          6.   THE TROUBLE WITH TRIBBLES, BY DAVID GERROLD.   INCLUDES
+          THE  COMPLETE SCRIPT  OF  THIS  POPULAR SHOW.    (BALLANTINE
+          BOOKS)
+
+          7.   STAR TREK,  STAR TREK 2,  ...,  STAR TREK 12,  BY JAMES
+          BLISH.  THE ORIGINAL SHOWS IN SHORT STORY FORM.  (BANTAM)
+
+          8.  SPOCK MUST DIE, BY JAMES BLISH.   AN ORIGINAL NOVEL, BUT
+          RATHER SIMILAR TO THE SHOW 'THE ENEMY WITHIN'.  (BANTAM)
+\pagebreak
+
+                                                               PAGE 41
+
+                      Appendix T - Notes for TSO 3270 users
+
+          For TSO 3270  users,  KLINGON is a  full screen application.
+          the major differences are:
+
+          The SRSCAN, LRSCAN,  and STATUS commands cannot be explictly
+          entered,  since  this information  is on  the screen  at all
+          times.
+
+          The format of the screen is:
+
+
+              ...........  ++++++++++   LRSCAN
+              ...........  ++++++++++   and
+              ... SRS ...  + status +
+              ...........  ++ info ++   PLANET
+              ...........  ++++++++++   info
+
+          SRS and STATUS - the format  of this information is the same
+          as the standard version.
+
+          The LRSCAN and  PLANET information is the  same as described
+          in the LRSCAN command, however, the information is presented
+          in a "compressed" form,  to allow  for the smaller amount of
+          space available on the screen
+
+          The full screen mode  will work only on 24 and  43 line 327X
+          devices.
+
+          If you  wish to  experiment with  other devices,   the FSIO1
+          assembler routine supplied in source must be modified by the
+          user.

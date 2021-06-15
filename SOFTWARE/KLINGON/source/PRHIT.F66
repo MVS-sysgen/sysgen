@@ -1,0 +1,33 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+      SUBROUTINE PRHIT (IHIT1,IHIT2,MSG,MSGLEN,MSGDIM,ISEC1,ISEC2)
+C
+C  DISPLAY INFORMATION ON INCOMING FIRE, NAMELY HOW STRONG WAS IT
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+      COMMON /OUTUNT/ IOUTT
+      DIMENSION MSG(MSGDIM),IFORM(18),NUMS(26)
+      DATA IFORM / '(2H ',       '(,I',          0,
+     *             ','   ,       '1H,I',         0,
+     *        ',', '2H) ',       -1,            -1,
+     *             ',1X',        ',I',           0,
+     *             ',' ,         '3H -',         ' ,I',
+     *             0,            ')'/
+      DATA NUMS / '0','1','2','3','4','5','6','7','8','9',
+     *            '10','11','12','13','14','15','16','17','18','19',
+     *            '20','21','22','23','24','25' /
+      CALL SETFOR (MSGLEN,IFORM(9),IFORM(10))
+      RL = ALOG10(FLOAT(IHIT1)+.0001)
+      IFORM(3) = NUMS(2)
+      IF (IHIT1.GT.1) IFORM(3) = NUMS(IFIX(RL)+2)
+      RL = ALOG10(FLOAT(IHIT2)+.0001)
+      IFORM(6) = NUMS(2)
+      IF (IHIT2.GT.1) IFORM(6) = NUMS(IFIX(RL)+2)
+      IFORM(13) = NUMS(2)
+      IFORM(17) = NUMS(2)
+      IF (ISEC1.GT.9) IFORM(13) = NUMS(3)
+      IF (ISEC2.GT.9) IFORM(17) = NUMS(3)
+      WRITE (IOUTT,IFORM) IHIT1,IHIT2,MSG,ISEC1,ISEC2
+      RETURN
+      END

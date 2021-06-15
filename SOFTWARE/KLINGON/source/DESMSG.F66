@@ -1,0 +1,23 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+      SUBROUTINE DESMSG
+C
+C     PURPOSE - DISPLAY "YOU BLEW UP MSG"
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      CALL DBUGIN ('DESMSG ENTERED',IW(14),0)
+      CALL LINEF
+      CALL PRMSG ('  #CLICK#',IW(10))
+      CALL LINEF
+      CALL PRMSG (
+     *     '*********************************************************',
+     *     IW(57))
+      CALL PRMSG (
+     *     '****         SUPERCOMMANDER KAZH DESTROYED           ****',
+     *     IW(57))
+      CALL PRMSG (
+     *     '*********************************************************',
+     *     IW(57))
+      CALL DBUGIN ('DESMSG EXITED',IW(13),0)
+      RETURN
+      END

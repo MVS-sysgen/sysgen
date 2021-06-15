@@ -1,0 +1,195 @@
+C*********************************************************************
+C
+C PROGRAM TO GENERATE JCL FOR COMPILING MEMBERS (FORTRAN G/H/VS COMPAT)
+C
+C*********************************************************************
+      COMMON /PARMS/ IASML(100,2), ILNKL(100,2), ISRCE(46), IPLOAD(46),
+     *   IOBJL(46), IFORTC(46), IFORTL(46),
+     *   ICARDS(100,20), IASMC, ILNKC, ICCNT,
+     *   ISTEP, IMEM(2)
+      DATA IBLNK /' '/
+      DATA ICOMMA /','/
+      DATA IQUOTE /''''/
+      CALL ASMLIS
+      CALL LNKLIS
+      REWIND 13
+      READ (13,10000,END=999) ISRCE, IPLOAD, IOBJL, IFORTC, IFORTL
+      ISRCE(45)  = IBLNK
+      ISRCE(46)  = IBLNK
+      IPLOAD(45) = IBLNK
+      IPLOAD(46) = IBLNK
+      IOBJL(45)  = IBLNK
+      IOBJL(46)  = IBLNK
+      IFORTC(45) = IBLNK
+      IFORTC(46) = IBLNK
+      IFORTL(45) = IBLNK
+      IFORTL(46) = IBLNK
+      DO 10 N=1,46
+          J = N
+          IF (ISRCE(N).EQ.IBLNK) GO TO 11
+10    CONTINUE
+11    CONTINUE
+      ISRCE(J)   = IQUOTE
+      ISRCE(J+1) = ICOMMA
+      DO 20 N=1,46
+          J = N
+          IF (IPLOAD(N).EQ.IBLNK) GO TO 21
+20    CONTINUE
+21    CONTINUE
+      IPLOAD(J) = IQUOTE
+      IPLOAD(J+1) = ICOMMA
+      DO 30 N=1,46
+          J = N
+          IF (IOBJL(N).EQ.IBLNK) GO TO 31
+30    CONTINUE
+31    CONTINUE
+      IOBJL(J) = IQUOTE
+      IOBJL(J+1) = ICOMMA
+      DO 40 N=1,46
+          J = N
+          IF (IFORTC(N).EQ.IBLNK) GO TO 41
+40    CONTINUE
+41    CONTINUE
+      IFORTC(J) = IQUOTE
+      IFORTC(J+1) = ICOMMA
+      DO 50 N=1,46
+          J = N
+          IF (IFORTL(N).EQ.IBLNK) GO TO 51
+50    CONTINUE
+51    CONTINUE
+      IFORTL(J) = IQUOTE
+      IFORTL(J+1) = ICOMMA
+      ICCNT = 0
+100   CONTINUE
+      READ (13,10001,END=800) (ICARDS(ICCNT+1,N),N=1,20)
+      ICCNT = ICCNT + 1
+      IF (ICCNT.LT.100) GO TO 100
+      WRITE (6,10003)
+      GO TO 999
+800   CONTINUE
+      ISTEP = 100000
+      ISTEPF = 999
+      REWIND 12
+200   CONTINUE
+      READ (12,10002,END=999) IMEM
+      CALL MEMPR (ISTEPF)
+      GO TO 200
+999   CONTINUE
+      CALL LINKPR
+      STOP
+10000 FORMAT (46A1/46A1/46A1/46A1/46A1)
+10001 FORMAT (2X,A2,19A4)
+10002 FORMAT (2A4)
+10003 FORMAT (' ','***** OVERFLOW OF ARRAY, USE LESS JCL CARDS')
+      END
+C*********************************************************************
+C
+      SUBROUTINE ASMLIS
+C
+C*********************************************************************
+      COMMON /PARMS/ IASML(100,2), ILNKL(100,2), ISRCE(46), IPLOAD(46),
+     *   IOBJL(46), IFORTC(46), IFORTL(46),
+     *   ICARDS(100,20), IASMC, ILNKC, ICCNT,
+     *   ISTEP, IMEM(2)
+      IASMC = 0
+      REWIND 10
+100   CONTINUE
+      READ (10,11000,END=999) (IASML(IASMC+1,N),N=1,2)
+      IASMC = IASMC + 1
+      IF (IASMC.LT.100) GO TO 100
+      WRITE (6,11001)
+      GO TO 999
+999   CONTINUE
+      RETURN
+11000 FORMAT (2A4)
+11001 FORMAT (' ','*** WARNING *** - MORE THAN 100 ASMLIST ENTRIES'/
+     *        ' ','EXCESS ENTRIES INGORED')
+      END
+C*********************************************************************
+C
+      SUBROUTINE LNKLIS
+C
+C*********************************************************************
+      COMMON /PARMS/ IASML(100,2), ILNKL(100,2), ISRCE(46), IPLOAD(46),
+     *   IOBJL(46), IFORTC(46), IFORTL(46),
+     *   ICARDS(100,20), IASMC, ILNKC, ICCNT,
+     *   ISTEP, IMEM(2)
+      ILNKC = 0
+      REWIND 11
+100   CONTINUE
+      READ (11,11000,END=999) (ILNKL(ILNKC+1,N),N=1,2)
+      ILNKC = ILNKC + 1
+      IF (ILNKC.LT.100) GO TO 100
+      WRITE (6,11001)
+      GO TO 999
+999   CONTINUE
+      RETURN
+11000 FORMAT (2A4)
+11001 FORMAT (' ','*** WARNING *** - MORE THAN 100 LINKMEM ENTRIES'/
+     *        ' ','EXCESS ENTRIES INGORED')
+      END
+C*********************************************************************
+C
+      SUBROUTINE MEMPR (ISTEPF)
+C
+C*********************************************************************
+      COMMON /PARMS/ IASML(100,2), ILNKL(100,2), ISRCE(46), IPLOAD(46),
+     *   IOBJL(46), IFORTC(46), IFORTL(46),
+     *   ICARDS(100,20), IASMC, ILNKC, ICCNT,
+     *   ISTEP, IMEM(2)
+      ISTEPF = ISTEPF + 1
+      ISTEP  = ISTEP + 1
+      IF (ISTEPF.LT.35) GO TO 200
+      DO 100 J=1, ICCNT
+          WRITE (14,12000) (ICARDS(J,N),N=1,20)
+100   CONTINUE
+      ISTEPF = 1
+200   CONTINUE
+      ILANG = 0
+      DO 300 J=1,IASMC
+          IF (IMEM(1).EQ.IASML(J,1).AND.IMEM(2).EQ.IASML(J,2)) ILANG = 1
+300   CONTINUE
+      IF (ILANG.EQ.1) GO TO 400
+          WRITE (14,12001) ISTEP, ISRCE, IOBJL, IFORTC, IMEM
+          GO TO 900
+400   CONTINUE
+          WRITE (14,12002) ISTEP, ISRCE, IOBJL, IMEM
+900   CONTINUE
+      RETURN
+12000 FORMAT ('//',A2,19A4)
+12001 FORMAT ('//ST',I6,'    EXEC KLFORT,'/
+     *        '//            INDS=''',46A1/
+     *        '//            OBJDS=''',46A1/
+     *        '//            FORTLIB=''',46A1/
+     *        '//            MBR=',2A4/
+     *        '//*')
+12002 FORMAT ('//ST',I6,'    EXEC KLASM,'/
+     *        '//            INDS=''',46A1/
+     *        '//            OBJDS=''',46A1/
+     *        '//            MBR=',2A4/
+     *        '//*')
+      END
+C*********************************************************************
+C
+      SUBROUTINE LINKPR
+C
+C*********************************************************************
+      COMMON /PARMS/ IASML(100,2), ILNKL(100,2), ISRCE(46), IPLOAD(46),
+     *   IOBJL(46), IFORTC(46), IFORTL(46),
+     *   ICARDS(100,20), IASMC, ILNKC, ICCNT,
+     *   ISTEP, IMEM(2)
+      ISTEP  = ISTEP + 1
+      DO 300 J=1,ILNKC
+          WRITE (14,12001) ISTEP, IPLOAD, IOBJL, ISRCE, IFORTL,
+     *                                        (ILNKL(J,N),N=1,2)
+      ISTEP = ISTEP + 1
+300   CONTINUE
+      RETURN
+12001 FORMAT ('//ST',I6,'    EXEC KLLINK,'/
+     *        '//            OUTDS=''',46A1/
+     *        '//            OBJDS=''',46A1/
+     *        '//            INDS=''',46A1/
+     *        '//            FORTLNK=''',46A1/
+     *        '//            MBR=',2A4/
+     *        '//*')
+      END

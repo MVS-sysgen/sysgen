@@ -1,0 +1,139 @@
+         TITLE 'SHIFT ROUTINE'
+**********************************************************************
+*
+*  ROUTINE SHIFT - COMPUTE ALLOWED TIME TO PLAY GAME
+*
+**********************************************************************
+SHIFT    CSECT                          INITIALIZATION
+         STM   R14,R12,12(R13)          STORE REGS IN SUPPLIED SAVEAREA
+         LR    R12,R15                  ESTABLISH ADDRESSABILITY
+         USING SHIFT,R12                WE GOT IT
+         ST    R13,SAVEAREA+4           NON-RENT, NO BIG DEAL HERE
+         LA    R15,SAVEAREA             SET FORWARD/BACKWORD POINTERS
+         ST    R15,8(,R13)                 *
+         LA    R13,SAVEAREA                *
+*
+* 1) INIT THE COUNTERS FOR PROGRAM (AT LEAST MAKE PROGRAM "REUS")
+*
+         MVC   JULDAT,=C'000000'        DISPLAY ZERO
+         MVC   GREGDAT,=C'000000'         *
+         MVI   DAY,C'0'
+*
+* 2) CALL JULIAN ROUTINE TO GET DAY OF WEEK
+*
+         OI    PARMS+8,X'80'            FLIP ON VL BIT
+         LA    R1,PARMS                 SET UP CALL
+         L     R15,=V(JULIAN)           AND THE JULIAN ROUTINE
+         BALR  R14,R15                  GO GET THE DATE/DAY
+*
+* 3) GET THE DAY OF THE WEEK
+*
+         SR    R3,R3                    CLEAR REG FOR IC
+         IC    R3,DAY                   GET ONE BYTE DAY
+         S     R3,=X'000000F0'          STRIP OFF FIRST NIBBLE
+         LTR   R3,R3                    CHECK RESULT
+         BZ    OKSHIFT                  IF DAY UNKNOWN, LET THEM GO
+         BCTR  R3,0                     SUBTRACT ONE
+         LR    R4,R3                    COPY VALUE
+         MH    R4,=AL2($TABELEN)        AND NOW IT'S DISPLACEMENT
+         L     R3,=V(SHIFTAB)           LOAD ADDRESS OF SHIFT TABLE
+         L     R9,=V(INFOSH)            ADDRESS OF INFO SHIFT TABLE
+         USING $DISPLAY,R9
+         MVC   $DSTART,=CL8'00:00   '
+         MVC   $DSTOP,=CL8'00:00   '
+         LA    R3,0(R3,R4)              POINT AT ENTRY
+         USING $TIMETAB,R3
+         LH    R1,$STARTOK
+         ST    R1,FWORD
+         UNPK  DUMMY(9),FWORD(5)
+         TR    DUMMY(8),TRANTAB
+         MVC   $DSHOUR,DUMMY+4          FILL IN HOURS
+         MVC   $DSMIN,DUMMY+6           AND MIN
+         LH    R1,$STOPOK
+         ST    R1,FWORD
+         UNPK  DUMMY(9),FWORD(5)
+         TR    DUMMY(8),TRANTAB
+         MVC   $DPHOUR,DUMMY+4
+         MVC   $DPMIN,DUMMY+6
+         MVC   $ITYPE,$IFLAG
+         TIME  DEC
+         ST    R0,WORKTIME              SAVE THE TIME
+         CLC   WORKTIME(2),$STARTOK     IN OK TIME?
+         BNH   OUTSHIFT                 CURRENT TIME MUST BE > START
+         CLC   WORKTIME(2),$STOPOK      BEFORE STOP TIME?
+         BH    OUTSHIFT                 CUREENT TIME MUST BE < STOP
+OKSHIFT  DS    0H
+         CLC   $IFLAG,=C'EXCL'          IS EXCLUDE FLAG SET
+         BE    SETOUT                   OVERRIDE OK, HE'S INSIDE EXCL
+SETOK    DS    0H
+         L     R1,=V(SHIFTF)            COMMON TO RETURN SHIFT IN
+         MVC   0(4,R1),=F'1'            MUST BE OK SET TO ONE
+         B     RETURN
+OUTSHIFT DS    0H
+         CLC   $IFLAG,=C'EXCL'          IS EXCLUDE FLAG SET
+         BE    SETOK                    IF SO, OVERRIDE OUTSHIFT
+SETOUT   DS    0H
+         L     R1,=V(SHIFTF)            COMMON TO RETURN SHIFT IN
+         XC    0(4,R1),0(R1)            SET ZERO
+         B     RETURN
+*
+* 9) RESTORE REGS AND RETURN
+*
+RETURN   DS    0H
+         L     R13,SAVEAREA+4           GET ORIGINAL REGISTER 13
+         LM    R14,R12,12(R13)          RESTORE INPUT REGISTERS
+         SR    R15,R15                  SET RETURN CODE
+         BR    R14                      AND RETURN ...
+         EJECT
+         LTORG
+***********************************************************************
+*        REGISTERS, CONSTANTS, AND STUFF                              *
+***********************************************************************
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+*
+*   WORK AREAS (NON-RENT CODE)
+*
+SAVEAREA DS    9D                       REG SAVE AREA
+JULDAT   DS    CL5                      USAGE IS DISPLAY
+GREGDAT  DS    CL6                      USAGE IS DISPLAY
+DAY      DS    CL1                      USAGE IS DISPLAY
+PARMS    DC    A(JULDAT,GREGDAT,DAY)
+WORKTIME DS    A
+TRANTAB  DS    CL(X'F0')
+         DC    C'0123456789ABCDEF'
+FWORD    DS    F,CL1
+DUMMY    DS    CL9
+$TIMETAB DSECT
+$STARTOK DS    XL2
+$STOPOK  DS    XL2
+$IFLAG   DS    CL4
+$TABELEN EQU   *-$STARTOK
+$WHOLET  EQU   $TABELEN*7
+$DISPLAY DSECT
+$DSTART  DS    0CL8
+$DSHOUR  DS    CL2
+$C1      DS    CL1
+$DSMIN   DS    CL2
+$FILL1   DS    CL3
+$DSTOP   DS    0CL8
+$DPHOUR  DS    CL2
+$C2      DS    CL1
+$DPMIN   DS    CL2
+$FILL2   DS    CL3
+$ITYPE   DS    CL4
+         END

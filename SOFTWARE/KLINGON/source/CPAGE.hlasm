@@ -1,0 +1,62 @@
+*********************************************************************
+*                                                                   *
+*  PURPOSE: FOR 3270 TERMINALS, THIS ROUTINE CLEARS THE SCREEN      *
+*                                                                   *
+*********************************************************************
+CPAGE    CSECT                    CLEAR SCREEN ROUTINE
+         STM   R14,R12,12(R13)          SAVE REGS
+         LR    R2,R15                   SET BASE REG
+         USING CPAGE,R2
+         L     R3,=V(TERMSZ)            TERMINAL SIZE CSECT
+         CLI   CLEARSCR+5,0             ALREADY GOT SCREEN SIZE?
+         BNE   NOGTSIZE                 YES, SKIP GTSIZE ET AL
+         GTSIZE ,                       OBTAIN IBM TERMINAL INFO
+         LTR   R0,R0                    DETERMINE IF DISPLAY TERMINAL
+         BZ    RETURN                   IF R0=0, WE IN WRONG PLACE, OUT
+         ST    R0,0(R3)                 SAVE IT
+         MR    R0,R0                    GET THE SCREEN SIZE
+         BCTR  R1,0                     GET LAST SCREEN LOCATION
+         STC   R1,CLEARSCR+6            SAVE LOW-ORDER
+         SRL   R1,6
+         STC   R1,CLEARSCR+5            SAVE HIGH-ORDER
+         NI    CLEARSCR+6,X'3F'         CONVERT TO 3270 12-BIT
+         TR    CLEARSCR+5(2),TBL12BIT            ADDRESS FORMAT
+NOGTSIZE DS    0H
+         LA    R1,CLEARSCR              ADDRESS OF CLEAR STRING
+         ICM   R1,B'1000',=X'03'        SET "03" IN FRONT OF ADDRESS
+         LA    R0,CLEARLEN              AND SET LENGTH
+         TPUT  (1),(0),R                CLEAR SCREEN
+RETURN   DS    0H
+         LM    14,15,12(13)             RESTORE REGS
+         LM    1,12,24(13)              RESTORE SOME MORE
+         MVI   12(13),X'FF'             SET RETURN FLAG
+         BR    14                       RETURN TO CALLER
+         LTORG
+         DS    0F
+CLEARSCR DC    X'C31140403C0000001D6013' CLEAR SCREEN
+CLEARLEN EQU   *-CLEARSCR
+TBL12BIT DS    0D
+         DC    X'40C1C2C3C4C5C6C7C8C94A4B4C4D4E4F'
+         DC    X'50D1D2D3D4D5D6D7D8D95A5B5C5D5E5F'
+         DC    X'6061E2E3E4E5E6E7E8E96A6B6C6D6E6F'
+         DC    X'F0F1F2F3F4F5F6F7F8F97A7B7C7D7E7F'
+***********************************************************************
+*        REGISTERS, CONSTANTS, AND STUFF                              *
+***********************************************************************
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         END

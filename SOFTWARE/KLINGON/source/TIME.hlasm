@@ -1,0 +1,13 @@
+TIME     CSECT
+***********************************************************************
+*
+*  TIME FUNCTION FOR FORTRAN - RETURN TIME IN R0 (FUNCTION FORM)
+*
+***********************************************************************
+         STM    14,12,12(13)      SAVE REGS
+         TIME   BIN               GET TIME IN BINARY
+         LM     14,15,12(13)      RESTORE REGS
+         LM     1,12,24(13)       RESTORE SOME MORE
+         MVI    12(13),X'FF'      SET RETURN FLAG
+         BR     14
+         END

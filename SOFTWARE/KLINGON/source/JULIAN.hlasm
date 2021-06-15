@@ -1,0 +1,199 @@
+**********************************************************************
+*
+*  JULIAN/GREGORIAN DAY OF WEEK ROUTINE, TAKEN FROM CBT TAPE FILE 336
+*
+*  MODIFIED TO NOT USE FILE 336 MACROS IN ASSEMBLY
+*
+**********************************************************************
+JULIAN   CSECT                     INITIALIZATION
+         STM   R14,R12,12(R13)     STORE REGS IN SUPPLIED SAVEAREA
+         LR    R12,R15             ESTABLISH ADDRESSABILITY
+         USING JULIAN,R12          WE GOT IT
+         ST    R13,SAVEAREA+4      NON-RENT, NO BIG DEAL HERE
+         LA    R15,SAVEAREA        SET FORWARD/BACKWORD POINTERS
+         ST    R15,8(,R13)                 *
+         LA    R13,SAVEAREA                *
+         LM    R2,R3,0(R1)         GET THE PARMS
+         SLR   R9,R9               ASSUME ONLY TWO PARMS       *MW82098
+         LTR   R3,R3               SECOND PARM LAST?           *MW82098
+         BM    ONLY2PRM            NO:                         *MW82098
+         L     R9,8(,R1)           --SAVE WEEKDAY ADDRESS      *MW82098
+         MVI   0(R9),C'0'          --FLAG UNKNOWN WEEKDAY      *MW82098
+ONLY2PRM DS    0H                  END                         *MW82098
+         ZAP   DMONTH,=P'0'
+         ZAP   DDAY,=P'0'
+         ZAP   DYEAR,=P'0'
+         ZAP   JDAY,=P'0'
+*
+*   R1 CONTAINS THE ADDRESS OF THE IDENTIFIER LIST.  R2 AND R3 POINT
+*   TO THE BEGINNING OF JDATE AND GDATE, RESPECTIVELY.  JDATE
+*   IS 5 BYTES LONG AND GDATE IS 6 BYTES LONG.
+*
+*   COMPUTE JULIAN DATE FROM GREGORIAN DATE
+*
+JUL      PACK  DMONTH,0(2,R3)
+         CVB   R4,DMONTH
+         SR    R5,R5
+         CR    R4,R5
+         BE     GREG             BRANCH TO GREG IF ZERO MONTH
+         LA    R5,12
+         CR    R4,R5
+         BH    GOBACK2          BRANCH IF MONTH > 12           *MW82098
+         SLL   R4,1               MULTIPLY BY 2 TO INDEX ON HALFWORDS
+         PACK  DDAY,2(2,R3)
+         PACK  DYEAR,4(2,R3)
+         CVB   R5,DDAY
+         DP    DYEAR,FOUR
+         L     R6,DYEAR+4
+         N     R6,MASK1            ELIMINATE SIGN BITS OF REMAINDER
+         BZ    JULLEAP
+         AH    R5,NORM(R4)
+         B     JULANYYR
+JULLEAP  AH    R5,LEAP(R4)
+JULANYYR CVD   R5,JDAY
+         UNPK  2(3,R2),JDAY        JULIAN DATE IS IN YYDDD FORMAT
+         OI    4(R2),X'F0'
+         MVC   0(2,R2),4(R3)
+GOBACK   DS    0H
+*                                                              *MW82098
+*   COMPUTE DAY OF WEEK IF REQUESTED?                          *MW82098
+*                                                              *MW82098
+         LTR   R9,R9               FOURTH PARMS?               *MW82098
+         BZ    NOWEEKDY            YES:                        *MW82098
+         PACK  DYEAR,0(2,R2)       --RECREATE YEAR             *MW82098
+         CVB   R4,DYEAR            --R4 = YY                   *MW82098
+         LR    R5,R4               --R5 = YY                   *MW82098
+         BCTR  R5,0                --R5 = YY-1                 *MW82098
+         SRL   R5,2                --R5 = (YY-1)/2             *MW82098
+         AR    R5,R4               --R5 = YY+(YY-1)/4          *MW82098
+         PACK  JDAY,2(3,R2)        --RECREATE DAYS             *MW82098
+         CVB   R4,JDAY             --R4 = DDD                  *MW82098
+         AR    R5,R4               --R5 = YY+(YY-1)/4+DDD      *MW82098
+         SLR   R4,R4               --PREPARE FOR DIVIDE        *MW82098
+         D     R4,SEVEN            --R4 = (YY+(YY-1)/4+DDD)MOD *MW82098
+         LA    R4,1(,R4)           --UP ONE FOR COBOL          *MW82098
+         STC   R4,0(R9)            --SAVE FOR CALLER           *MW82098
+         OI    0(R9),C'0'          --PRETTY IT UP              *MW82098
+NOWEEKDY DS    0H                  END                         *MW82098
+GOBACK2  DS    0H                                              *MW82098
+*
+*    RESTORE REGS AND RETURN
+*
+RETURN   DS    0H
+         L     R13,SAVEAREA+4           GET ORIGINAL REGISTER 13
+         LM    R14,R12,12(R13)          RESTORE INPUT REGISTERS
+         SR    R15,R15                  SET RETURN CODE
+         BR    R14                      AND RETURN ...
+*
+*   COMPUTE GREGORIAN DATE FROM JULIAN DATE
+*
+GREG     PACK  JDAY,2(3,R2)
+         CVB   R4,JDAY            R4 CONTAINS BINARY JULIAN DAY
+         CR    R4,R5
+         BE    CURDAT           GET CURRENT DATE IF BOTH DATES ZERO
+         PACK  DYEAR,0(2,R2)
+GREG2    DS    0H
+         LA    R5,24               R5 IS THE 'MONTH' INDEX
+         L     R6,MTWO             INCREMENT BACKWARDS BY HALFWORDS
+         SR    R7,R7                STOP AT ZERO
+         DP    DYEAR,FOUR
+         L     R8,DYEAR+4
+         N     R8,MASK1           ELIMINATE SIGN BITS OF REMAINDER
+         BZ    LEAP2
+LOOP     CH    R4,NORM(R5)
+         BH    BOX4             BRANCH IF JULIAN DAY (R4) HIGH
+         BXH   R5,6,LOOP
+BOX4     SH    R4,NORM(R5)
+BOX5     SRL   R5,1                DIVIDE BY 2 TO GET MONTH
+         CVD   R5,DMONTH
+         CVD   R4,DDAY
+         UNPK  0(2,R3),DMONTH
+         OI    1(R3),X'F0'         REMOVE ZONE SIGNS
+         UNPK  2(2,R3),DDAY
+         OI    3(R3),X'F0'
+         MVC   4(2,R3),0(R2)        YEAR
+         B     GOBACK
+LEAP2    CH    R4,LEAP(R5)
+         BH    BOX6
+         BXH   R5,6,LEAP2
+BOX6     SH    R4,LEAP(R5)
+         B     BOX5
+*
+*   OBTAIN CURRENT DATE
+*
+CURDAT   DS    0H
+         TIME
+         SR    R6,6
+         LR    R5,R1
+         N     R1,MASK2           R1   0000DDDC
+         ST    R6,JDAY
+         ST    R1,JDAY+4
+         SRL   R5,12
+         ST    R6,DYEAR
+         ST    R5,DYEAR+4
+         OI    DYEAR+7,X'0F'       FIX UP SIGN                 *MW82098
+         UNPK  2(3,R2),JDAY        STORE JULIAN CURRENT DATE
+         OI    4(R2),X'F0'
+         UNPK  0(2,R2),DYEAR
+         OI    1(R2),X'F0'
+         CVB   R4,JDAY
+         B     GREG2           OBTAIN GREGORIAN CURRENT DATE
+         LTORG
+*
+SAVEAREA DS    9D
+DMONTH   DS    D
+DDAY     DS    D
+DYEAR    DS    D
+JDAY     DS    D
+TWO      DC    F'2'
+MTWO     DC    F'-2'
+SEVEN    DC    F'7'                # DAYS IN WEEK              *MW82098
+MASK1    DC    X'000000F0'
+MASK2    DC    X'0000FFFF'
+FOUR     DC    PL1'4'
+NORM     DS    0F
+         DC    F'0'
+         DC    H'31'
+         DC    H'59'
+         DC    H'90'
+         DC    H'120'
+         DC    H'151'
+         DC    H'181'
+         DC    H'212'
+         DC    H'243'
+         DC    H'273'
+         DC    H'304'
+         DC    H'334'
+LEAP     DS    0F
+         DC    F'0'
+         DC    H'31'
+         DC    H'60'
+         DC    H'91'
+         DC    H'121'
+         DC    H'152'
+         DC    H'182'
+         DC    H'213'
+         DC    H'244'
+         DC    H'274'
+         DC    H'305'
+         DC    H'335'
+***********************************************************************
+*        REGISTERS, CONSTANTS, AND STUFF                              *
+***********************************************************************
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         END

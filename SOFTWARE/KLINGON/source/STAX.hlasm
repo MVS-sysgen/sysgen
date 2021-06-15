@@ -1,0 +1,24 @@
+STAX     CSECT
+***********************************************************************
+*
+*  FUNCTION TO CANCEL "STAE" AND DEFER INTERUPTS IF DESIRED
+* (TURNED OFF AT THIS POINT, TO USE, UNCOMMENT THE "STAX" MACROS)
+*
+***********************************************************************
+         STM    14,12,12(13)      SAVE REGS
+         LR     12,15
+         USING  STAX,12
+         L      1,0(,1)
+         ICM    1,B'1111',0(1)  GET PARM 0=DEFER ON ¬=0=DEFER OFF
+         BZ     DEFON
+*        STAX   DEFER=NO          DEFER INTERUPTS
+         B      RETURN
+DEFON    DS     0H
+*        STAX   DEFER=YES
+         STAE   0
+RETURN   DS     0H
+         LM     14,15,12(13)      RESTORE REGS
+         LM     1,12,24(13)       RESTORE SOME MORE
+         MVI    12(13),X'FF'      SET RETURN FLAG
+         BR     14
+         END

@@ -1,0 +1,64 @@
+*********************************************************************
+*                                                                   *
+*  PURPOSE:  THIS ROUTINE INITS THE GAME VARIABLES FOR GRAPHICS AND *
+*            IF 3270/IBM TSO SUPPORTED                              *
+*                                                                   *
+*********************************************************************
+GAINIT   CSECT                          SET VARIABLES ROUTINE
+         STM   R14,R12,12(R13)          SAVE REGS
+         LR    R2,R15                   SET BASE REG
+         USING GAINIT,R2
+         ICM   R3,B'1111',=V(INITVR)    FILLED IN?
+         BZ    RETURN
+         MVC   0(4,R3),IBMTSO           VALUE FOR IBMTSO
+         MVC   4(4,R3),GRAFICS          AND GRAFICS
+RETURN   DS    0H
+         LM    14,15,12(13)             RESTORE REGS
+         LM    1,12,24(13)              RESTORE SOME MORE
+         MVI   12(13),X'FF'             SET RETURN FLAG
+         BR    14                       RETURN TO CALLER
+         LTORG
+*
+*  USING THE VARIABLES BELOW,
+*
+*  IF YOU SET IBMTSO TO ZERO, GRAFICS IS IGNORED
+*  IF YOU LEAVE IBMTSO AT ONE, WE WILL ASSUME YOU ARE 3278 MODEL 2
+*  OR MODEL 4, OR SOMETHING THAT RUNS LIKE IT.
+*
+*  THE GRAFICS FLAG IS SET TO ZERO, IF YOU WISH TO SUPPRESS ALL
+*  GRAPHICS DISPLAYS, WHICH YOU MAY WANT TO DO IF IT DOES NOT
+*  LOOK PRETTY...
+*
+*  THE GRAFICS FLAG CAN BE SET TO ZERO, BY ENTERING THE "EXT"
+*  COMMAND (FOR "EXTERNAL VIEW") ANYTIME YOU ARE PROMPTED WITH
+*  A "COMMAND - " PROMPT.
+*
+*  NOTE: IF YOU SET GRAFICS TO OFF, THE PLAYER CANNOT TURN IT ON
+*
+IBMTSO   DC    F'1'    1=FULL 3270 TSO SUPPORT, 0= SEQUENTIAL LINE MODE
+*
+GRAFICS  DC    F'1'    1=FULL 3270 GRAPHICS USE 0= GRAPHICS BORE ME,
+*                                                  OR MY 3270 LOOK-
+*                                                  ALIKES ARE SOOO...
+*                                                  SLOW, GRAPHICS DON'T
+*                                                  LOOK GOOD
+***********************************************************************
+*        REGISTERS, CONSTANTS, AND STUFF                              *
+***********************************************************************
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         END

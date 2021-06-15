@@ -1,0 +1,301 @@
+         TITLE 'FS IO ROUTINE'
+**********************************************************************
+*
+*  ROUTINE FSIO1 - DO FULLSCREEN TPUT/TGET
+*
+*  INPUT - BUFFERS IN CSECT FSBUFF
+*          ADDRESSABILITY TO CSECT FSBUFF REQUIRED
+*
+*  OUTPUT - A LINE OF INPUT, 50 CHARACTERS LONG RETURNED IN V(FSBUFF)
+*
+**********************************************************************
+FSIO1    CSECT                          INITIALIZATION
+         STM   R14,R12,12(R13)          STORE REGS IN SUPPLIED SAVEAREA
+         LR    R12,R15                  ESTABLISH ADDRESSABILITY
+         USING FSIO1,R12                WE GOT IT
+         ST    R13,SAVEAREA+4           NON-RENT, NO BIG DEAL HERE
+         LA    R15,SAVEAREA             SET FORWARD/BACKWORD POINTERS
+         ST    R15,8(,R13)                 *
+         LA    R13,SAVEAREA                *
+*
+* 1) INIT THE COUNTERS FOR PROGRAM (AT LEAST MAKE PROGRAM "REUS")
+*
+         XC    COUNTER,COUNTER          ZERO OUT COUNTER
+         XC    BUFFDISP,BUFFDISP        DISP TO CURRENT $WORK
+         XC    LNCNT,LNCNT              ZERO OUT LINE COUNTER
+         L     R11,=V(FSBUFF)           ADDRESS OF BUFFER CSECT
+         USING $FSBUFF,R11              ADDRESS IT
+*
+* 2) OBTAIN INFO ABOUT TERMINAL (IBM3270) IS IT 24, 32 OR 43 LINES?
+*
+         L     R3,=V(TERMSZ)            TERMINAL SIZE CSECT
+         ICM   R0,B'1111',0(R3)         FILLED IN?
+         BNZ   NOGTSIZE
+         GTSIZE ,                       OBTAIN IBM TERMINAL INFO
+         LTR   R0,R0                    DETERMINE IF DISPLAY TERMINAL
+         BZ    RETURN                   IF R0=0, WE IN WRONG PLACE, OUT
+         ST    R0,0(R3)                 SAVE IT
+NOGTSIZE DS    0H
+         BCTR  R0,0                     DECREMENT FOR CONTIN LINE
+         ST    R0,LNCNTMS               USE DISPLAY SIZE VALUE
+         CLC   LNCNTMS,=F'42'           EXACTLY 42 LINES LEFT?
+         BE    PROCEED                  CONTINUE IF OK
+         CLC   LNCNTMS,=F'31'           EXACTLY 31 LINES LEFT?
+         BE    PROCEED                  CONTINUE IF OK
+         CLC   LNCNTMS,=F'23'           EXACTLY 23 LINES LEFT?
+         BE    PROCEED                  CONTINUE IF OK
+         LA    R1,NOT24#48              OTHERWISE LET USER KNOW
+         LA    R0,NOT24LEN              WE CAN'T HANDLE THEM
+         TPUT  (1),(0),R                NON-FS TPUT
+         B     RETURN                   GET OUT
+PROCEED  DS    0H
+*
+* 3) DO AN INITIAL CLEAR OF THE SCREEN FOR OUR DATA
+*
+         SR    R1,R1                    NO PARMS
+         L     R15,=V(CPAGE)            CLEAR PAGE ROUTINE
+         BALR  R14,R15
+*
+* 4) INIT THE BUFFER POINTERS AND COUNTERS, R9 IS CURRENT BUFFER
+*    POSITION, R8 IS CURRENT LENGTH OF USED BUFFER
+*
+         L     R9,=V(BUFFER)            INIT THE POINTER TO BUFFER AREA
+         SR    R8,R8                    SET "CURRENT" BUFFER LEN = 0
+         MVC   LNCNT,LNCNTMS            INIT LINE COUNTER
+         MVC   0(WCCSBAL,R9),WCCSBA     WCC-SBA ORDERS
+         LA    R8,WCCSBAL(,R8)          ADD LENGTH OF WCC-SBA
+         LA    R9,WCCSBAL(,R9)          SET R9 TO CURRENT BUFFER
+         MVC   0(LINELEN,R9),WAITUP     FILL IN WITH "WAITING" MSG
+         LA    R9,LINELEN(,R9)          PUSH UP BUFFER ADDRESS
+         LA    R8,LINELEN(,R8)          PUSH UP LENGTH VALUE
+*
+* 5) FILL IN HEADER FROM FSBUFF AREA FOR IT
+*
+         LA    R3,HEADLEN               LENGTH TO MOVE TO BUFFER
+         LR    R5,R3                    COPY LENGTH TO 2ND REG
+         LR    R2,R9                    "TO" BUFFER ADDRESS
+         LA    R4,$HEADER               "FROM" TEXT ADDRESS
+         MVCL  R2,R4                    BUILD HEADING LINE
+         LA    R8,HEADLEN(,R8)          INCR BUFFER SIZE
+         LA    R9,HEADLEN(,R9)          INCR POSITION OF NEXT LINE
+         L     R10,LNCNT                GET LINE COUNTER
+         SH    R10,=AL2(HEADLINE+1)     DECREMENT LINE COUNTER (HEADER
+         ST    R10,LNCNT                       PLUS STATUS LINE)
+*
+* 6) LOOK TO SEE IF ALL LINES DISPLAYED... IF SO EXIT
+*    OTHERWISE LOOK TO SEE IF THE PAGE IS FULL, DISPLAY IT
+*    OTHERWISE KEEP FILLING IN THE PAGE BUFFER
+*
+PUTLOOP  DS    0H                       TOP OF DISPLAY LOOP
+         CLC   COUNTER,$LINECNT         ALL LINES BEEN DISPLAYED?
+         BE    DONE                     IF YES, ALL DONE
+         LTR   R10,R10                  IS THIS ZERO
+         BP    FILLBUFF                 KEEP FILLING THIS PAGE IF POS
+         MVC   LNCNT,LNCNTMS            RESET LINE COUNTER
+         MVC   0(L'CNTMSG,R9),CNTMSG    INDICATE MORE TO COME
+         LA    R8,L'CNTMSG(,R8)         INCR FOR CONTIN MESSAGE
+         SR    R1,R1                    NO PARMS
+         L     R15,=V(GRAFIC)           ADDRESS OF GRAFICS RTN
+         BALR  R14,R15                  GO DO PRETTY PICTURES
+         LR    R0,R8                    SETUP TPUT FULLSCR REQ
+         L     R1,=V(BUFFER)
+         ICM   R1,8,TPUTFLG             SETUP TPUT FLAGS
+         TPUT  (1),(0),R                ISSUE FULLSCREEN TPUT
+         TGET  INBUF,0                  DUMMY TGET, JUST FOR WAIT
+         L     R9,=V(BUFFER)
+         SR    R8,R8                    SET "CURRENT" BUFFER LEN = 0
+         MVC   0(WCCSBAL,R9),WCCSBA     WCC-SBA ORDERS
+         LA    R8,WCCSBAL(,R8)          ADD LENGTH OF WCC-SBA
+         LA    R9,WCCSBAL(,R9)          SET R9 TO CURRENT BUFFER
+         MVC   0(LINELEN,R9),WAITUP     FILL IN WITH "WAITING" MSG
+         LA    R9,LINELEN(,R9)          PUSH UP BUFFER ADDRESS
+         LA    R8,LINELEN(,R8)          PUSH UP LENGTH VALUE
+         LA    R8,HEADLEN(,R8)          INCR BUFFER SIZE (ALLOW HEADER)
+         LA    R9,HEADLEN(,R9)          INCR POSITION OF NEXT LINE
+         L     R10,LNCNT                GET LINE COUNTER
+         SH    R10,=AL2(HEADLINE+1)     DECREMENT LINE COUNTER
+         ST    R10,LNCNT                STORE IT BACK
+         B     LOOPBOT                  DROP TO BOTTOM OF LOOP
+FILLBUFF DS    0H
+         L     R2,BUFFDISP              LOAD WITH CURRENT BUFFER DISP
+         LA    R1,$WORK                 AND WORK ADDRESS
+         LA    R1,0(R1,R2)              ADD THEM TOGETHER
+         LA    R2,LINELEN(,R2)          ADD TO POINTER
+         ST    R2,BUFFDISP              STORE IT BACK
+         MVC   0(LINELEN,R9),0(R1)      BUILD BUFFER ENTRY
+         LA    R8,LINELEN(,R8)          INCR BUFFER SIZE
+         LA    R9,LINELEN(,R9)          INCR A(NEXT BUFFER ENTRY)
+         L     R1,COUNTER               LOAD COUNTER VALUE
+         LA    R1,1(,R1)                INCR FOR NEXT ENTRY
+         ST    R1,COUNTER               STORE BACK
+         L     R10,LNCNT                DECREMENT LINE COUNTER
+         BCTR  R10,0                    SUBTRACT ONE
+         ST    R10,LNCNT                STORE IT BACK
+LOOPBOT  DS    0H                       BOTTOM OF LOOP
+         B     PUTLOOP                  DO THE NEXT SCREEN
+*
+*  7) THIS INVOKE OF THE ROUTINE DONE, READ THE NEXT LINE OF INPUT
+*     FROM THE USER, AND THEN CLEAR THE SCREEN
+*
+DONE     DS    0H
+         L     R15,=V(XCHEAD)           PREPARE TO FILL IN BUFFERS
+         SR    R1,R1                    NO PARMS
+         BALR  R14,R15                  CALL ROUTINE
+         L     R1,=V(BUFFER)
+         MVC   0(WCCSBAL,R1),WCCSBA     WCC-SBA ORDERS
+         LA    R1,WCCSBAL(,R1)          PUSH UP POINTER
+         MVC   0(LINELEN,R1),CURRMSG    FILL IN WITH "CURRENT" MSG
+         L     R5,=V(PHASE)             ADDRESS TO "PHASE"
+         ICM   R5,B'1111',0(R5)         AND IT'S VALUE
+         BZ    NRMSG                    IF ZERO, NOT IN INIT
+         MVC   0(LINELEN,R1),INITMSG    INIT MSG
+NRMSG    DS    0H
+         LA    R1,LINELEN(,R1)          PUSH UP BUFFER ADDRESS
+         LA    R3,HEADLEN               LENGTH TO MOVE TO BUFFER
+         LR    R5,R3                    COPY LENGTH TO 2ND REG
+         LR    R2,R1                    "TO" BUFFER ADDRESS
+         LA    R4,$HEADER               "FROM" TEXT ADDRESS
+         MVCL  R2,R4                    BUILD HEADING LINE
+         SR    R1,R1                    NO PARMS
+         L     R15,=V(CPAGE)            CLEAR PAGE ROUTINE
+         BALR  R14,R15
+         SR    R1,R1                    NO PARMS
+         L     R15,=V(GRAFIC)           ADDRESS OF GRAFICS RTN
+         BALR  R14,R15                  GO DO PRETTY PICTURES
+*
+* 8) PULL IN THE "PROMPT" FOR THE LAST LINE
+*
+         L     R2,$PROMLEN              LENGTH OF MESSAGE
+         LA    R1,$PROMPT               ADDRESS OF MESSAGE
+         BCTR  R2,0                     SUBTRACT FOR 360 MOVE INST
+         EX    R2,MOVEPROM              FILL IN PROMPT MESSAGE
+         L     R2,$PROMLEN              LENGTH OF PROMPT
+         LA    R2,0(R2,R9)              ADDRESS TO FILL IN " ?"
+         MVC   0(2,R2),=CL2' ?'         ADD ? TO PROMPT
+         L     R2,$PROMLEN              LOAD LENGTH OF MSG
+         LA    R2,2(R2)                 ADD TWO FOR "?"
+         LA    R8,0(R2,R8)              INCR LENGTH OF END MSG
+         LA    R9,0(R2,R9)              AND BUFFER POINTER
+         MVC   0(UNLOCKL,R9),UNLOCK     FILL IN UNLOCK STRING
+         LA    R8,UNLOCKL(,R8)          ADD LENGTH OF UNLOCK
+         LA    R9,UNLOCKL(,R9)          AND BUFFER ADDRESS
+         LR    R0,R8                    SETUP TPUT FULLSCR REQ
+         L     R1,=V(BUFFER)            ADDRESS OF BUFFER
+         ICM   R1,8,TPUTFLG             SETUP TPUT FLAGS
+         TPUT  (1),(0),R                FULLSCREEN
+         L     R1,=V(BUFFER)            REUSE BUFFER FOR INPUT
+         LA    R0,BUFFLEN               AND SET LENGTH
+         MVI   $RETURN,C' '             FILL IN RETURN BUFFER W/BLANKS
+         MVC   $RETURN+1(L'$RETURN-1),$RETURN           *
+         TGET  (1),(0),EDIT,WAIT        GET INPUT FROM USER
+         LTR   R15,R15                  RETURN CODE ZERO?
+         BNZ   AROUND                   IF NOT, BLANKS LEFT ALONE
+         LR    R3,R1                    SAVE LENGTH
+         CH    R3,=AL2(L'$RETURN)       BIGGER THAN RETURN AREA?
+         BL    NORESET                  IF LOW, IT'S OK
+         LH    R3,=AL2(L'$RETURN)       OTHERWISE MAKE 50
+NORESET  DS    0H
+         BCTR  R3,0                     SUBTRACT ONE
+         L     R1,=V(BUFFER)            ADDRESS BUFFER
+         OC    0(L'$RETURN,R1),$RETURN  MAKE FIRST PART UPPER CASE
+         EX    R3,MOVEDATA              FILL IN RETURN AREA
+AROUND   DS    0H
+         SR    R1,R1                    NO PARMS
+         L     R15,=V(CPAGE)            CLEAR PAGE ROUTINE
+         BALR  R14,R15
+         XC    $LINECNT,$LINECNT        ZERO THE LINE COUNTER
+         L     R3,=V(Z3270)             ADDRESS OF 12A4, AND 50A1 AREA
+         USING $Z3270,R3
+         MVC   $A12,$RETURN             MOVE FROM RETURN AREA
+         LA    R6,$A50                  ADDRESS OF BUFFER
+         SR    R4,R4                    ZERO COUNTER
+FILLIN   DS    0H
+         LA    R5,50                    HOW MANY CHARS?
+         CR    R4,R5                    DONE YET?
+         BE    RETURN
+         MVC   0(4,R6),=CL4' '          BLANK OUT
+         LA    R1,$RETURN               ADDRESS OF BUFFER
+         LA    R1,0(R4,R1)              TO MOVE FROM
+         MVC   0(1,R6),0(R1)            MOVE CHAR
+         LA    R6,4(R6)                 PUSH UP POINTER
+         LA    R4,1(R4)                 AND COUNTER
+         B     FILLIN
+*
+* 9) RESTORE REGS AND RETURN
+*
+RETURN   DS    0H
+         L     R13,SAVEAREA+4           GET ORIGINAL REGISTER 13
+         LM    R14,R12,12(R13)          RESTORE INPUT REGISTERS
+         SR    R15,R15                  SET RETURN CODE
+         BR    R14                      AND RETURN ...
+         EJECT
+         LTORG
+MOVEPROM MVC   0(*-*,R9),0(R1)          *** EXECUTED INSTRUCTION ***
+MOVEDATA MVC   $RETURN(*-*),0(R1)       *** EXECUTED INSTRUCTION ***
+***********************************************************************
+*        REGISTERS, CONSTANTS, AND STUFF                              *
+***********************************************************************
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+*
+*   WORK AREAS (NON-RENT CODE)
+*
+SAVEAREA DS    9D                       REG SAVE AREA
+LNCNT    DS    F                        LINE COUNTER
+LNCNTMS  DS    F                        MAX # LINES/PAGE (24, 32 OR 43)
+COUNTER  DS    F                        WORK COUNTER
+BUFFDISP DS    A                        DISPLACEMENT TO CURRENT $WORK
+INBUF    DS    X                        DUMMY BUFFER
+*
+NOT24#48 DC    C'THIS PROGRAM SUPPORTS ONLY 24, 32 OR 43 LINE 3270'
+NOT24LEN EQU   *-NOT24#48               LENGTH OF MSG
+*
+CNTMSG   DC    C' PRESS ENTER TO SEE NEXT PAGE'
+*
+UNLOCK   DC    X'1D4113'                UNLOCK KEYBOARD STRING
+UNLOCKL  EQU   *-UNLOCK                 UNLOCK LENGTH
+*
+         DS    0F
+WCCSBA   DC    X'C3114040'              WCC-SBA ORDERS
+WCCSBAL  EQU   *-WCCSBA                 AND IT'S LENGTH
+*
+TPUTFLG  DC    X'03'                    TPUT FULLSCREEN FLAGS
+*
+*
+LINELEN  EQU   80                       LENGTH OF ONE LINE
+INITMSG  DC    CL(LINELEN)' K L I N G O N     V E R S I O N    1.2.0'
+CURRMSG  DC    CL(LINELEN)' TACTICAL DISPLAY IS: *CURRENT*'
+WAITUP   DC    CL(LINELEN)' TACTICAL DISPLAY IS: WAITING TO BE UPDATED'
+*
+         DS    0F
+$FSBUFF  DSECT                          START OF MAP FOR FSBUFF DSECT
+$PROMLEN DS    F                        AMOUNT OF PROMPT BUFFER FILLED
+$PROMPT  DS    CL80                     BUFFER FOR PROMPT
+$RETURN  DS    CL52                     RETURN AREA READ FROM USER
+$HEADER  DS    (80*12)CL1               SPACE FOR HEADER AREA(12 LINES)
+HEADLEN  EQU   *-$HEADER                LENGTH OF HEADER AREA
+HEADLINE EQU   HEADLEN/80               NUMBER OF LINES IN HEADER
+$LINECNT DS    F                        NUMBER OF ITEMS ON $WORK
+$WORK    DS    CL(80*200)               WORK AREA FOR DISPLAY
+$FSBUFFL EQU   *-$PROMLEN               TOTAL LENGTH
+$Z3270   DSECT
+$A12     DS    CL52                     12A4 FORMAT
+$A50     DS    50A                      50A1 FORMAT
+BUFFER   CSECT
+         DS    XL(LINELEN*43+4)         43 LINES + 4 BYTE CNTL
+BUFFLEN  EQU   *-BUFFER                 BUFFER LENGTH
+         END

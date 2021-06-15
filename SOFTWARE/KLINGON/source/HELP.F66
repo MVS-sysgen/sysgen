@@ -1,0 +1,232 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+      SUBROUTINE HELP
+C
+C  DISPLAY THE HELP MENU AND CALL THE HELP ROUTINE
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      COMMON /PADDED/ IPAD1(9),ICHART(8,8),IPAD2(9),IPLNET(8,8),
+     *    IKY(8,8),INPUT(50),IPAD3
+      COMMON /CPU/ IBMT
+      COMMON /PHASE/ INIT
+      DIMENSION ICATAL(40,3)
+      DIMENSION ILINE(15)
+      DIMENSION ISTWRK (3)
+      DIMENSION IST001 (3)
+      DIMENSION IST002 (3)
+      DIMENSION IST003 (3)
+      DIMENSION IST004 (3)
+      DIMENSION IST005 (3)
+      DIMENSION IST006 (3)
+      DIMENSION IST007 (3)
+      DIMENSION IST008 (3)
+      DIMENSION IST009 (3)
+      DIMENSION IST010 (3)
+      DIMENSION IST011 (3)
+      DIMENSION IST012 (3)
+      DIMENSION IST013 (3)
+      DIMENSION IST014 (3)
+      DIMENSION IST015 (3)
+      DIMENSION IST016 (3)
+      DIMENSION IST017 (3)
+      DIMENSION IST018 (3)
+      DIMENSION IST019 (3)
+      DIMENSION IST020 (3)
+      DIMENSION IST021 (3)
+      DIMENSION IST022 (3)
+      DIMENSION IST023 (3)
+      DIMENSION IST024 (3)
+      DIMENSION IST025 (3)
+      DIMENSION IST026 (3)
+      DIMENSION IST027 (3)
+      DIMENSION IST028 (3)
+      DIMENSION IST029 (3)
+      DIMENSION IST030 (3)
+      DATA IST001 /'A.P.','D.  ','    '/
+      DATA IST002 /'ABAN','DON ','    '/
+      DATA IST003 /'BATT','ERY ','    '/
+      DATA IST004 /'BUGS','    ','    '/
+      DATA IST005 /'CHAR','T   ','    '/
+      DATA IST006 /'COMP','UTE ','    '/
+      DATA IST007 /'DAMA','GE  ','    '/
+      DATA IST008 /'DEST','RUCT','    '/
+      DATA IST009 /'DISR','UPTO','R   '/
+      DATA IST010 /'FREE','ZE  ','    '/
+      DATA IST011 /'GRAP','HICS','    '/
+      DATA IST012 /'HINT','S   ','    '/
+      DATA IST013 /'HELP','    ','    '/
+      DATA IST014 /'IMPU','LSE ','    '/
+      DATA IST015 /'INTR','O   ','    '/
+      DATA IST016 /'LRSC','AN  ','    '/
+      DATA IST017 /'MOVE','    ','    '/
+      DATA IST018 /'NEWS','    ','    '/
+      DATA IST019 /'PHOT','ON  ','    '/
+      DATA IST020 /'REST','    ','    '/
+      DATA IST021 /'SENS','OR  ','    '/
+      DATA IST022 /'SHIE','LDS ','    '/
+      DATA IST023 /'SRSC','AN  ','    '/
+      DATA IST024 /'FS32','70  ','    '/
+      DATA IST025 /'STAT','US  ','    '/
+      DATA IST026 /'TERM','INAT','E   '/
+      DATA IST027 /'TRAC','TOR ','    '/
+      DATA IST028 /'WARP','    ','    '/
+      DATA IST029 /'    ','    ','    '/
+      DATA IST030 /'    ','    ','    '/
+      DATA ICATAL / 120 * ' ' /
+      DATA IHELP  / '*HEL'/ ,ILIST / '*LIS' / ,IEND / '*END'/
+      DATA IBLK   / ' '/
+      CALL DBUGIN ('HELP ENTERED',IW(12),0)
+      IHOLDI = INIT
+      INIT = 1
+      ICATAL(1,1)  = IST001(1)
+      ICATAL(1,2)  = IST001(2)
+      ICATAL(1,3)  = IST001(3)
+      ICATAL(2,1)  = IST002(1)
+      ICATAL(2,2)  = IST002(2)
+      ICATAL(2,3)  = IST002(3)
+      ICATAL(3,1)  = IST003(1)
+      ICATAL(3,2)  = IST003(2)
+      ICATAL(3,3)  = IST003(3)
+      ICATAL(4,1)  = IST004(1)
+      ICATAL(4,2)  = IST004(2)
+      ICATAL(4,3)  = IST004(3)
+      ICATAL(5,1)  = IST005(1)
+      ICATAL(5,2)  = IST005(2)
+      ICATAL(5,3)  = IST005(3)
+      ICATAL(6,1)  = IST006(1)
+      ICATAL(6,2)  = IST006(2)
+      ICATAL(6,3)  = IST006(3)
+      ICATAL(7,1)  = IST007(1)
+      ICATAL(7,2)  = IST007(2)
+      ICATAL(7,3)  = IST007(3)
+      ICATAL(8,1)  = IST008(1)
+      ICATAL(8,2)  = IST008(2)
+      ICATAL(8,3)  = IST008(3)
+      ICATAL(9,1)  = IST009(1)
+      ICATAL(9,2)  = IST009(2)
+      ICATAL(9,3)  = IST009(3)
+      ICATAL(10,1) = IST010(1)
+      ICATAL(10,2) = IST010(2)
+      ICATAL(10,3) = IST010(3)
+      ICATAL(11,1) = IST011(1)
+      ICATAL(11,2) = IST011(2)
+      ICATAL(11,3) = IST011(3)
+      ICATAL(12,1) = IST012(1)
+      ICATAL(12,2) = IST012(2)
+      ICATAL(12,3) = IST012(3)
+      ICATAL(13,1) = IST013(1)
+      ICATAL(13,2) = IST013(2)
+      ICATAL(13,3) = IST013(3)
+      ICATAL(14,1) = IST014(1)
+      ICATAL(14,2) = IST014(2)
+      ICATAL(14,3) = IST014(3)
+      ICATAL(15,1) = IST015(1)
+      ICATAL(15,2) = IST015(2)
+      ICATAL(15,3) = IST015(3)
+      ICATAL(16,1) = IST016(1)
+      ICATAL(16,2) = IST016(2)
+      ICATAL(16,3) = IST016(3)
+      ICATAL(17,1) = IST017(1)
+      ICATAL(17,2) = IST017(2)
+      ICATAL(17,3) = IST017(3)
+      ICATAL(18,1) = IST018(1)
+      ICATAL(18,2) = IST018(2)
+      ICATAL(18,3) = IST018(3)
+      ICATAL(19,1) = IST019(1)
+      ICATAL(19,2) = IST019(2)
+      ICATAL(19,3) = IST019(3)
+      ICATAL(20,1) = IST020(1)
+      ICATAL(20,2) = IST020(2)
+      ICATAL(20,3) = IST020(3)
+      ICATAL(21,1) = IST021(1)
+      ICATAL(21,2) = IST021(2)
+      ICATAL(21,3) = IST021(3)
+      ICATAL(22,1) = IST022(1)
+      ICATAL(22,2) = IST022(2)
+      ICATAL(22,3) = IST022(3)
+      ICATAL(23,1) = IST023(1)
+      ICATAL(23,2) = IST023(2)
+      ICATAL(23,3) = IST023(3)
+      ICATAL(24,1) = IST024(1)
+      ICATAL(24,2) = IST024(2)
+      ICATAL(24,3) = IST024(3)
+      ICATAL(25,1) = IST025(1)
+      ICATAL(25,2) = IST025(2)
+      ICATAL(25,3) = IST025(3)
+      ICATAL(26,1) = IST026(1)
+      ICATAL(26,2) = IST026(2)
+      ICATAL(26,3) = IST026(3)
+      ICATAL(27,1) = IST027(1)
+      ICATAL(27,2) = IST027(2)
+      ICATAL(27,3) = IST027(3)
+      ICATAL(28,1) = IST028(1)
+      ICATAL(28,2) = IST028(2)
+      ICATAL(28,3) = IST028(3)
+      ICATAL(29,1) = IST029(1)
+      ICATAL(29,2) = IST029(2)
+      ICATAL(29,3) = IST029(3)
+      ICATAL(30,1) = IST030(1)
+      ICATAL(30,2) = IST030(2)
+      ICATAL(30,3) = IST030(3)
+      NUMCAT = 30
+      IF (IBMT.EQ.1) GO TO 24
+10    CALL LINEF
+      CALL READIN ('ENTER COMMAND NAME OR *HELP',IW(27),27,0,EOFF)
+      IF (EOFF.GT..1) GO TO 10
+      I = INPUT(1)
+      IF (I.EQ.IBLK) GO TO 10
+      IF (I.EQ.IEND) GO TO 70
+      IF (I.NE.IHELP) GO TO 20
+      CALL LINEF
+      CALL PRMSG ('*HELP SUPPLIES YOU WITH THIS LISTING.',IW(37))
+      CALL PRMSG
+     *     ('*LIST GIVES YOU A COMMAND LIST TO CHOOSE FROM ',IW(45))
+      CALL PRMSG ('*END RETURNS YOU TO THE GAME IN PROGRESS ',IW(40))
+      CALL LINEF
+      GO TO 10
+20    CONTINUE
+      IF (I.NE.ILIST) GO TO 40
+24    CONTINUE
+      CALL LINEF
+      CALL PRMSG ('YOU MAY SELECT FROM THE FOLLOWING: ',IW(34))
+25    CONTINUE
+      CALL LINEF
+      DO 30 N = 1, NUMCAT, 5
+           ILINE(1) = ICATAL(N,1)
+           ILINE(2) = ICATAL(N,2)
+           ILINE(3) = ICATAL(N,3)
+           ILINE(4) = ICATAL(N+1,1)
+           ILINE(5) = ICATAL(N+1,2)
+           ILINE(6) = ICATAL(N+1,3)
+           ILINE(7) = ICATAL(N+2,1)
+           ILINE(8) = ICATAL(N+2,2)
+           ILINE(9) = ICATAL(N+2,3)
+           ILINE(10) = ICATAL(N+3,1)
+           ILINE(11) = ICATAL(N+3,2)
+           ILINE(12) = ICATAL(N+3,3)
+           ILINE(13) = ICATAL(N+4,1)
+           ILINE(14) = ICATAL(N+4,2)
+           ILINE(15) = ICATAL(N+4,3)
+           CALL PRMSG (ILINE,IWV(60))
+30    CONTINUE
+      CALL LINEF
+      GO TO 10
+40    DO 50 N = 1, 28
+           IF (I.NE.ICATAL(N,1)) GO TO 50
+           ILINE(1) = ICATAL(N,1)
+           ILINE(2) = ICATAL(N,2)
+           ILINE(3) = ICATAL(N,3)
+           GO TO 60
+50    CONTINUE
+      CALL PRMSG ('INVALID HELP CATEGORY, THE LIST TO CHOOSE FROM IS  ',
+     *    IW(49))
+      GO TO 25
+60    CALL HELPRT (ILINE,IWV(12))
+      CALL LINEF
+      IF (IBMT.EQ.1) GO TO 24
+      GO TO 10
+70    CONTINUE
+      INIT = IHOLDI
+      CALL DBUGIN ('HELP EXITED',IW(12),0)
+      RETURN
+      END
