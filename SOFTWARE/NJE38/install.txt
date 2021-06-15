@@ -16,7 +16,7 @@ $HASP000 OK;sh ./submit.sh ../SOFTWARE/NJE38/01_make_maclib.jcl
 # ##############################
 /*08 IKT010D;/r 08,fstop
 / $HASP395 TSO      ENDED;/z net,quick
-/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;/$pjes2
+/ $HASP395 NET      ENDED;/$pjes2
 # Rebooting MVS 3.8j
 / $HASP085 JES2 TERMINATION COMPLETE;/z eod
 / IEE334I HALT     EOD SUCCESSFUL;/quiesce

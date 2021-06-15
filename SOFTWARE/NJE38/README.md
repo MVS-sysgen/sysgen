@@ -1,6 +1,6 @@
 ## NJE for MVS 3.8j
 
-To install type `INSTALL NJE38`
+To install type `INSTALL NJE38` :warning: Do not exit/logoff TSO during the install, the install script will do it for you :warning:
 
 The configuration file is located at `SYS2.PARMLIB(NJE38C00)`
 
