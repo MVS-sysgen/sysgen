@@ -77,11 +77,14 @@ Included with this repo:
 - REVIEW*
 - RPF
 - IMON370
+- STARTREK
+- KLINGON
 
-In External Repos:
+In External Repos (clone these repos to the SOFTWARE folder):
 
 - [RAKF](https://github.com/MVS-sysgen/RAKF)*
 - [FTPD](https://github.com/MVS-sysgen/FTPD)*
+- [Adventure](https://github.com/MVS-sysgen/Adventure)
 
 
 To install any of these login and run `INSTALL THING` where *THING* is any of the folders in `SOFTWARE`.
