@@ -58,7 +58,7 @@ Table of Contents
 
 
 1. [Using the EZASMI Macro](using_EZASMI.md)
-2. [Defining](storage.md)
+2. [Defining Storage](storage.md)
 3. [Supported z/OS EZASMI Functions](EZASMI_Functions.md)
     1. [ACCEPT](accept.md)
     1. [BIND](bind.md)

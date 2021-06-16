@@ -29,3 +29,26 @@ operation of the program.
 Since the IBM documentation does not make this clear, it should be noted
 that any character string operand or character string value returned by
 EZASMI functions is an EBCDIC character string.
+
+## Functions
+
+1. [ACCEPT](accept.md)
+1. [BIND](bind.md)
+1. [CLOSE](close.md)
+1. [CONNECT](connect.md)
+1. [GETHOSTBYADDR](gethostbyaddr.md)
+1. [GETHOSTBYNAME](gethostbyname.md)
+1. [GETPEERNAME](getpeername.md)
+1. [GETSOCKNAME](getsockname.md)
+1. [INITAPI](initapi.md)
+1. [IOCTL](ioctl.md)
+1. [LISTEN](listen.md)
+1. [NTOP](ntop.md)
+1. [PTON](pton.md)
+1. [RECV](recv.md)
+1. [SELECT](select.md)
+1. [SEND](send.md)
+1. [SHUTDOWN](shutdown.md)
+1. [SOCKET](socket.md)
+1. [TASK](task.md)
+1. [TERMAPI](termapi.md)
