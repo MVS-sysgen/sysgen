@@ -79,6 +79,7 @@ Included with this repo:
 - IMON370
 - STARTREK
 - KLINGON
+- EZASMI (TCP/IP socket lib/macros)
 
 In External Repos (clone these repos to the SOFTWARE folder):
 
