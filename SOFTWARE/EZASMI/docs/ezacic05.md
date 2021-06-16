@@ -1,7 +1,3 @@
----
-title: EZACIC05
----
-
 EZACIC05
 ========
 

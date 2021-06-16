@@ -1,7 +1,3 @@
----
-title: TPIMASK
----
-
 TPIMASK
 =======
 

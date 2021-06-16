@@ -1,7 +1,3 @@
----
-title: Using the EZASMI Macro
----
-
 Using the EZASMI Macro
 ======================
 

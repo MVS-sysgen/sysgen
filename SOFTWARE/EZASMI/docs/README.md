@@ -1,30 +1,14 @@
----
-title: TCP/IP for MVS 3.8 Assembler
----
-
 TCP/IP for MVS 3.8 Assembler {#tcpip-for-mvs-3.8-assembler align="center"}
 ============================
 
-Version 1.0.0 {#version-1.0.0 align="center"}
--------------
-
-**by**
-
-Shelby Lynne Beach {#shelby-lynne-beach align="center"}
-------------------
-
-**and**
-
-Jürgen Winkelmann {#jürgen-winkelmann align="center"}
------------------
-
+Version 1.0.0 **by** Shelby Lynne Beach **and** Jürgen Winkelmann
 
 TCP/IP for MVS 3.8 Assembler Change Log
 =======================================
 
-        Date         VRM   Change
-  ---------------- ------- -----------------
-   April 20, 2019   1.0.0  Initial release
+  |       Date     |  VRM  | Change          |
+  |:--------------:|:-----:|:---------------:|
+  | April 20, 2019 | 1.0.0 | Initial release |
 
 
 Acknowledgments
@@ -78,9 +62,9 @@ Table of Contents
 =================
 
 
-1. [Using the EZASMI Macro](using EZASMI.md)
+1. [Using the EZASMI Macro](using_EZASMI.md)
 2. [Defining](storage.md)
-3. [Supported z/OS EZASMI Functions](EZASMI Functions.md)
+3. [Supported z/OS EZASMI Functions](EZASMI_Functions.md)
     1. [ACCEPT](accept.md)
     1. [BIND](bind.md)
     1. [CLOSE](close.md)
@@ -101,7 +85,7 @@ Table of Contents
     1. [SOCKET](socket.md)
     1. [TASK](task.md)
     1. [TERMAPI](termapi.md)
-4. [Additional Operations](additional operations.md)
+4. [Additional Operations](additional_operations.md)
     1. [EZACIC04 - Translatet EBCDIC to ASCII](ezacic04.md)
     1. [EZACIC05 - Translate ASCII to EBCDIC](ezacic05.md)
     1. [TPIMASK](tpimask.md)

@@ -1,7 +1,3 @@
----
-title: Additional Functions
----
-
 Additional Operations
 =====================
 

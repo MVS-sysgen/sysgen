@@ -1,7 +1,3 @@
----
-title: TCP/IP for MVS 3.8 Assembler Introduction
----
-
 TCP/IP for MVS 3.8 Assembler Introduction
 =========================================
 

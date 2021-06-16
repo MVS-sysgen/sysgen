@@ -1,7 +1,3 @@
----
-title: Supported z/OS EZASMI Functions
----
-
 Supported z/OS EZASMI Functions
 ===============================
 

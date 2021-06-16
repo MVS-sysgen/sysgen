@@ -10,6 +10,12 @@ cat << 'END'
 //             MSGLEVEL=(1,1),
 //             USER=IBMUSER,
 //             PASSWORD=SYS1
+//*
+//* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//* DO NOT EDIT THIS JCL IT IS GENERATED FROM
+//* 01_build_jobstream.sh edit that file instead
+//* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//*
 //CLEANUP EXEC PGM=IDCAMS
 //SYSIN    DD *
   DELETE SYSGEN.TCPIP.SAMPLIB

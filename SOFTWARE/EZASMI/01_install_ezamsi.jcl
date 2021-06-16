@@ -5,6 +5,12 @@
 //             MSGLEVEL=(1,1),
 //             USER=IBMUSER,
 //             PASSWORD=SYS1
+//*
+//* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//* DO NOT EDIT THIS JCL IT IS GENERATED FROM
+//* 01_build_jobstream.sh edit that file instead
+//* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//*
 //CLEANUP EXEC PGM=IDCAMS
 //SYSIN    DD *
   DELETE SYSGEN.TCPIP.SAMPLIB
@@ -1723,12 +1729,14 @@ TIELENTH EQU   T#END-EZASMTIE  Length of task storage
 //             DCB=(BLKSIZE=3120,RECFM=FB,LRECL=80)
 //SYSUT1   DD  DATA,DLM=@@
 ./ ADD NAME=COMPNCAT
-//NCAT JOB (JOB),'NCAT',CLASS=A,MSGCLASS=H,NOTIFY=&SYSUID
-//ASSEM        EXEC ASMFCL,MAC='SYS2.SXMACLIB',MAC1='SYS2.MACLIB',
-//             MAC2='SYS1.AMODGEN'
+//NCAT JOB (JOB),'NCAT',CLASS=A,MSGCLASS=A,NOTIFY=&SYSUID,
+//     REGION=4096K,MSGLEVEL=(1,1)
+//ASSEM        EXEC ASMFCL,MAC='SYS2.MACLIB',MAC1='SYS2.SXMACLIB',
+//             MAC2='SYS1.AMODGEN',
+//             PARM.LKED='(XREF,LET,LIST,CAL)'
 //ASM.SYSIN    DD DISP=SHR,DSN=SYSGEN.TCPIP.SAMPLIB(NCAT)
 //LKED.SYSLMOD DD DISP=SHR,DSN=SYS2.CMDLIB(NCAT)
-
+//LKED.SYSLIB   DD  DSN=SYS2.LINKLIB,DISP=SHR
 ./ ADD NAME=NCAT
 NCAT     TITLE 'TCP/IP EZASMI -- Assembler XF Interface Demo'
 ***********************************************************************

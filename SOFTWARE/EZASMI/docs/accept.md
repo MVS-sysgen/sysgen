@@ -1,7 +1,3 @@
----
-title: ACCEPT
----
-
 ACCEPT
 ======
 

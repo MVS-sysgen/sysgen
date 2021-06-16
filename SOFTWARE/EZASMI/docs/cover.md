@@ -1,7 +1,3 @@
----
-title: TCP/IP for MVS 3.8 Assembler
----
-
 TCP/IP for MVS 3.8 Assembler {#tcpip-for-mvs-3.8-assembler align="center"}
 ============================
 

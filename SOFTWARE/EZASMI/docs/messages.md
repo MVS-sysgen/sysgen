@@ -1,7 +1,3 @@
----
-title: EZASMI MNOTE Messages
----
-
 EZASMI MNOTE Messages
 =====================
 

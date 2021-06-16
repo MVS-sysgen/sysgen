@@ -1,7 +1,3 @@
----
-title: Defining Storage
----
-
 Defining Storage
 ================
 

@@ -1,7 +1,3 @@
----
-title: SHUTDOWN
----
-
 SHUTDOWN
 ========
 
