@@ -1,0 +1,116 @@
+NSLOOKUP TITLE 'TCP/IP EZASMI -- Assembler XF Interface Demo'
+***********************************************************************
+***                                                                 ***
+*** Program:  NSLOOKUP                                              ***
+***                                                                 ***
+*** Purpose:  Demonstrate using the EZASMI API to interface to      ***
+***           the Hercules host's IP stack via the TCPIP (X'75')    ***
+***           instruction.                                          ***
+***                                                                 ***
+*** Usage:    Run from the TSO READY prompt.                        ***
+***                                                                 ***
+*** Function: - read hostname or IP address from terminal.          ***
+***                                                                 ***
+***           - resolve depending on type of input:                 ***
+***                                                                 ***
+***             o Hostname:   Call GETHOSTBYNAME and NTOP           ***
+***             o IP address: Call PTON and GETHOSTBYADDR           ***
+***                                                                 ***
+***           - display result on terminal.                         ***
+***                                                                 ***
+*** Updates:  2016/12/31 original implementation.                   ***
+***                                                                 ***
+*** Author:   Juergen Winkelmann, winkelmann@id.ethz.ch             ***
+***                                                                 ***
+*** Credits:  Thanks to Shelby Beach for providing an MVS 3.8j      ***
+***           (Assembler XF) version of the EZASMI API.             ***
+***                                                                 ***
+***********************************************************************
+NSLOOKUP CSECT ,                start of program
+         STM   R14,R12,12(R13)  save registers
+         LR    R12,R15          establish module addressability
+         USING NSLOOKUP,R12     tell assembler of base
+         ST    R13,REGSAVE+4    chain ..
+         LA    R2,REGSAVE         .. the ..
+         ST    R2,8(R13)            .. save ..
+         LR    R13,R2                 .. areas
+*
+* Get input
+*
+         TPUT  BANNER,BANNERL,ASIS prompt for hostname or IP address
+         TGET  INPUT,L'INPUT    read input from terminal
+         LR    R5,R1            remember length ..
+         ST    R5,NAMELEN                          .. of input
+*
+* Initialize EZASMI interface
+*
+         EZASMI TYPE=INITAPI,MAXSNO=MAXSNO,ERRNO=ERRCD,RETCODE=RETCD
+*
+* Try converting input to network binary format using PTON
+*
+         EZASMI TYPE=PTON,AF='INET',SRCADDR=INPUT,SRCLEN=NAMELEN+2,    +
+               DSTADDR=IPADDR,ERRNO=ERRCD,RETCODE=RETCD
+         CLC   RETCD,=X'FFFFFFFF' conversion successful?
+         BE    GETHBN           no, go treat input as a hostname
+*
+* Resolve IP address to hostname using GETHOSTBYADDR
+*
+         EZASMI TYPE=GETHOSTBYADDR,HOSTADR=IPADDR,HOSTENT=HOSTENT,     +
+               RETCODE=RETCD
+         L     R3,HOSTENT       get hostname address ..
+         L     R3,0(,R3)            .. from HOSTENT
+         LR    R6,R3            \
+CHKLEN   CLI   0(R6),X'00'       \
+         BE    HOSTEND            \ compute length
+         LA    R6,1(,R6)          / of hostname
+         B     CHKLEN            /
+HOSTEND  SR    R6,R3            /
+         STRING 'IP address: ',(INPUT,(R5)),', Hostname: ',((R3),(R6)),+
+               INTO=PRTDATA     format result
+         B     DISPLAY          display result on terminal
+*
+* Resolve hostname to IP address using GETHOSTBYNAME
+*
+GETHBN   DS    0H               come here if input isn't an IP address
+         EZASMI TYPE=GETHOSTBYNAME,NAMELEN=NAMELEN,NAME=INPUT,         +
+               HOSTENT=HOSTENT,RETCODE=RETCD
+         L     R3,HOSTENT       \
+         L     R3,16(,R3)        \
+         L     R3,0(,R3)          > get first IP address from HOSTENT
+         L     R3,0(,R3)         /
+         ST    R3,IPADDR        /
+*
+* Convert IP address to dotted decimal format using NTOP
+*
+         EZASMI TYPE=NTOP,AF='INET',SRCADDR=IPADDR,DSTADDR=ADDR,       +
+               DSTLEN=ADDRLEN,ERRNO=ERRCD,RETCODE=RETCD
+         LH    R6,ADDRLEN       length of converted address
+         STRING 'Hostname: ',(INPUT,(R5)),', IP address: ',(ADDR,(R6)),+
+               INTO=PRTDATA     format result
+*
+* Display result, terminate EZASMI interface and return
+*
+DISPLAY  TPUT  PRTDATA,L'PRTDATA display result
+         EZASMI TYPE=TERMAPI    terminate API
+         L     R13,4(,R13)      caller's save area pointer
+         RETURN (14,12),RC=0    restore registers and return
+*
+* Data areas
+*
+REGSAVE  DS    18F              save area
+ERRCD    DC    A(*-*)           error code
+RETCD    DC    A(*-*)           return code
+MAXSNO   DC    A(*-*)           highest socket number assigned
+NAMELEN  DS    F                length of hostname
+IPADDR   DS    F                IP address in network binary format
+HOSTENT  DS    F                address of HOSTENT structure goes here
+BANNER   DC    C'MVS 3.8j NSLOOKUP - enter hostname or IP address:'
+BANNERL  EQU   *-BANNER         length of banner
+ADDR     DC    CL15' '          dotted decimal IP address
+ADDRLEN  DC    AL2(L'ADDR)      length of dotted decimal IP address
+INPUT    DC    CL60' '          input from terminal goes here
+PRTDATA  DC    CL78' '          formated result
+         EZASMI TYPE=TASK,STORAGE=CSECT EZASMI storage goes here
+         STRING GENERATE        STRING storage and code goes here
+         YREGS ,                register equates
+         END   NSLOOKUP         end of program

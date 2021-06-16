@@ -1,0 +1,1242 @@
+EZASOH03 TITLE 'TCP/IP for MVS 3.8 TCPIP Instruction Interface'
+
+EZASOH03 CSECT
+***********************************************************************
+* This is a major rewrite of Jason Winter's EZASOKET so that it is    *
+* fully reentrant and compatible with the EZASMI macro set provided   *
+* by the TCP/IP for MVS 3.8 Assembler product.                        *
+*                                                                     *
+* EZASOH03 utilizes the TCPIP instruction and must be run on an MVS   *
+* system running under control of the Hercules emulator provided by   *
+* Juergen Winkelmann's TK4-.                                          *
+*                                                                     *
+* The EZASMI macro provides the interface to this module.             *
+*                                                                     *
+*  On Entry:                                                          *
+*           R1  = Pointer to EZASOH03 parameter list                  *
+*           R14 = Return address                                      *
+*  On Return:                                                         *
+*           R15 = Return code (Always zero - actual error info is     *
+*                              stored in the locations pointed to     *
+*                              by the RETCODE and ERRNO parameters.)  *
+*                                                                     *
+* Copyright (c)2003 Jason Paul Winter, All Rights Reserved.           *
+*                                                                     *
+* Change history:                                                     *
+*                                                                     *
+* 06/25/2004 - Enhanced connect() timing       Volker Bandke          *
+* 10/12/2016 - Assembler XF compatibility      Juergen Winkelmann     *
+* 11/08/2016 - Add NTOP and PTON functions     Shelby Beach           *
+* 11/19/2016 - Check NBYTE for SEND/RECV       Shelby Beach           *
+* 11/28/2016 - Modify GETHOSTBYNAME to use     Shelby Beach           *
+*              EZASOH03 storage                Shelby Beach           *
+* 11/30/2016 - Rename to EZASOH03              Shelby Beach           *
+* 12/23/2016 - Add gethostbyaddr and           Juergen Winkelmann     *
+*              getpeername                                            *
+* 12/30/2016   Fix gethostbyaddr plist         Juergen Winkelmann     *
+* 01/18/2017   Rewrite for EZASOH03 compatability Shelby Beach        *
+***********************************************************************
+
+***********************************************************************
+*                 Register usage                                      *
+***********************************************************************
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10                      A(EZASMI parameter list)
+R11      EQU   11                      CALLPC link reg
+R12      EQU   12                      Module base
+R13      EQU   13                      A(Dynamic storage area)
+R14      EQU   14
+R15      EQU   15
+
+AF@INET  EQU   2
+
+***********************************************************************
+*                 Entry Processing                                    *
+***********************************************************************
+         STM   R14,R12,12(R13)         Save caller's regs.
+         LR    R12,R15                 R12 = Base addr
+         USING EZASOH03,R12
+
+         LR    R10,R1                  R10 = A(EZASMI parm list)
+
+*  Allocate dynamic storage area
+         LA    R0,DSALEN               R0 = L'Dynamic storage area
+         GETMAIN R,LV=(0)              Get DSA.
+
+         ST    R13,4(,R1)              Chain save
+         ST    R1,8(,R13)              areas.
+         LR    R13,R1                  R13 = A(DSA)
+         USING DSA,R13
+
+         L     R2,0(,R10)              R2 = A(Function name)
+         L     R2,0(,R2)               R2 = Function name
+
+         C     R2,INITAPI4             Function = INITAPI ?
+         BNE   NOTINIT                 No.
+
+***********************************************************************
+*                 TYPE=INITAPI                                        *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+         LA    R7,1                    R7 = INITAPI function(1)
+         BAL   R11,CALLPC              Perform INITAPI on PC.
+         B     EZARETRN                Return to caller.
+
+NOTINIT  DS 0H
+         C     R2,TERMAPI4             Function = TERMAPI ?
+         BNE   NOTTERM                 No.
+
+***********************************************************************
+*                 TYPE=TERMAPI                                        *
+*                                                                     *
+* The TERMAPI function exists solely to cleanup HOSTENT storage. No   *
+* processing is performed by the host PC system.                      *
+*                                                                     *
+***********************************************************************
+         STM   R2,R15,SAVEAREA+12      Save mainline regs.
+         L     R11,4(,R10)             R11 = A(Task storage area)
+         USING EZAWORK,R11
+
+*  We begin by isolating the entire HOSTENT list, and then freeing
+*  the HOSTENT storage areas in that list. In general, since we are
+*  suppossedly done with IP processing, no new entries should be added
+*  to the list during TERMAPI processing; however, we will serialize
+*  access to the head of the list to ensure the integrity of the list.
+*  It is possible that we may delete a HOSTENT that some other task
+*  has just allocated, but this is essentially a user error.
+LISTMOD  DS    0H
+         L     R3,HEHEAD               R3 = Head of HOSTENT list
+         XR    R1,R1                   We will replace with null list.
+         CS    R3,R1,HEHEAD            List still the same ?
+         BNZ   LISTMOD                 No, try again.
+
+*  The list as seen by the caller is now empty. Now we will free
+*  the storage for all the HOSTENT entries at TERMAPI time.
+         DO WHILE=(LTR,R3,R3,NZ)       Continue while not end of list.
+           LR    R1,R3                 R1 = A(HOSTENT to free)
+           L     R3,0(,R3)             R3 = A(Next HOSTENT entry)
+           LA    R0,HSECTLEN           R0 = L'HOSTSECT storage area
+           FREEMAIN R,A=(1),LV=(0)     Free HOSTENT storage.
+         ENDDO
+
+         LM    R2,R15,SAVEAREA+12      Restore mainline regs.
+         B     EZARETRN                Return to caller.
+
+NOTTERM  DS 0H
+         C     R2,GETHOST4             Function = GETHOSTBYNAME ?
+         BNE   NOTGETH                 No.
+
+***********************************************************************
+*                 TYPE=GETHOSTBYNAME                                  *
+***********************************************************************
+         L     R1,12(,R10)             R1 = A(NAMELEN parm)
+         L     R1,0(,R1)               R1 = NAMELEN
+         L     R5,16(,R10)             R5 = A(NAME parm)
+
+         LA    R7,4                    R7 = GETHOSTBYNAME function(4)
+         BAL   R11,CALLPC              Perform GETHOSTBYNAME on PC.
+
+*  Obtain storage for the HOSTENT
+         L     R1,24(,R10)             R1 = A(Task storage work area)
+         BAL   R14,GETHOST             Get HOSTENT storage.
+         LR    R5,R1                   R5 = A(HOSTENT storage)
+         USING HOSTENT,R5
+
+         L     R1,20(,R10)             R1 = A(HOSTENT parm)
+         ST    R5,0(,R1)               Return A(HOSTENT) to caller.
+
+*  Initialize HOSTENT storage                                       SLB
+         XC    HOSTENT(256),HOSTENT                                 SLB
+         XC    HOSTENT+256(HOSTLEN-256),HOSTENT+256                 SLB
+         LA    R0,GNAME                                             JW
+         ST    R0,HOSTENT                                           JW
+         LA    R0,GNULL                                             SLB
+         ST    R0,HOSTENT+4            A(h_aliases)                 SLB
+         LA    R0,AF@INET                                           SLB
+         ST    R0,HOSTENT+8            A(h_addrtype)                SLB
+         LA    R0,4                                                 SLB
+         ST    R0,HOSTENT+12           h_length                     SLB
+         LA    R0,GADD2                                             SLB
+         ST    R0,HOSTENT+16           A(h_addr_list)               SLB
+         LA    R0,GADDR                                             SLB
+         ST    R0,GADD2                                             SLB
+
+         ST    R4,GADDR                Store returned addr in HOSTENT
+
+         LTR   R15,R4                  Null addr returned ?         SLB
+         BNZ   *+6                     No                           SLB
+         BCTR  R15,0                   Set RC = -1                  SLB
+
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R15,0(,R1)              Return RC value to caller.
+         B     EZARETRN                Return to caller.
+         DROP  R5
+
+NOTGETH  DS 0H
+         C     R2,SOCKET4              Function = SOCKET ?
+         BNE   NOTSOCK                 No.
+
+***********************************************************************
+*                 TYPE=SOCKET                                         *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(AF parm)
+         L     R8,0(,R8)               R8 = AF
+         SLL   R8,16                   Make room for SOCTYPE.
+
+         L     R9,16(,R10)             R9 = A(SOCTYPE parm)
+         L     R9,0(,R9)               R9 = SOCTYPE
+         OR    R8,R9                   R8 = AF | SOCTYPE
+
+         L     R9,20(,R10)             R9 = A(PROTO)
+         L     R9,0(,R9)               R9 = PROTP
+
+         LA    R7,5                    R7 = SOCKET function(5)
+         BAL   R11,CALLPC              Perform SOCKET on PC.
+
+         L     R1,8(,R10)              R1 = A(RETCODE)
+         ST    R4,0(,R1)               Return socket descriptor.
+
+         C     R4,MINUS1               SOCKET call successful ?
+         BNE   EZARETRN                Yes, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,3                    R7 = Get error function(3)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,16(,R10)             R1 = A(ERRNO)
+         ST    R4,0(,R1)               Pass error code to caller.
+
+         B     EZARETRN                Return to caller.
+
+NOTSOCK  DS 0H
+         C     R2,BIND4
+         BNE   NOTBIND
+
+***********************************************************************
+*                 TYPE=BIND                                           *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,6                    R7 = BIND function(6)
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R9,0(,R8)               R9 = Socket descriptor
+         SLL   R9,16                   Shift to combine with function.
+         OR    R7,R9                   R7 = S | Function
+
+         L     R9,16(,R10)             R9 = A(NAME)
+         L     R8,4(,R9)               R8 = IP address
+         L     R9,0(,R9)               R9 = Family & Port number
+         SLL   R9,8
+         SRL   R9,8                    Remove Length (if present).
+
+         BAL   R11,CALLPC              Perform BIND on PC.
+
+         L     R1,8(,R10)              R1 = A(RETCODE)
+         ST    R4,0(,R1)               Return error indication.
+
+         C     R4,MINUS1               BIND error ?
+         BNE   EZARETRN                No, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         LR    R8,R7                   R7 = S | Function
+         SRL   R8,16                   R8 = Socket descriptor
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO)
+         ST    R4,0(,R1)               Pass error code to caller.
+
+         B     EZARETRN                Return to caller.
+
+NOTBIND  DS 0H
+         C     R2,CONNECT4             Function = CONNECT ?
+         BNE   NOTCONN                 No.
+
+***********************************************************************
+*                 TYPE=CONNECT                                        *
+***********************************************************************
+         LA    R7,2                    Loop 3 times (wait twice).
+CONNECTL DS    0H
+         XR    R1,R1                   No bytes to send.
+
+         SLL   R7,24                   Clear 16 'left'.
+         SRL   R7,16                   Clear 8  'right' = 0000xx00.
+         LA    R7,7(,R7)               R7 = CONNECT function(7)
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R9,0(,R8)               R9 = Socket descriptor
+         SLL   R9,16                   Make room for function & count.
+         OR    R7,R9                   R7 = Count | function | socket
+
+         L     R9,16(,R10)             R9 = A(NAME parm)
+         L     R8,4(,R9)               R8 = IP address
+         L     R9,0(,R9)               R9 = Family & Port number
+         SLL   R9,8
+         SRL   R9,8                    Remove Length (if present).
+
+         BAL   R11,CALLPC              Perfrm CONNECT on PC.
+
+         C     R4,MINUS2               Need to WAIT ?
+         BNE   CNOWAIT                 No.
+
+         SLL   R7,16                   Isolate wait ind.
+         SRL   R7,24                   R7 = Wait indicator
+         LTR   R7,R7                   Long wait ?
+         BZ    CWAITLNG                Yes.
+
+         BCT   R7,SHRTWAIT             Do short wait.
+
+         BAL   R11,TASKWAIS            Wait 1 sec if init wait failed.
+         B     CONNECTL                Try again.
+
+SHRTWAIT DS    0H
+         BAL   R11,TASKWAIT            Initially only wait .08 secs.
+         B     CONNECTL                Try again.
+
+CWAITLNG DS    0H
+         L     R4,MINUS1               R4 = CONNECT failed ind
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         LA    R4,61                   R4 = hECONNREFUSED ERRNO
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+         B     EZARETRN                Return.
+
+CNOWAIT  DS    0H
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         C     R4,MINUS1               Did an error occur ?
+         BNE   EZARETRN                No, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+         B     EZARETRN                Return.
+
+NOTCONN  DS 0H
+         C     R2,LISTEN4              Function = LISTEN ?
+         BNE   NOTLIST                 No.
+
+***********************************************************************
+*                 TYPE=LISTEN                                         *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+
+         L     R9,16(,R10)             R9 = A(BACKLOG parm)
+         L     R9,0(,R9)               R9 = Backlog value
+
+         LA    R7,8                    R7 = LISTEN function(8)
+         BAL   R11,CALLPC              Perform LISTEN on PC.
+
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         C     R4,MINUS1               Did error occur ?
+         BNE   EZARETRN                No, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+         B     EZARETRN                Return.
+
+NOTLIST  DS 0H
+         C     R2,ACCEPT4              Function = ACCEPT ?
+         BNE   NOTACCE                 No.
+
+***********************************************************************
+*                 TYPE=ACCEPT                                         *
+***********************************************************************
+ACCEPTL  DS 0H
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+
+         L     R6,16(,R10)             R6 = A(NAME parm)
+
+         LA    R7,9                    R7 = ACCEPT function(9)
+         BAL   R11,CALLPC              Perform ACCEPT on PC.
+
+         C     R4,MINUS2               Need to wait ?
+         BNE   ANOWAIT                 No.
+
+         BAL   R11,TASKWAIT            Wait .08 secs.
+         B     ACCEPTL                 Try again.
+
+ANOWAIT  DS 0H
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         C     R4,MINUS1               Did error occur ?
+         BNE   EZARETRN                No, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+         B     EZARETRN                Return.
+
+NOTACCE  DS 0H
+         C     R2,SEND4                Function = SEND ?
+         BNE   NOTSEND                 No.
+
+***********************************************************************
+*                 TYPE=SEND                                           *
+***********************************************************************
+         L     R1,16(,R10)             R1 = A(NBYTE parm)
+         L     R1,0(,R1)               R1 = Number of bytes
+
+         C     R1,=A(1024*1024)        NBYTE > 1024K ?              SLB
+         BH    NBYTEERR                Yes.                         SLB
+
+         L     R5,20(,R10)             R5 = A(BUF parm)
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+
+         LA    R7,10                   R7 = SEND function(10)
+         BAL   R11,CALLPC              Perform SEND on PC.
+
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         C     R4,MINUS1               Did error occur ?
+         BNE   EZARETRN                No, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+         B     EZARETRN                Return.
+
+NOTSEND  DS 0H
+         C     R2,RECV4                Function = RECV ?
+         BNE   NOTRECV                 No.
+
+***********************************************************************
+*                 TYPE=RECV                                           *
+***********************************************************************
+RECVL    DS 0H
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+
+         L     R9,16(,R10)             R9 = A(NBYTE parm)
+         L     R9,0(,R9)               R9 = Number of bytes
+
+         C     R9,=A(1024*1024)        NBYTE > 1024K ?              SLB
+         BH    NBYTEERR                Yes.                         SLB
+
+         L     R6,20(,R10)             R6 = A(BUF parm)
+
+         LA    R7,11                   R7 = RECV function(11)
+         BAL   R11,CALLPC              Perform RECV on PC.
+
+         C     R4,MINUS2               Need to wait ?
+         BNE   RNOWAIT                 No.
+
+         BAL   R11,TASKWAIT            Wait .08 secs.
+         B     RECVL                   Try again.
+
+RNOWAIT  DS 0H
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         C     R4,MINUS1               Did error occur ?
+         BNE   EZARETRN                No, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+         B     EZARETRN                Return.
+
+*  SEND/RECV NBYTE value exceeds 1024K                              SLB
+NBYTEERR DS    0H                                                   SLB
+         LA    R4,40                   R4 = Error code (EMSGSIZE)   SLB
+         L     R1,4(,R10)              R1 = A(ERRNO parm)           SLB
+         ST    R4,0(,R1)               Set error code.              SLB
+         L     R4,MINUS1               R4 = Error return code       SLB
+         L     R1,8(,R10)              R1 = A(RETCODE parm)         SLB
+         ST    R4,0(,R1)               Set return code.             SLB
+         B     EZARETRN                Return.                      SLB
+
+NOTRECV  DS 0H
+         C     R2,CLOSE4               Function = CLOSE ?
+         BNE   NOTCLOS                 No.
+
+***********************************************************************
+*                 TYPE=CLOSE                                          *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+
+         LA    R7,12                   R7 = CLOSE function(12)
+         BAL   R11,CALLPC              Perform CLOSE on PC.
+
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         XR    R15,R15                 Apparently always OK.
+         ST    R15,0(,R1)              EZASMI expects an RC.
+
+         B     EZARETRN                Return.
+
+NOTCLOS  DS 0H
+         C     R2,EBCDIC24             Function = EBCDIC->ASCII ?
+         BNE   NOTEBCD                 No.
+
+***********************************************************************
+*                 TYPE=ETOA                                           *
+***********************************************************************
+         L     R1,4(,R10)              R1 = A(NBYTE parm)
+         L     R1,0(,R1)               R1 = Number of bytes
+
+         L     R5,8(,R10)              R5 = A(BUF parm)
+         LR    R6,R5                   R6 = A(BUF parm)
+
+         LA    R7,13                   R7 = ETOA function(13)
+         BAL   R11,CALLPC              Perform E->A translation on PC.
+
+         B     EZARETRN                Return.
+
+NOTEBCD  DS 0H
+         C     R2,ASCII24              Function = ASCII->EBCDIC ?
+         BNE   NOTASCI                 No.
+
+***********************************************************************
+*                 TYPE=ATOE                                           *
+***********************************************************************
+         L     R1,4(,R10)              R1 = A(NBYTE parm)
+         L     R1,0(,R1)               R1 = Number of bytes
+
+         L     R5,8(,R10)              R5 = A(BUF parm)
+         LR    R6,R5                   R6 = A(BUF parm)
+
+         LA    R7,14                   R7 = ATOE function(14)
+         BAL   R11,CALLPC              Perform A->E translation on PC.
+
+         B     EZARETRN                Return.
+
+NOTASCI  DS 0H
+         C     R2,IOCTL4               Function = IOCTL ?
+         BNE   NOTIOCT                 No.
+
+***********************************************************************
+*                 TYPE=IOCTL                                          *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,15                   R7 = IOCTL function(15)
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+         SLL   R8,16                   Shift to combine with function.
+         OR    R7,R8                   R7 = S | Function
+
+         L     R8,16(,R10)             R8 = A(COMMAND parm)
+         L     R8,0(,R8)               R8 = Command
+         L     R9,20(,R10)             R9 = A(REQARG parm)
+         L     R9,0(,R9)               R9 = Argument value
+
+         BAL   R11,CALLPC              Perform IOCTL on PC.
+
+         C     R8,PLUS1                Command = FIONBIO ?
+         BNE   FIONREAD                No.
+
+         XR    R4,R4                   FIONBIO can't produce an error.
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+         B     EZARETRN                Return.
+
+FIONREAD DS    0H
+         C     R4,MINUS1               IOCTL error ?
+         BE    IOCTLERR                Yes.
+
+         L     R1,24(,R10)             R1 = A(RETARG parm)
+         ST    R4,0(,R1)               Pass return value to caller.
+
+         XR    R4,R4                   R4 = No error
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+         B     EZARETRN                Return.
+
+IOCTLERR DS    0H
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket descriptor
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+         B     EZARETRN                Return.
+
+NOTIOCT  DS 0H
+         C     R2,GETSOCK4             Function = GETSOCKNAME ?
+         BNE   NOTGETS                 No.
+
+***********************************************************************
+*                 TYPE=GETSOCKNAME                                    *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)
+         LH    R8,0(,R8)               R8 = Socket number
+
+         L     R6,16(,R10)             R8 = A(NAME parm)
+
+         LA    R7,16                   R7 = GETSOCKNAME function(16)
+         BAL   R11,CALLPC              Perform GETSOCKNAME on PC.
+
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         C     R4,MINUS1               Did error occur ?
+         BNE   EZARETRN                No, return.
+
+         XR    R1,R1                   No bytes to send.
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+         B     EZARETRN                Return.
+
+NOTGETS  DS 0H                         Function = SELECT ?
+         C     R2,SELECT4
+         BNE   NOTSELCT                No.                          JW
+
+***********************************************************************
+*                 TYPE=SELECT                                         *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+         LA    R7,17                   R7 = SELECT function(17)
+         L     R8,12(,R10)             R8 = A(MAXSOC parm)
+         ICM   R8,B'1111',0(R8)        R8 = Max socket number + 1
+         BZ    EZARETRN                Nothing to do.
+         BM    EZARETRN                Should allow sleep, but no!
+         C     R8,PLUS1                MAXSOC = 1 ?
+         BE    EZARETRN                Yes, return.
+
+         LR    R9,R8                   R9 = MaxSock+1
+         BCTR  R8,0                    R8 = 'Owner' socket
+         SLL   R8,16                   Make room for function number.
+         OR    R7,R8                   R7 = Socket | Function
+
+         LA    R8,0                    R8 = Subcode = Init(0)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+         ICM   R5,B'1111',20(R10)      R5 = A(RSNDMSK parm)
+         BZ    NOSETRD                 Skip if null.
+         LR    R1,R9                   R1 = MaxSock+1
+         LA    R1,30(,R1)              R1 = MaxSock + 31 (MS+1+30)
+         SRL   R1,5                    R1 = Words in struct
+         SLL   R1,2                    R1 = Bytes in struct
+         LA    R8,1                    R8 = Subcode = Set Read(1)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+NOSETRD  DS    0H
+         ICM   R5,B'1111',24(R10)      R5 = A(WSNDMASK parm)
+         BZ    NOSETWR                 Skip if null.
+         LR    R1,R9                   R1 = MaxSock+1
+         LA    R1,30(,R1)              R1 = MaxSock + 31 (MS+1+30)
+         SRL   R1,5                    R1 = Words in struct
+         SLL   R1,2                    R1 = Bytes in struct
+         LA    R8,2                    R8 = Subcode = Set Write(2)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+NOSETWR  DS    0H
+         ICM   R5,B'1111',28(R10)      R5 = A(ESNDMASK parm)
+         BZ    NOSETEX                 Skip if null.
+         LR    R1,R9                   R1 = MaxSock+1
+         LA    R1,30(,R1)              R1 = MaxSock + 31 (MS+1+30)
+         SRL   R1,5                    R1 = Words in struct
+         SLL   R1,2                    R1 = Bytes in struct
+         LA    R8,3                    R8 = Subcode = Set Exception(3)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+NOSETEX  DS    0H
+         ICM   R1,B'1111',16(R10)      R1 = A(TIMEOUT parm)
+         BZ    SRERUN                  If null, wait forever.
+
+         L     R8,0(,R1)               R8 = Seconds to wait
+         SLL   R8,5                    R8 = Seconds * 32
+         LR    R15,R8                  R15 = Seconds * 32
+         SLL   R8,1                    R8 = Seconds * 64
+         AR    R8,R15                  R8 = Secs * ~100(96) = #.01 secs
+         SRL   R8,3                    R8 = ~#.08 sec waits
+
+         ICM   R1,B'1111',4(R1)        R1 = ms to wait
+         BZ    SRERUN                  Must be sec-to-wait or no-wait.
+
+         SRL   R1,6                    R1 = ms/~10(8) = # .08 secs
+         LTR   R1,R1                   Is it zero ?
+         BNZ   SNOROUND                No, no need to round it up.
+         LA    R1,1                    Ensure we wait at least .08 secs
+
+SNOROUND DS    0H
+         AR    R8,R1                   R8 = ~#.08 sec waits
+
+SRERUN   DS    0H
+         XR    R1,R1                   No bytes to send.
+
+         SLL   R8,8                    Make room for subcode.
+         O     R8,PLUS4                R8 = Wait time | Subcode(4)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+         C     R4,MINUS2               Wait required ?
+         BNE   SNOWAIT                 No.
+
+         ICM   R1,B'1111',16(R10)      R1 = A(TIMEOUT parm)
+         BZ    SDOWAIT                 If null, wait forever.
+
+         XR    R4,R4                   Assume we were triggered.
+
+         SRL   R8,8                    R8 = Timeout value
+         LTR   R8,R8                   Time left ?
+         BZ    SNOWAIT                 No.
+         BCTR  R8,0                    Decr .08 secs.
+
+SDOWAIT  DS    0H
+         BAL   R11,TASKWAIT            Perform wait.
+         B     SRERUN                  Try again.
+
+SNOWAIT  DS    0H
+         L     R1,8(,R10)              R1 = A(RETCODE parm)
+         ST    R4,0(,R1)               Pass RC to caller.
+
+         C     R4,MINUS1               Did error occur ?
+         BNE   SNOERR                  No.
+
+         XR    R1,R1                   No bytes to send.
+
+         LR    R8,R7                   R7 = Socket | Function
+         SRL   R8,16                   R8 = Socket descriptor
+
+         LA    R7,2                    R7 = Get error function(2)
+         BAL   R11,CALLPC              Get error code from PC.
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)
+         ST    R4,0(,R1)               Pass error number to caller.
+
+SNOERR   DS    0H
+         XR    R1,R1                   No bytes to send.
+         ICM   R6,B'1111',32(R10)      R6 = A(RRETMSK parm)
+         BZ    NOGETRD                 Skip if null.
+         LA    R8,5                    R8 = Get Read subcode(5)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+NOGETRD  DS    0H
+         XR    R1,R1                   No bytes to send.
+         ICM   R6,B'1111',36(R10)      R6 = A(WRETMSK parm)
+         BZ    NOGETWR                 Skip if null.
+         LA    R8,6                    R8 = Get Write subcode(6)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+NOGETWR  DS    0H
+         XR    R1,R1                   No bytes to send.
+         ICM   R6,B'1111',40(R10)      R6 = A(ERETMSK parm)
+         BZ    NOGETEX                 Skip if null.
+         LA    R8,7                    R8 = Get Exception subcode(7)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+NOGETEX  DS    0H
+         LA    R8,8                    R8 = Cleanup subcode(8)
+         BAL   R11,CALLPC              Perform SELECT on PC.
+
+         B     EZARETRN                Return.
+
+NOTSELCT DS 0H                                                      JW
+         C     R2,GETHBA4              Function = GETHOSTBYADDR ?   JW
+         BNE   NOTGETA                 No.                          JW
+
+***********************************************************************
+*                 TYPE=GETHOSTBYADDR                                  *
+***********************************************************************
+         L     R8,12(,R10)             R8 = A(HOSTADR parm)         JW
+         L     R8,0(,R8)               R8 = IP address              JW
+
+*  Obtain storage for the HOSTENT
+         L     R1,20(,R10)             R1 = A(Task storage work area)
+         BAL   R14,GETHOST             Get HOSTENT storage.
+         LR    R5,R1                   R5 = A(HOSTENT storage)
+         USING HOSTENT,R5
+
+         L     R1,16(,R10)             R1 = A(HOSTENT parm)         JW
+         ST    R5,0(,R1)               Return A(HOSTENT) to caller. JW
+
+*  Initialize HOSTENT storage                                       SLB
+         XC    HOSTENT(256),HOSTENT                                 SLB
+         XC    HOSTENT+256(HOSTLEN-256),HOSTENT+256                 SLB
+         LA    R0,GNAME                                             JW
+         ST    R0,HOSTENT                                           JW
+         LA    R0,GNULL                                             SLB
+         ST    R0,HOSTENT+4            A(h_aliases)                 SLB
+         LA    R0,AF@INET                                           SLB
+         ST    R0,HOSTENT+8            A(h_addrtype)                SLB
+         LA    R0,4                                                 SLB
+         ST    R0,HOSTENT+12           h_length                     SLB
+         LA    R0,GADD2                                             SLB
+         ST    R0,HOSTENT+16           A(h_addr_list)               SLB
+         LA    R0,GADDR                                             SLB
+         ST    R0,GADD2                                             SLB
+
+         XR    R1,R1                   No bytes to send.
+         LA    R6,GNAME                                             JW
+
+         LA    R7,18                   R7 = GETHOSTBYADDR function(18)
+         BAL   R11,CALLPC              Perform CLOSE on PC.
+
+         LTR   R15,R4                  Zero length name returned ?  JW
+         BNZ   *+6                     No.                          SLB
+         BCTR  R15,0                   R15 = RC = -1                SLB
+
+         L     R1,8(,R10)              R1 = A(RETCODE parm)         JW
+         ST    R15,0(,R1)              Return RC to caller.         JW
+
+         B     EZARETRN                Return.                      JW
+         DROP  R5
+
+NOTGETA  DS 0H                                                      JW
+         C     R2,GETPEER4             Function = GETPEERNAME ?     JW
+         BNE   NONTOP                  No.                          JW
+
+***********************************************************************
+*                 TYPE=GETPEERNAME                                    *
+***********************************************************************
+         XR    R1,R1                   No bytes to send.
+
+         L     R8,12(,R10)             R8 = A(S parm)               JW
+         LH    R8,0(,R8)               R8 = Socket descriptor       JW
+
+         L     R6,16(,R10)             R6 = A(NAME parm)            JW
+
+         LA    R7,19                   R7 = GETPEERNAME function(19)
+         BAL   R11,CALLPC              Perform CLOSE on PC.
+
+         L     R1,8(,R10)              R1 = A(RETCODE parm)         JW
+         ST    R4,0(,R1)               Pass RC to caller.           JW
+
+         C     R4,MINUS1               Did an error occur ?         JW
+         BNE   EZARETRN                No, return.                  JW
+
+         XR    R1,R1                   No bytes to send.            JW
+
+         LA    R7,2                    R7 = Get error function(2)   JW
+         BAL   R11,CALLPC              Get error code from PC.      JW
+
+         L     R1,4(,R10)              R1 = A(ERRNO parm)           JW
+         ST    R4,0(,R1)               Pass error number to caller. JW
+
+         B     EZARETRN                Return.                      SLB
+
+NONTOP   DS 0H                                                      SLB
+         C     R2,NTOP4                Function = NTOP ?            SLB
+         BNE   NOPTON                  No.                          SLB
+
+***********************************************************************
+*                 TYPE=NTOP                                           *
+***********************************************************************
+
+*  Convert network addr to presentation form
+
+*  Verify AF parm value                                             SLB
+         L     R1,12(,R10)             R1 = A(AF parm)              SLB
+         L     R1,0(,R1)               R1 = AF value                SLB
+         LA    R0,AF@INET              R0 = Only acceptable AF valueSLB
+         CR    R1,R0                   Valid AF ?                   SLB
+         BE    NTOP1                   Yes.                         SLB
+         LA    R0,97                   R0 = Bad AF (EAFNOSUPPORT)   SLB
+         B     NTOP8                   Return error to caller.      SLB
+
+NTOP1    DS    0H                                                   SLB
+         L     R1,16(,R10)             R1 = A(SRCADDR parm)         SLB
+         L     R9,0(,R1)               R9 = IP network addr         SLB
+         LA    R14,4                   R14 = # of IP addr bytes     SLB
+         LA    R15,WORK2               R15 = Formatted addr output  SLB
+
+*  Format IP address network bytes                                  SLB
+NTOP3    DS    0H                                                   SLB
+         XR    R8,R8                   Clear for next network byte. SLB
+         SLDL  R8,8                    R8 = Next IP addr net byte   SLB
+         CVD   R8,DWRD                 Make decimal.                SLB
+         MVC   WORK1(5),=X'402021204B' Set edit mask.               SLB
+         LA    R1,WORK1+3              Set R1 in case single digit. SLB
+         EDMK  WORK1(4),DWRD+6         Format network byte.         SLB
+         MVC   0(4,R15),0(R1)          Move in next formatted byte. SLB
+         LA    R0,WORK1+5              R0 = A(End formatted seg+1)  SLB
+         SR    R0,R1                   R0 = L'Formatted network byteSLB
+         AR    R15,R0                  R15 = A(Next formatted byte) SLB
+         BCT   R14,NTOP3               Continue with next net byte. SLB
+
+*  Copy formatted IP address to DSTADDR location                    SLB
+         BCTR  R15,0                   Backup to last dot.          SLB
+         LA    R14,WORK2               R14 = Formatted addr output  SLB
+         SR    R15,R14                 R15 = L' Formatted IP addr   SLB
+         L     R1,24(,R10)             R1 = A(DSTLEN)               SLB
+         LH    R0,0(,R1)               R0 = DSTLEN                  SLB
+         STH   R15,0(,R1)              Return length to caller.     SLB
+         CR    R0,R15                  Output field large enough ?  SLB
+         BL    NTOP7                   No, error.                   SLB
+         L     R1,20(,R10)             R1 = A(DSTADDR location)     SLB
+         BCTR  R15,0                   Decr length for EX.          SLB
+         EX    R15,NTOPMVC             Formatted addr to DSTADDR.   SLB
+
+*  Indicate no errors                                               SLB
+         XR    R0,R0                   R0 = Error code = Return codeSLB
+         L     R1,4(,R10)              R1 = A(ERRNO parm)           SLB
+         ST    R0,0(,R1)               Set ERRNO value.             SLB
+         L     R1,8(,R10)              R1 = A(RETCODE parm)         SLB
+         ST    R0,0(,R1)               Set RETCODE value.           SLB
+         B     EZARETRN                Return.                      SLB
+
+*  Return error info                                                SLB
+NTOP7    DS    0H                                                   SLB
+         LA    R0,28                   R0 = Value won't fit (ENOSPC)SLB
+
+NTOP8    DS    0H                                                   SLB
+         L     R1,4(,R10)              R1 = A(ERRNO parm)           SLB
+         ST    R0,0(,R1)               Set ERRNO value.             SLB
+         L     R0,MINUS1               R0 = Error RC                SLB
+         L     R1,8(,R10)              R1 = A(RETCODE parm)         SLB
+         ST    R0,0(,R1)               Set RETCODE value.           SLB
+         B     EZARETRN                Return.                      SLB
+
+NTOPMVC  MVC   0(*-*,R1),0(R14)                                     SLB
+
+NOPTON   DS 0H                                                      SLB
+         C     R2,PTON4                Function = PTON ?            SLB
+         BNE   EZARETRN                No.                          SLB
+
+***********************************************************************
+*                 TYPE=PTON                                           *
+***********************************************************************
+
+*  Convert presentation form to network addr (PTON)
+
+*  Verify AF parm value                                             SLB
+         L     R1,12(,R10)             R1 = A(AF parm)              SLB
+         L     R1,0(,R1)               R1 = AF value                SLB
+         LA    R0,AF@INET              R0 = Only acceptable AF valueSLB
+         CR    R1,R0                   Valid AF ?                   SLB
+         BE    PTON1                   Yes.                         SLB
+         LA    R0,97                   R0 = Bad AF (EAFNOSUPPORT)   SLB
+         B     PTON8                   Return error to caller.      SLB
+
+PTON1    DS    0H                                                   SLB
+         L     R8,16(,R10)             R8 = A(SRCADDR parm)         SLB
+         LA    R14,4                   R14 = # of char string segs  SLB
+         L     R1,24(,R10)             R1 = A(SRCLEN parm)          SLB
+         XR    R0,R0                                                SLB
+         ICM   R0,B'0011',0(R1)        R0 = SRCLEN value            SLB
+         BZ    PTON7                   Error, null string.          SLB
+         XR    R9,R9                   R9 will hold converted addr. SLB
+
+*  Obtain next address segment
+PTON2    DS    0H                                                   SLB
+         LTR   R0,R0                   String chars remaining ?     SLB
+         BZ    PTON7                   No, error.                   SLB
+         SLL   R9,8                    Shift for next segment byte. SLB
+         XR    R1,R1                   R1 holds addr seg digits.    SLB
+
+*  Get next address segment digit
+PTON3    DS    0H                                                   SLB
+         CLI   0(R8),C'0'              Check                        SLB
+         BL    PTON7                   for                          SLB
+         CLI   0(R8),C'9'              non-digit.                   SLB
+         BH    PTON7                                                SLB
+         IC    R1,0(,R8)               R1 = Addr digit              SLB
+         BCT   R0,PTON5                Decr string length.          SLB
+         B     PTON6                   End of IP addr value.        SLB
+PTON5    DS    0H                                                   SLB
+         LA    R8,1(,R8)               Pt to next digit.            SLB
+         CLI   0(R8),C'.'              End of char string segment ? SLB
+         BE    PTON5B                  Yes.                         SLB
+         LTR   R0,R0                   String chars remaining ?     SLB
+         BZ    PTON6                   No.                          SLB
+         SLL   R1,8                    Shift for next digit.        SLB
+         B     PTON3                   Continue.                    SLB
+PTON5B   DS    0H                                                   SLB
+         BCTR  R0,0                    Decr string length for dot.  SLB
+
+*  Convert next address segment                                     SLB
+PTON6    DS    0H                                                   SLB
+         ST    R1,WORK1                R1 = Unpacked seg value      SLB
+         PACK  DWRD,WORK1(4)           Pack for CVB.                SLB
+         CVB   R1,DWRD                 R1 = Binary seg value        SLB
+         CH    R1,=H'255'              Valid seg value ?            SLB
+         BH    PTON7                   No.                          SLB
+         OR    R9,R1                   Combine with prior segments  SLB
+         LA    R8,1(,R8)               Pt past dot.                 SLB
+         BCT   R14,PTON2               Continue with next seg.      SLB
+         LTR   R0,R0                   String chars remaining ?     SLB
+         BNZ   PTON7                   Yes, error.                  SLB
+
+*  Return converted addr to caller                                  SLB
+         L     R1,20(,R10)             R1 = A(DSTADDR)              SLB
+         ST    R9,0(,R1)               Store at DSTADDR.            SLB
+
+*  Indicate no errors                                               SLB
+         XR    R0,R0                   R0 = Error code = Return codeSLB
+         L     R1,4(,R10)              R1 = A(ERRNO parm)           SLB
+         ST    R0,0(,R1)               Set ERRNO value.             SLB
+         L     R1,8(,R10)              R1 = A(RETCODE parm)         SLB
+         ST    R0,0(,R1)               Set RETCODE value.           SLB
+         B     EZARETRN                Return.                      SLB
+
+*  Return error info                                                SLB
+PTON7    DS    0H                                                   SLB
+         LA    R0,99                   R0 = Bad IP address          SLB
+PTON8    DS    0H                                                   SLB
+         L     R1,4(,R10)              R1 = A(ERRNO parm)           SLB
+         ST    R0,0(,R1)               Set ERRNO value.             SLB
+         L     R0,MINUS1               R0 = Error RC                SLB
+         L     R1,8(,R10)              R1 = A(RETCODE parm)         SLB
+         ST    R0,0(,R1)               Set RETCODE value.           SLB
+         B     EZARETRN                Return.                      SLB
+
+***********************************************************************
+*                 Obtain HOSTENT Storage                              *
+*  This routine allocates or returns previously allocated storage in  *
+*  which HOSTENT data will be stored. If the currently executing task *
+*  has previously required a HOSTENT entry, that same storage will be *
+*  returned from this call. If not, storage will be allocated for a   *
+*  new HOSTENT entry. This entry will be saved in a LIFO list for use *
+*  in subsequent requests for HOSTENT storage by this task.           *
+*                                                                     *
+*  On Entry:                                                          *
+*           R1  = A(Task storage area)                                *
+*           R14 = Return address                                      *
+*  On Return:                                                         *
+*           R1  = A(HOSTENT storage)                                  *
+***********************************************************************
+GETHOST  DS 0H
+         STM   R2,R15,SAVEAREA+12      Save mainline regs.
+         LR    R11,R1                  R11 = A(Task storage area)
+         USING EZAWORK,R11
+
+*  Determine address of current TCB
+         L     R1,16                   R1 = A(CVT)
+         L     R1,0(,R1)               R1 = A(TCB words)
+         L     R2,0(,R1)               R2 = A(Our TCB)
+
+*  Scan existing HOSTENT list for prior entry allocated for our task.
+*  Note that we can do this without serialization because scanning
+*  does not affect, nor will it be affected, by the addition of any
+*  new entry (which would not be for our task).
+         LA    R3,HEHEAD               R3 = A(Head of HOSTENT list)
+         USING HOSTSECT,R3
+
+         DO WHILE=(ICM,R3,B'1111',HOSTLINK,NZ),AND,                    +
+               (C,R2,NE,HOSTTCB)
+         ENDDO
+
+         IF (LTR,R3,R3,Z)              If new HOSTENT needed...
+           LA    R0,HSECTLEN           R0 = L'HOSTSECT storage area
+           GETMAIN R,LV=(0)            Get HOSTENT storage.
+           LR    R3,R1                 R3 = A(HOSTENT storage)
+           ST    R2,HOSTTCB            Set requesting task.
+
+*  Add new HOSTENT to top of list
+           L     R1,HEHEAD
+RETRYLNK   DS    0H
+           ST    R1,HOSTLINK           New HOSTENT -> Old 1st HOSTENT
+           CS    R1,R3,HEHEAD          Try head -> new HOSTENT
+           BNE   RETRYLNK              Try again if other new HOSTENT.
+         ENDIF
+
+         LA    R1,HOSTENT              R1 = A(HOSTENT)
+
+         LM    R2,R15,SAVEAREA+12      Restore mainline regs.
+         BR    R14                     Return.
+         DROP  R3
+
+***********************************************************************
+*                 Exit Processing                                     *
+***********************************************************************
+EZARETRN DS 0H
+         LR    R1,R13                  R1 = A(DSA)
+         LA    R0,DSALEN               R0 = L'Dynamic storage area
+         L     R13,4(,R13)             Pt to caller's save area.
+         FREEMAIN R,A=(1),LV=(0)       Release dynamic storage area.
+
+         LM    R14,R12,12(R13)         Restore caller's regs.
+         BR    R14                     Return.
+
+* CALLPC: (** REPRESENTS REQUIRED VALUE ON ENTRY)
+*  R0  = 0 (Initially, but turns to > 0 after the native call.
+** R1  = Byte Counter to send
+*  R2  = Source/Destination of PC buffer.  32bits.
+*  R3  = Direction (0 = to Host PC, 1 = from Host PC)
+*  R4  = Returned Bytes/Code/Socket etc.
+** R5  = Source Buffer
+** R6  = Destination Buffer (If required)
+** R7  = Function Code (+ Socket for 'Connect', 'ioctl' & 'select')
+** R8  = Aux. Data (Socket, or Port for 'Connect'...)
+** R9  = Aux. Data (Port, or IP Address for 'Connect'...)
+*  R10 = <Preserved>
+** R11 = Return Address
+*  R12 = <Preserved Base>
+*  R13 = <Preserved Save>
+*  R14 = Identifier (returned & passed back for conversations.)
+*  R15 = Work Variable / Return Code
+
+CALLPC   DS 0H
+         LA    R3,0              To Host PC
+         XR    R0,R0             Restart = No
+         DC    X'75005000'       TCPIP 0,000(,R5)
+         LTR   R15,R15
+         BNZ   ERROR
+
+         LA    R3,1              From Host PC
+         XR    R0,R0             Restart = No
+         DC    X'75006000'       TCPIP 0,000(,R6)
+
+ERROR    DS 0H
+         BR    R11
+
+TASKWAIT DS 0H
+         STIMER WAIT,BINTVL=WAITTIME        MVS38j
+*        STIMER7 WAIT,BINTVL=WAITTIME        OS/390 for MVS38j
+         BR    R11
+
+TASKWAIS DS 0H
+         STIMER WAIT,BINTVL=WAITTIMS        MVS38j
+*        STIMER7 WAIT,BINTVL=WAITTIMS        OS/390 for MVS38j
+         BR    R11
+
+* *******************************************************************
+         LTORG
+         DS    0F                                                   SLB
+INITAPI4 DC    C'INIT'       function 1, func 2&3: error(sock)/error
+GETHOST4 DC    C'GETH'       function 4
+SOCKET4  DC    C'SOCK'       function 5
+BIND4    DC    C'BIND'       function 6
+CONNECT4 DC    C'CONN'       function 7
+LISTEN4  DC    C'LIST'       function 8
+ACCEPT4  DC    C'ACCE'       function 9
+SEND4    DC    C'SEND'       function 10
+RECV4    DC    C'RECV'       function 11
+CLOSE4   DC    C'CLOS'       function 12
+EBCDIC24 DC    C'EBCD'       function 13
+ASCII24  DC    C'ASCI'       function 14
+IOCTL4   DC    C'IOCT'       function 15
+GETSOCK4 DC    C'GETS'       function 16
+SELECT4  DC    C'SELE'       function 17
+GETHBA4  DC    C'GETA'       function 18    gethostbyaddr           JW
+GETPEER4 DC    C'GETP'       function 19    getpeername             JW
+TERMAPI4 DC    C'TERM'       function 20    TERMAPI                 SLB
+NTOP4    DC    C'NTOP'       EZASMI function
+PTON4    DC    C'PTON'       EZASMI function
+
+MINUS1   DC    F'-1'
+MINUS2   DC    F'-2'
+PLUS1    DC    F'1'          code for FIONBIO
+PLUS4    DC    F'4'          call *select* function
+
+WAITTIME DC    F'8'          shorter timer interval = 0.08 seconds
+WAITTIMS DC    F'100'        slower  timer interval = 1.00 second
+
+***********************************************************************
+*                 Dynamic Storage Area                                *
+***********************************************************************
+DSA      DSECT
+*  EZASOH03 does not currently call any MVS routines. This save area
+*  is provided to allow standard linkage conventions with the caller
+*  to be implemented. The save area beginning at offset 12 is used
+*  locally to isolate internal subroutines from mainline register
+*  settings required by the TCPIP instruction.
+SAVEAREA DS    18F
+
+* NTOP/PTON work areas                                              SLB
+DWRD     DS    D             Packed decimal value                   SLB
+WORK1    DS    XL8                                                  SLB
+WORK2    DS    XL16                                                 SLB
+
+         DS    0D
+DSALEN   EQU   *-DSA
+
+***********************************************************************
+*                 EZASMI Task Storage Work Area                       *
+*                                                                     *
+* Provides EZASOH03 with access to the task storage work area passed  *
+* as a pointer in some of the EZASMI parameter lists.                 *
+*                                                                     *
+***********************************************************************
+EZAWORK  DSECT
+HEHEAD   DS    A                       Head ptr for HOSTENT list
+
+***********************************************************************
+*                 HOSTENT Storage                                     *
+***********************************************************************
+HOSTSECT DSECT
+HOSTLINK DC    A(0)                    Link to next HOSTENT
+HOSTTCB  DC    A(0)                    A(Allocating TCB)
+
+HOSTENT  DC    A(GNAME)      h_name                                 JW
+         DC    A(GNULL)      h_aliases
+         DC    A(AF@INET)    h_addrtype
+         DC    F'4'          h_length
+         DC    A(GADD2)      h_addr_list
+GNULL    DC    F'0'          NULL
+GADD2    DC    A(GADDR)      Array Ý2¨ addresses
+         DC    F'0'          NULL Terminator word
+
+GADDR    DC    F'0'          Address
+GNAME    DS    CL256         Name                                   SLB
+HOSTLEN  EQU   *-HOSTENT                                            SLB
+         DS    0D
+HSECTLEN EQU   *-HOSTLINK
+         END

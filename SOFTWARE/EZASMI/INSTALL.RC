@@ -1,0 +1,3 @@
+# Installing Adventure
+sh bash ../SOFTWARE/EZASMI/01_build_jobstream.sh > ../SOFTWARE/EZASMI/01_install_ezamsi.jcl
+sh ./submit.sh ../SOFTWARE/EZASMI/01_install_ezamsi.jcl
