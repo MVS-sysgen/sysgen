@@ -5531,6 +5531,7 @@ $LIT&I   DC    &$$LITS(&N)                                              03770000
 .MEND    AIF   ('&PRINT' EQ 'NOGEN').MEND99                             08280000
          POP   PRINT                                                    08290000
 .MEND99  MEND                                                           08300000
+./ ALIAS NAME=STRING
 ./ ADD NAME=STR$GSF  0102-78239-14278-1900-01194-00025-00129-CBT472  00
 */GILBERTF JOB (ACCT#),STRINGXF,                                        00010001
 */ NOTIFY=&SYSUID,                                                      00020001
