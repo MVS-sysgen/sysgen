@@ -1,4 +1,5 @@
 exec ../automate.rexx autostart.txt hercules.log -d &&
 facility enable HERC_TCPIP_EXTENSION
 facility enable HERC_TCPIP_PROB_STATE
+facility enable herc_370_extension
 ipl 150
