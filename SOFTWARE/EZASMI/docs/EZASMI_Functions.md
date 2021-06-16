@@ -6,15 +6,12 @@ are listed in the subsequent topics. Any differences or restrictions
 related to the z/OS EZASMI macro are noted where appropriate. Links to
 the IBM documentation for the various functions can be found here:
 
-::: {style="color:#1E90FF"}
+
 www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.hala001/mac.htm
-:::
 
 You might also find it helpful to read
 
-::: {style="color:#1E90FF"}
 www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.hala001/mparm.htm
-:::
 
 which describes the various types of operands which can be used with the
 keyword parameter values.

@@ -5,11 +5,7 @@ The EZASMI macro requires storage for parameter lists and work areas.
 This storage must either be supplied in the CSECT containing the various
 EZASMI macro function calls, or in allocated storage mapped by a DSECT
 for the re-entrant case. Most of the information that you will need on
-allocating storage for the EZASMI macro can be found here:
-
-::: {style="color:#1E90FF"}
-www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.hala001/mstor.htm
-:::
+allocating storage for the EZASMI macro can be found here: www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.hala001/mstor.htm
 
 The following considerations apply to the above referenced z/OS
 document:

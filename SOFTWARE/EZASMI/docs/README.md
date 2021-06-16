@@ -1,5 +1,4 @@
-TCP/IP for MVS 3.8 Assembler {#tcpip-for-mvs-3.8-assembler align="center"}
-============================
+# TCP/IP for MVS 3.8 Assembler
 
 Version 1.0.0 **by** Shelby Lynne Beach **and** Jürgen Winkelmann
 
@@ -34,11 +33,7 @@ TCP/IP applications in assembler language on MVS 3.8. The information
 provided here concentrates on the differences between the two
 implementations. Where appropriate, links to the z/OS Communications
 Server API will be provided. For complete information on the z/OS EZASMI
-macro API, please see
-
-::: {style="color:#1E90FF"}
-www.ibm.com/support/knowledgecenter/SSLTBW_2.2.0/com.ibm.zos.v2r2.hala001/macro.htm
-:::
+macro API, please see https://www.ibm.com/support/knowledgecenter/SSLTBW_2.2.0/com.ibm.zos.v2r2.hala001/macro.htm
 
 TCP/IP for MVS 3.8 Assembler is built upon the original EZASOKET
 interface developed by Jason Winter. It has been extended to provide
