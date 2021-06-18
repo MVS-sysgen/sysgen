@@ -1,0 +1,8 @@
+# Installing BREXX
+/$CA
+$HASP000 OK;devinit 01c ../SOFTWARE/BREXX-NIGHTLY/BREXX.INSTALL.XMI
+HHC02245I 0:001C device initialized;sh ./submit.sh ../SOFTWARE/BREXX-NIGHTLY/01_receive_install.jcl
+/ $HASP395 BREXXRCV ENDED;sh ./submit.sh ../SOFTWARE/BREXX-NIGHTLY/02_brexx_unpack.jcl
+/ $HASP395 BREXXUNP ENDED;sh ./submit.sh ../SOFTWARE/BREXX-NIGHTLY/03_brexx_install.jcl
+/ $HASP395 BREXXINS ENDED;/$VS,'S ZTIMER'
+# BREXX install complete
