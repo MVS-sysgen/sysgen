@@ -1,2 +1,1 @@
 sh ./submit.sh ../SOFTWARE/MDDIAG8/01_install_mddiag8.jcl
-/ $HASP395 MDDIAG8 ENDED;sh ./submit.sh ../SOFTWARE/MDDIAG8/02_install_proclib.jcl
