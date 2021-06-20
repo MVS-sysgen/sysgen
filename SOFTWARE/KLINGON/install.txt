@@ -1,4 +1,4 @@
-# Installs EXTRAS
+# Installs MACLIBS
 # Run with `exec automate.rexx ../SOFTWARE/KLINGON/install.txt`
 sh ./submit.sh ../SOFTWARE/KLINGON/01_klingon_files.jcl
 / $HASP395 KLINGON1 ENDED;sh ./submit.sh ../SOFTWARE/KLINGON/02_klingon_compile.jcl

@@ -1,0 +1,2 @@
+* Launching Automation REXX script
+exec ../automate.rexx ../SOFTWARE/MACLIBS/install.txt hercules.log -d &&

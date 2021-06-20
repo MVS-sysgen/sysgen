@@ -1,0 +1,10 @@
+# Installs MACLIBS
+# Run with `exec automate.rexx ../SOFTWARE/MACLIBS/install_extras.txt`
+* Installing SYS2.MACLIB and SYS2.SXMACLIB
+/$CA
+$HASP000 OK;sh ./submit.sh ../SOFTWARE/MACLIBS/01_sys2_maclib_install.jcl
+/*03 IEC301A S JOB INIT     DSNAME SYS1.VSAM.MASTER.CATALOG;/r 3,sysprog
+/ $HASP395 SYS2MAC  ENDED;sh ./submit.sh ../SOFTWARE/MACLIBS/02_sys2_sxmaclib_install.jcl
+/*03 IEC301A S JOB INIT     DSNAME SYS1.VSAM.MASTER.CATALOG;/r 3,sysprog
+/ $HASP395 SYS2SXMC ENDED;sh ./submit.sh ../SOFTWARE/MACLIBS/03_sys1_proclib_asm_update.jcl
+/ $HASP395 ASMPROC  ENDED;/$VS,'S ZTIMER'

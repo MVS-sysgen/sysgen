@@ -73,7 +73,7 @@ To start the system run `./start_mvs.sh`
 Included with this repo (\* means its already installed):
 
 - BREXX*
-- EXTRAS
+- MACLIBS
 - INDFILE*
 - MDDIAG8*
 - OFFLOAD

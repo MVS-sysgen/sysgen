@@ -9,7 +9,7 @@ Version 1.0.0 by Shelby Lynne Beach and Jürgen Winkelmann
 
 ## Install
 
-:warning: To install EZASMI you need to install `SYS2.MACLIB` and `SYS2.SXMACLIB` by running `INSTALL EXTRAS` in TSO
+:warning: To install EZASMI you need to install `SYS2.MACLIB` and `SYS2.SXMACLIB` by running `INSTALL MACLIBS` in TSO
 
 To install in TSO issue the command `INSTALL EZASMI`.
 

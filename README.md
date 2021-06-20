@@ -69,7 +69,7 @@ Without RAKF installed the account do not need a password
 Included with this repo:
 
 - BREXX*
-- EXTRAS
+- MACLIBS
 - INDFILE*
 - MDDIAG8*
 - OFFLOAD
