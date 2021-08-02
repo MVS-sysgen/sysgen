@@ -35,6 +35,7 @@ PANOPT MSGCOLOR=DARK
 # V     V       V
 #---    ----    --------------------------------- card readers
 000C    3505    localhost:3505 sockdev autopad trunc ascii eof
+001A    3505    localhost:3506 sockdev autopad trunc ebcdic eof
 001C    3505    jcl/null.jcl eof
 # ----------------------------------------------- card punches & printers
 000D    3525    pch00d.txt ebcdic          # JES2
