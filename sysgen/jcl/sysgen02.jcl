@@ -118,8 +118,8 @@ INTRDR CLASS=A,NOHOLD,AUTH=0,PRIOINC=0,PRIOLIM=15
 &NUMINRS=5                     NUMBER OF INTERNAL READERS               
 &NUMJOES=1024                  NUMBER OF JOB OUTPUT ELEMENTS            
 &NUMPRTS=3                     MAX NUMBER OF LOCAL PRINTERS             
-&NUMPUNS=1                     MAX NUMBER OF LOCAL PUNCHES              
-&NUMRDRS=1                     MAX NUMBER OF LOCAL READERS              
+&NUMPUNS=2                     MAX NUMBER OF LOCAL PUNCHES              
+&NUMRDRS=3                     MAX NUMBER OF LOCAL READERS              
 &NUMSMFB=96                    NUMBER OF SMF BUFFERS                    
 &NUMTGV=3330                   TRACK GROUPS PER SPOOL VOLUME (3350)     
 &OUTPOPT=0                     ACTION FOR JOBS EXCEEDING OUTPUT         
@@ -183,7 +183,8 @@ PUNCH1         CLASS=B,SEP,AUTO,NOPAUSE,UNIT=00D,START       2540P
 *********************************************************************** 
 *                              LOCAL READERS                          * 
 *********************************************************************** 
-READER1        AUTH=0,CLASS=A,NOHOLD,MSGCLASS=A,UNIT=00C     2540R      
+READER1        AUTH=0,CLASS=A,NOHOLD,MSGCLASS=A,UNIT=00C     2540R
+READER2        AUTH=0,CLASS=A,NOHOLD,MSGCLASS=A,UNIT=01A     2540R      
 &RECINCR=2                     RECORD ALTERNATION                       
 &RJOBOPT=5                     JOB CARD SCAN OPTION                     
 &RPRI(1)=6                     PRTY FOR ESTIMATED TIME                  
