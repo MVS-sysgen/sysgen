@@ -16,6 +16,7 @@ NOSYSGEN=0
 NOCUSTOM=0
 USERNAME=0
 PASSWORD=0
+SYSCPACK=0
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -26,6 +27,7 @@ while [[ "$#" -gt 0 ]]; do
         --skip-distrib) NODISTRIB=1 ;;
         --skip-sysgen) NOSYSGEN=1 ;;
         --skip-custom) NOCUSTOM=1 ;;
+        --force-syscpack) SYSCPACK=1 ;;
         --username)
             shift
             USERNAME=$1 ;;
@@ -34,16 +36,17 @@ while [[ "$#" -gt 0 ]]; do
             PASSWORD=$1 ;;
         -h|--help)  echo "SYSGEN automated installer"
                     echo "Usage:"
-                    echo "    ./sysgen.sh -h/--help       Display this help message."
-                    echo "    ./sysgen.sh -n/--no-install Install RAKF and MDDIAG8 but no other software."
-                    echo "    ./sysgen.sh -r/--no-rakf    Do not install any software including RAKF/MDDIAG8."
-                    echo "    ./sysgen.sh --username      Add this username to RAKF"
-                    echo "    ./sysgen.sh --password      Use this password for new user (optional, if skipped a random one will be generated)"
-                    echo "    ./sysgen.sh --skip-hercules Skip building hercules"
-                    echo "    ./sysgen.sh --skip-starter  Skip building hercules and building starter"
-                    echo "    ./sysgen.sh --skip-distrib  Skip building hercules, starter and distribution"
-                    echo "    ./sysgen.sh --skip-sysgen   Skip building hercules, starter, distribution and sysgen"
-                    echo "    ./sysgen.sh --skip-custom   Skip all steps and install RAKF"
+                    echo "    ./sysgen.sh -h/--help        Display this help message."
+                    echo "    ./sysgen.sh -n/--no-install  Install RAKF and MDDIAG8 but no other software."
+                    echo "    ./sysgen.sh -r/--no-rakf     Do not install any software including RAKF/MDDIAG8."
+                    echo "    ./sysgen.sh --force-syscpack Force downloading new SYSCPACK from Jay Moseley instead of local copy."
+                    echo "    ./sysgen.sh --username       Add this username to RAKF"
+                    echo "    ./sysgen.sh --password       Use this password for new user (optional, if skipped a random one will be generated)"
+                    echo "    ./sysgen.sh --skip-hercules  Skip building hercules"
+                    echo "    ./sysgen.sh --skip-starter   Skip building hercules and building starter"
+                    echo "    ./sysgen.sh --skip-distrib   Skip building hercules, starter and distribution"
+                    echo "    ./sysgen.sh --skip-sysgen    Skip building hercules, starter, distribution and sysgen"
+                    echo "    ./sysgen.sh --skip-custom    Skip all steps and install RAKF"
                     set +e
                     trap : 0
                     exit 0
@@ -91,7 +94,11 @@ if [ $NOCUSTOM -eq 1 ]; then
     echo_warn "Skipping Customizations"
 else
     echo_step "Installing Customizations"
-    bash 05_sysgen_customization.sh
+    if [ $SYSCPACK -eq 1 ]; then
+        bash 05_sysgen_customization.sh --force
+    else
+        bash 05_sysgen_customization.sh
+    fi
 fi
 
 if [ $NORAKF -eq 1 ]; then

@@ -1,4 +1,7 @@
 # Build starter system
+
+# To force updating/downloading syspack use flag --force
+
 source ./00_sysgen_functions.sh
 trap 'check_return' 0
 
@@ -10,16 +13,20 @@ rm -rf dasd
 prev_dasd=$(ls -Art dasd.03.sysgen.*.tar | tail -n 1)
 echo_step "Untarring $prev_dasd"
 tar -xvf $prev_dasd
-echo_step "Downloading SYSCPK"
-ret=0
-wget -t 1 http://www.jaymoseley.com/hercules/downloads/archives/SYSCPK.tar.gz || ret=$?
 
-if [ $ret -ne 0 ]; then
-    echo_step "Download of http://www.jaymoseley.com/hercules/downloads/archives/SYSCPK.tar.gz failed"
-    echo_step "Using archived copy"
+if [ $# -eq 1 ]; then
+    echo_step "Downloading SYSCPK"
+    ret=0
+    wget -t 1 http://www.jaymoseley.com/hercules/downloads/archives/SYSCPK.tar.gz || ret=$?
+
+    if [ $ret -ne 0 ]; then
+        echo_step "Download of http://www.jaymoseley.com/hercules/downloads/archives/SYSCPK.tar.gz failed"
+        echo_step "Using archived copy"
+        cp ../gz/SYSCPK.tar.gz ./
+    fi
+else
     cp ../gz/SYSCPK.tar.gz ./
 fi
-
 echo_step "Extracting SYSCPK.tar.gz"
 tar xvzf SYSCPK.tar.gz
 rm SYSCPK.tar.gz
