@@ -1,0 +1,1588 @@
+         TITLE '   L I S T C D S      '
+***********************************************************************
+*                                                                     *
+*        'LISTCDS' TSO COMMAND                                        *
+*                                                                     *
+***********************************************************************
+         SPACE
+*  WRITTEN BY. BILL GODFREY, PRC (PLANNING RESEARCH CORPORATION).
+*  INSTALLATION. PRC, MCLEAN, VIRGINIA.
+*  DATE WRITTEN. FEBRUARY 11 1980.
+*  DATE UPDATED. MAY 14 1982.
+*  ATTRIBUTES. RE-ENTRANT.
+*  DESCRIPTION.
+*     THIS TSO COMMAND DISPLAYS RECORDS FROM THE
+*     SMP CDS DATA SET.
+*
+*     CDS MAY BE PRE-ALLOCATED TO FILENAME SMPCDS
+*     OR COMMAND WILL ALLOCATE SYS1.SMPCDS ITSELF.
+*
+*     SYNTAX -
+*              LISTCDS  MOD(NAME)  SYSMOD(NAME)
+*                       MAC(NAME)  SRC(NAME)  SYSTEM
+*
+*     CHANGES ...
+*      (23MAY80) - FOOL DAIRFAIL INTO THINKING DA24
+*         DAPB WAS A DA08 DAPB, SO ITS MESSAGE WILL NOT
+*         REFER TO HELP DATA SET.
+*      (22JAN82) - CHANGE GET ROUTINE SO IT DOES NOT USE
+*         REGISTERS 6, 7, 8, AND 11.
+*         CHANGE BLDL ROUTINE TO USE REG2 INSTEAD OF REG6.
+*         USE REG6 AS BASE FOR IOP INSTEAD OF REG10.
+*         REGISTERS 7, 10, AND 11 ARE NOT USED AT ALL.
+*         RESERVE 10 AND 11 FOR FUTURE BASE REGISTERS.
+*         READ MORE 80-BYTE SECTIONS OF EACH MEMBER. THE MAXIMUM
+*         NUMBER OF 80-BYTE SECTIONS IS DEFINED IN 'IOPWMAX'.
+*      (26JAN82) - MACRO AND SOURCE DISPLAYS ADDED.
+*      (27JAN82) - LMOD DISPLAY ADDED.
+*      (19APR82) - LINK KEYWORD ADDED, TO DISPLAY LMOD LINKEDIT CARDS.
+*                  DECK KEYWORD ADDED, TO PUNCH LMOD LINKEDIT CARDS.
+*                  R11 AND R12 ARE NOW BASE REGISTERS.
+*      (04MAY82) - IOPWMAX CHANGED FROM 20 TO 150 BECAUSE
+*                  LMOD(IEFW21SD) HAS A LARGE NUMBER OF ORDER CARDS.
+*                  NOLINK KEYWORD ADDED. DEFAULT IS LINK.
+*      (11MAY82) - CHANGE PARSE SYNTAX PROCESSING SO THAT THE
+*                  KEYWORDS FOR THE VARIOUS TYPES OF CDS ENTRIES
+*                  ARE NO LONGER MUTUALLY EXCLUSIVE.  THIS ALLOWS
+*                  MULTIPLE TYPES OF ENTRIES TO BE DISPLAYED DURING
+*                  A SINGLE USE OF THE COMMAND.
+*      (14MAY82) - SYSTEM ENTRY DISPLAY.  ORDER OF TYPES CHANGED.
+*                  DISPLAY SYSTEM ENTRY IF NO OPERANDS.
+*                  MAKE 'SYS' MEAN SYSTEM INSTEAD OF SYSMOD
+*                  BUT 'S' AND 'SY' ARE SHORT FOR SYSMOD.
+         SPACE
+         MACRO
+&N       HEX   &T,&F,&L
+&N       LA    15,&T
+         LA    1,&F
+         LA    0,&L
+         BAL   R14,HEX
+         MEND
+         SPACE
+LISTCDS  START
+         USING *,R11,R12
+BASE     B     @PROLOG-*(,15)
+         DC    AL1(19),CL19'LISTCDS SMP4 - PRC '
+         DC    CL16' &SYSDATE &SYSTIME '
+@SIZE    DC    0F'0',AL1(1),AL3(@DATAL)
+@PROLOG  STM   14,12,12(R13)       SAVE REGISTERS
+         LR    R11,R15             LOAD BASE REGISTER
+         LA    R15,1
+         LA    R12,4095(R15,R11)   SECOND BASE REGISTER
+         LR    R2,R1               CPPL POINTER
+         USING CPPL,R2
+         L     R0,@SIZE            WORKAREA SUBPOOL AND LENGTH
+         GETMAIN R,LV=(0)
+         LR    R9,R1               INITIALIZE WORKAREA POINTER
+         USING @DATA,R9
+         SPACE 1
+         LR    R0,R1               AREA TO BE CLEARED
+         L     R1,@SIZE            LENGTH TO BE CLEARED
+         SLR   R15,R15             ZERO PAD AND 'FROM' LENGTH
+         MVCL  R0,R14              ZERO IT ALL
+         SPACE 1
+         ST    R13,4(,R9)          CHAIN SAVEAREA
+         ST    R9,8(,R13)          CHAIN SAVEAREA
+         LR    R13,R9              UPDATE SAVEAREA POINTER
+         SPACE
+         ST    R2,CPPLPTR
+         MVI   LINE-1,C' '
+         SPACE
+************************************************************
+*                                                          *
+*        SET UP IOPL FOR PUTLINE                           *
+*                                                          *
+************************************************************
+         SPACE
+         LA    R15,MYIOPL
+         USING IOPL,R15
+         MVC   IOPLUPT(4),CPPLUPT
+         MVC   IOPLECT(4),CPPLECT
+         LA    R0,MYECB
+         ST    R0,IOPLECB
+         XC    MYECB,MYECB
+         LA    R0,MYPTPB
+         ST    R0,IOPLIOPB
+         DROP  R15
+         SPACE
+         L     R15,16              LOAD CVT POINTER
+         TM    444(R15),X'80'      IS PUTLINE LOADED? (VS2)
+         BNO   PUTLOAD             NO - BRANCH TO LOAD
+         L     R15,444(,R15)       YES - USE CVTPUTL
+         B     PUTLOADX            BRANCH AROUND LOAD
+PUTLOAD  LA    R0,=CL8'IKJPUTL '
+         LOAD  EPLOC=(0)
+         LR    R15,R0              GET ENTRY ADDRESS
+         LA    R15,0(,R15)         CLEAR HI BYTE FOR DELETE ROUTINE
+PUTLOADX ST    R15,MYPUTLEP        SAVE PUTLINE ENTRY ADDRESS
+         SPACE
+************************************************************
+*                                                          *
+*        SET UP PPL FOR PARSE                              *
+*                                                          *
+************************************************************
+         SPACE
+         LA    R15,MYPPL
+         USING PPL,R15
+         MVC   PPLUPT(4),CPPLUPT
+         MVC   PPLECT(4),CPPLECT
+         LA    R0,MYECB
+         ST    R0,PPLECB
+         XC    MYECB,MYECB
+         L     R0,=A(LCDSPCL)
+         ST    R0,PPLPCL
+         LA    R0,MYANS
+         ST    R0,PPLANS
+         MVC   PPLCBUF(4),CPPLCBUF
+         ST    R9,PPLUWA
+         DROP  R15
+         SPACE 1
+************************************************************
+*                                                          *
+*        CALL THE PARSE SERVICE ROUTINE                    *
+*                                                          *
+************************************************************
+         SPACE 1
+         LR    R1,R15              POINT TO PPL
+         L     R15,16              CVTPTR
+         TM    524(R15),X'80'      IF HI ORDER BIT NOT ON
+         BNO   PARSELNK               THEN DO LINK, NOT CALL
+         L     R15,524(,R15)       CVTPARS
+         BALR  R14,R15             CALL IKJPARS
+         B     PARSEEXT            SKIP AROUND LINK
+PARSELNK EQU   *
+         LINK  EP=IKJPARS
+PARSEEXT EQU   *
+         SPACE
+         LTR   R15,R15             WAS PARSE SUCCESSFUL
+         BZ    PARSEOK             YES, BRANCH
+         LA    R1,MSG01            PARSE ERROR
+         LA    R0,L'MSG01          PARSE ERROR
+         B     EXIT12M
+PARSEOK  EQU   *
+         L     R3,MYANS
+         USING IKJPARMD,R3
+         SPACE
+************************************************************
+*                                                          *
+*         ALLOCATE THE SMPCDS DATA SET                    *
+*                                                          *
+************************************************************
+         SPACE
+*              IF DDNAME SMPCDS IS ALREADY ALLOCATED,
+*              THEN THE EXISTING ALLOCATION IS USED
+*              EVEN IF THE DSNAME IS NOT 'SYS1.SMPCDS'.
+*              IF DDNAME SMPCDS IS NOT ALLOCATED,
+*              THEN 'SYS1.SMPCDS' WILL BE ALLOCATED, AND
+*              A GENERATED DDNAME WILL BE RETURNED.
+         SPACE
+         LA    R1,MYDAPL
+         USING DAPL,R1
+         MVC   DAPLUPT(4),CPPLUPT
+         MVC   DAPLECT(4),CPPLECT
+         LA    R0,MYECB
+         ST    R0,DAPLECB
+         MVC   DAPLPSCB(4),CPPLPSCB
+         LA    R15,MYDAPB
+         ST    R15,DAPLDAPB
+         DROP  R1                  DAPL
+         DROP  R2                  CPPL
+         USING DAPB24,R15
+         XC    0(84,R15),0(R15)
+         MVI   DA24CD+1,X'24'
+         LA    R14,DSNAME
+         MVC   0(46,R14),SYSDSN    DATA SET NAME
+         ST    R14,DA24PDSN
+         MVC   DA24DDN(8),=CL8'SMPCDS'
+         MVC   DA24UNIT,=CL8' '
+         MVC   DA24SER,=CL8' '
+         MVC   DA24MNM,=CL8' '
+         MVC   DA24PSWD,=CL8' '
+         MVI   DA24DSP1,DA24SHR
+         MVI   DA24DPS2,DA24KEEP
+         MVI   DA24DPS3,DA24KEP
+         BAL   R14,CALLDAIR
+         LTR   R15,R15
+         BZ    OKDAIR
+         BAL   R14,DAIRFAIL
+         B     EXIT12
+OKDAIR   EQU   *
+         OI    STATUS,STATALLC     TELL CLEANUP TO FREE IT
+         LA    R15,MYDAPB          RESTORE DAPB POINTER
+         TM    DA24DSO,X'02'       IS IT PARTITIONED?
+         BO    OKDSORG             YES, BRANCH
+         LA    R1,MSG02
+         LA    R0,L'MSG02
+         B     EXIT12M
+OKDSORG  EQU   *
+         SPACE
+************************************************************
+*                                                          *
+*         OPEN THE DATA SET                                *
+*                                                          *
+************************************************************
+         SPACE
+         LA    R4,PDSDCBW
+         MVC   0(PDSDCBL,R4),PDSDCB
+         MVC   DDNAM(8,R4),DA24DDN
+         DROP  R15                 DAPB
+         SPACE
+         LA    R15,PDSEOD
+         IC    R14,EODAD(,R4)
+         ST    R15,EODAD(,R4)
+         STC   R14,EODAD(,R4)
+         SPACE
+         LA    R15,PDSSYN
+         IC    R14,SYNAD(,R4)
+         ST    R15,SYNAD(,R4)
+         STC   R14,SYNAD(,R4)
+         SPACE
+         LA    R1,OPEN
+         MVI   0(R1),X'80'
+         SPACE
+         OPEN  ((R4),INPUT),MF=(E,(1))
+         SPACE
+         TM    OFLGS(R4),X'10'
+         BO    OKOPEN
+         LA    R1,MSG03
+         LA    R0,L'MSG03
+         B     EXIT12M
+OKOPEN   EQU   *
+         OI    STATUS,STATOPEN     TELL CLEANUP TO CLOSE IT
+         LH    R0,BLKSI(,R4)
+*        SLL   R0,1                DOUBLE BLKSIZE
+         ST    R0,GETSIZE
+         GETMAIN R,LV=(0)
+         ST    R1,GETADDR
+         OI    STATUS,STATGOTM     TELL CLEANUP TO FREEMAIN
+         ST    R1,BUFPTR
+         SPACE
+************************************************************
+*                                                          *
+*         GET THE CDS ENTRY NAME TO BE READ                *
+*                                                          *
+************************************************************
+         SPACE
+         LA    R1,1                SET KW INDEX
+         ST    R1,KWINDEX           TO 1
+         B     KWPROC
+KWNEXT   LA    R1,1                ADD
+         A     R1,KWINDEX           1
+         ST    R1,KWINDEX            TO KWINDEX
+KWPROC   BCTR  R1,0
+         LA    R0,KWINSL
+         MR    R0,R0               MULTIPLY BY 12 (LENGTH OF 3 INSTR)
+         B     *+4(R1)
+KWINS    LA    R1,KW01
+         LA    R0,0
+         B     KWTEST
+KWINSL   EQU   *-KWINS             LENGTH OF ONE BRANCH TABLE ENTRY
+         LA    R1,KW02
+         LA    R0,SF02
+         B     KWTEST
+         LA    R1,KW03
+         LA    R0,SF03
+         B     KWTEST
+         LA    R1,KW04
+         LA    R0,SF04
+         B     KWTEST
+         LA    R1,KW05
+         LA    R0,SF05
+         B     KWTEST
+         LA    R1,KW06
+         LA    R0,SF06
+         B     KWTEST
+         LA    R1,KW07
+         LA    R0,SF07
+         B     KWTEST
+         LA    R1,KW08
+         LA    R0,SF08
+         B     KWTEST
+*
+*              ENTER HERE AFTER ALL KEYWORDS REPRESENTING TYPES
+*              HAVE BEEN PROCESSED.
+*
+*              IF NONE WERE SPECIFIED,
+*                SET STATKWXX ON AND GO TO THE ROUTINE THAT
+*                DISPLAYS THE SYSTEM ENTRY.
+*                THAT ROUTINE WILL GO TO KWNEXT.
+*                SET KWINDEX TO 1.
+*
+         TM    STATUS,STATKWXX     WAS A TYPE KEYWORD ENTERED
+         BO    EXIT0               YES - WE ARE DONE
+         OI    STATUS,STATKWXX
+         LA    R1,1
+         ST    R1,KWINDEX
+         LA    R1,KW01
+         SR    R0,R0
+         B     KWSPEC
+         SPACE
+KWTEST   CLI   1(R1),0             IS KEYWORD SPECIFIED
+         BE    KWNEXT              NO, GO INCREMENT KWINDEX
+KWSPEC   OI    STATUS,STATKWXX
+         LR    R5,R0               YES, POINT TO SUBFIELD
+         B     SFPROC
+         SPACE
+SFNEXT   L     R5,IDENTP
+         CLI   8(R5),255           LAST ENTRY IN LIST ?
+         L     R5,8(,R5)
+         BE    KWNEXT              YES, GET NEXT KEYWORD
+         SPACE
+SFPROC   ST    R5,IDENTP
+         LTR   R5,R5               IS THERE A SUBFIELD
+         BZ    IDENTDEF            NO, BRANCH
+         TM    6(R5),X'80'         IS NAME PRESENT (YES - ALWAYS)
+         BZ    IDENTDEF            NO, BRANCH (NEVER BRANCHES)
+         LH    R1,4(,R5)           YES, GET LENGTH
+         MVC   EXNAME(8),=CL8' '
+         L     R14,0(,R5)          GET ADDRESS OF OPERAND
+         BCTR  R1,0                GET LENGTH CODE FOR EX
+         EX    R1,IDENTMOV         MOVE IDENT
+         B     IDENTU
+IDENTMOV MVC   EXNAME(0),0(R14)    (EXECUTED)
+IDENTDEF MVC   EXNAME(8),=CL8'SYSTEM'
+IDENTU   EQU   *
+         LA    R1,EXNAME
+         BAL   R14,CNVIN
+         SPACE
+************************************************************
+*                                                          *
+*         CONVERT 'TYPE' KEYWORD TO CODE CHARACTER        *
+*                                                          *
+************************************************************
+         SPACE
+         L     R1,KWINDEX
+         SLL   R1,1                MULT BY 2
+         LH    R1,TYPENUM(R1)
+         STH   R1,TYPE
+         LA    R1,TYPECHR(R1)
+         IC    R1,0(,R1)
+         STC   R1,MEMBER
+         B     IDENTZ
+         SPACE
+************************************************************
+*                                                          *
+*         CONVERT EXTERNAL NAME TO INTERNAL NAME          *
+*                                                          *
+************************************************************
+         SPACE
+CNVIN    STM   R2,R3,CNVSAVE
+         MVC   DOUBLE(8),0(R1)
+         TR    DOUBLE,CNVTRAN      TRANSLATE
+         L     R3,DOUBLE
+         SLR   R2,R2
+         LA    R0,4
+         BALR  R15,0
+         SLL   R3,2                DROP 2 LEFT BITS
+         SLDL  R2,6                SHIFT NEXT 6 INTO R2
+         BCTR  R0,R15
+         ST    R2,DOUBLE
+         L     R3,DOUBLE+4
+         SLR   R2,R2
+         LA    R0,4
+         BALR  R15,0
+         SLL   R3,2
+         SLDL  R2,6
+         BCTR  R0,R15
+         SLL   R2,8
+         ST    R2,DOUBLE+4
+         MVC   8(8,R1),DOUBLE
+         LM    R2,R3,CNVSAVE
+         BR    R14
+         SPACE
+IDENTZ   EQU   *
+         SPACE
+************************************************************
+*                                                          *
+*         SEARCH THE DIRECTORY FOR THE MEMBER              *
+*                                                          *
+************************************************************
+         SPACE
+         LA    R2,BLDLW
+         XC    0(18,R2),0(R2)
+         MVI   1(R2),1
+         MVI   3(R2),76
+         MVC   4(8,R2),MEMBER
+         SPACE
+         BLDL  (R4),(R2)
+         SPACE
+OKSYN    LTR   R15,R15
+         BZ    OKBLDL
+         MVC   LINE,LINE-1
+         MVC   LINE(8),EXNAME
+         MVC   LINE+9(L'MSG04),MSG04
+         LA    R1,LINE
+         LA    R0,40
+         BAL   R14,PUTMSG
+         B     SFNEXT
+OKBLDL   EQU   *
+         CLI   DIRKW+1,1
+         BNE   DIRX
+         LA    R1,MSG06
+         LA    R0,L'MSG06
+         BAL   R14,PUTLINE
+         MVC   LINE,LINE-1
+         MVC   LINE(8),=C'MEMBER ='
+         HEX   LINE+9,BLDLMEM,8
+         MVC   LINE+26(5),=C'TTR ='
+         HEX   LINE+32,BLDLTTR,3
+         MVC   LINE+39(6),=C'BITS ='
+         HEX   LINE+46,BLDLC,1
+         BAL   R14,PUTL
+         SLR   R0,R0
+         IC    R0,BLDLC
+         LA    R1,31
+         NR    R0,R1
+         BZ    DIRX
+         AR    R0,R0
+         LR    R8,R0               SAVE LENGTH
+         LA    R1,BLDLU
+         LA    R15,MSGWK
+         BAL   R14,HEX
+         LA    R1,MSGWK
+         AR    R8,R8
+         LR    R0,R8
+         BAL   R14,PUTLINE
+DIRX     EQU   *
+         SPACE
+         FIND  (R4),BLDLTTR,C
+         SPACE
+         LH    R8,LRECL(,R4)
+         LTR   R8,R8               IS LRECL ZERO
+         BP    *+8                 NO
+         LH    R8,BLKSI(,R4)       YES, USE BLOCKSIZE
+         STH   R8,GETLRECL
+         SLR   R14,R14
+         ST    R14,GETHOLD         FORCE GET TO READ FIRST TIME
+         MVC   PDSDECBW(PDSDECBL),PDSDECB
+         SPACE
+         LA    R6,IOPW
+         USING IOP,R6
+         MVC   0(24,R6),BLDLU
+         LA    R15,EOF1
+         ST    R15,EODPTR
+         SPACE
+         LA    R15,IOP+24
+         LA    R0,IOPWMAX
+CLEARIOP XC    0(80,R15),0(R15)
+         LA    R15,80(,R15)
+         BCT   R0,CLEARIOP
+         ST    R15,IOPWFFA
+         MVI   0(R15),X'FF'
+         MVC   1(17,R15),0(R15)
+*
+*              READ UP TO (IOPWMAX) RECORDS. THERE MAY BE NONE.
+*              SOME SYSMOD MEMBERS HAVE MORE THAN (IOPWMAX).
+*              THOSE WILL HAVE INCOMPLETE LISTINGS.
+*
+         LA    R15,IOP+24
+         LA    R0,IOPWMAX
+GETIOP   BAL   R14,GET
+         MVC   0(80,R15),0(R1)
+         LA    R15,80(,R15)
+         BCT   R0,GETIOP
+EOF1     EQU   *
+         CLI   RECKW+1,1
+         BNE   NODATA
+         LA    R1,MSG07
+         LA    R0,L'MSG07
+         BAL   R14,PUTLINE
+         HEX   MSGWK,IOP+24,80
+         LA    R1,MSGWK
+         LA    R0,160
+         BAL   R14,PUTLINE
+         SPACE
+         HEX   MSGWK,IOP+24+80,80
+         LA    R1,MSGWK
+         LA    R0,160
+         BAL   R14,PUTLINE
+         SPACE
+NODATA   EQU   *
+         LH    R1,TYPE
+         SLL   R1,1
+         LH    R1,GOTO(R1)
+         LA    R15,0(R1,R11)
+         BR    R15
+         SPACE
+*
+*              THE NUMBER OF ENTRIES FOLLOWING THE DUMMY ENTRY
+*              IS DETERMINED BY THE MAXIMUM VALUE OF AN ENTRY IN
+*              THE 'TYPENUM' TABLE.
+GOTO     DC    AL2(NULL-BASE)      DUMMY
+         DC    AL2(ZSYS-BASE)      SYSTEM
+         DC    AL2(ZSYM-BASE)      SYSMOD
+         DC    AL2(ZMAC-BASE)      MACRO
+         DC    AL2(NULL-BASE)      ASSEM
+         DC    AL2(ZSRC-BASE)      SOURCE
+         DC    AL2(ZMOD-BASE)      MOD
+         DC    AL2(ZLMD-BASE)      LMOD
+         DC    AL2(NULL-BASE)      DLIB
+         SPACE
+NULL     MVC   LINE,LINE-1
+         MVC   LINE(8),EXNAME
+         MVC   LINE+9(L'MSG05),MSG05
+         BAL   R14,PUTL
+         B     SFNEXT
+         SPACE
+************************************************************
+*                                                          *
+*         FORMAT THE SYSTEM ENTRY                          *
+*                                                          *
+************************************************************
+         SPACE
+ZSYS     MVC   LINE,LINE-1
+         MVC   LINE(7),EXNAME
+         MVC   LINE(25),=C'CDS SYSTEM ENTRY - PEMAX='
+         LA    R15,LINE+25
+         MVC   0(6,R15),=X'402020202120'
+         LH    R0,IOPPEMAX
+         CVD   R0,DOUBLE
+         ED    0(6,R15),DOUBLE+5
+ZSYSPEM1 CLI   0(R15),C' '
+         BNE   ZSYSPEM2
+         MVC   0(6,R15),1(R15)
+         B     ZSYSPEM1
+ZSYSPEM2 EQU   *
+         LA    R15,7(,R15)
+         MVC   0(5,R15),=C'SREL='
+         MVC   5(4,R15),IOPSREL
+         LA    R15,11(,R15)
+         MVC   0(6,R15),=C'NUCID='
+         MVC   6(1,R15),IOPNUCID
+         LA    R15,9(,R15)
+         MVC   0(6,R15),=C'CDSID='
+         MVC   6(8,R15),IOPSYSID
+         BAL   R14,PUTL
+         B     KWNEXT
+         SPACE
+************************************************************
+*                                                          *
+*         FORMAT A SYSMOD ENTRY                            *
+*                                                          *
+************************************************************
+         SPACE
+ZSYM     MVC   LINE,LINE-1
+         MVC   LINE(7),EXNAME
+         TM    IOPPTFF1,IOPDUMMP   IS IT SUPERSEDED
+         BNO   ZSNSUP              BRANCH IF NOT
+         MVC   LINE+8(10),=C'SUPERSEDED'
+         TM    IOPPTFF3,IOPSBYP    IS NAME PRESENT
+         BZ    ZSPUT               BRANCH IF NOT PRESENT
+         MVC   LINE+19(2),=C'BY'
+         MVC   LINE+22(7),IOPSBYNO
+         B     ZSPUT
+ZSNSUP   EQU   *
+         SLR   R1,R1
+         IC    R1,IOPPTYPE
+         SLL   R1,3                MULTIPLY BY 8
+         LA    R1,SYSMODTP(R1)     POINT TO TYPE
+         MVC   LINE+8(8),0(R1)     MOVE TYPE TO LINE
+         MVC   LINE+18(10),=C'STATUS(REC'
+         LA    R15,LINE+28
+         TM    IOPPTFF1,IOPAPP
+         BZ    *+14
+         MVC   1(3,R15),=C'APP'
+         LA    R15,4(,R15)
+         TM    IOPPTFF1,IOPACC
+         BZ    *+14
+         MVC   1(3,R15),=C'ACC'
+         LA    R15,4(,R15)
+         TM    IOPPTFF1,IOPRES
+         BZ    *+14
+         MVC   1(3,R15),=C'RES'
+         LA    R15,4(,R15)
+         TM    IOPPTFF1,IOPERROR
+         BZ    *+14
+         MVC   1(3,R15),=C'ERR'
+         LA    R15,4(,R15)
+         TM    IOPPTFF1,IOPBYP
+         BZ    *+14
+         MVC   1(3,R15),=C'BYP'
+         LA    R15,4(,R15)
+         TM    IOPPTFF1,IOPREGEN
+         BZ    *+14
+         MVC   1(5,R15),=C'REGEN'
+         LA    R15,6(,R15)
+         MVI   0(R15),C')'
+         LA    R2,IOPPTFVR
+ZSYM1    CLI   0(R2),255           IOPEOLST
+         BE    ZSYM9
+         CLI   8(R2),8
+         BH    ZSYM2
+         LA    R15,LINE+50
+         SLR   R1,R1
+         IC    R1,8(,R2)
+         SLL   R1,3                MULTIPLY BY 8
+         LA    R1,PIND(R1)
+         MVC   0(8,R15),0(R1)
+         MVC   8(8,R15),0(R2)
+         BAL   R14,PUTL
+         MVC   LINE,LINE-1
+ZSYM2    LA    R2,9(,R2)
+         B     ZSYM1
+ZSYM9    EQU   *
+         CLI   LINE,C' '
+         BE    *+8
+         BAL   R14,PUTL
+         LA    R2,9(,R2)
+         C     R2,IOPWFFA          MORE THAN 4 RECORDS ?
+         BL    SFNEXT              NO, BRANCH
+         MVC   LINE,LINE-1
+         MVC   LINE+1(12),=C'(INCOMPLETE)'
+ZSPUT    BAL   R14,PUTL
+         B     SFNEXT
+         SPACE
+************************************************************
+*                                                          *
+*         FORMAT A MODULE ENTRY                            *
+*                                                          *
+************************************************************
+         SPACE
+ZMOD     MVC   LINE,LINE-1
+         LA    R1,LINE
+         MVC   LINE(8),EXNAME
+         MVC   LINE+10(4),=C'FMID'
+         MVC   LINE+15(7),IOPFMID
+         MVC   LINE+24(4),=C'RMID'
+         MVC   LINE+29(7),IOPRMID
+         MVC   LINE+38(7),=C'DISTLIB'
+         MVC   LINE+46(8),IOPDLIB
+         LA    R2,IOPMODVR
+ZMOD1    CLI   0(R2),255           IOPEOLST
+         BE    ZMOD9
+         LA    R15,LINE+56
+         CLI   8(R2),IOPUMID
+         BE    ZMOD2
+         CLI   8(R2),4             IS IT SOMETHING WE CAN HANDLE
+         BH    ZMOD3               NO, IGNORE IT
+ZMOD2    SLR   R1,R1
+         IC    R1,8(,R2)
+         CLI   8(R2),IOPUMID
+         BNE   *+8
+         LA    R1,5
+         SLL   R1,3                MULTIPLY BY 8
+         LA    R1,MDIND(R1)
+         MVC   0(6,R15),0(R1)
+         MVC   7(8,R15),0(R2)
+         CLI   14(R15),0           IS 8TH CHAR HEX ZERO
+         BNE   *+8                 NO
+         MVI   14(R15),C' '        YES, MAKE IT BLANK
+         BAL   R14,PUTL
+         MVC   LINE,LINE-1
+ZMOD3    LA    R2,9(,R2)
+         B     ZMOD1
+ZMOD9    EQU   *
+         CLI   LINE,C' '
+         BE    SFNEXT
+         BAL   R14,PUTL
+         B     SFNEXT
+         SPACE
+************************************************************
+*                                                          *
+*         FORMAT A MACRO ENTRY OR A SOURCE ENTRY           *
+*                                                          *
+************************************************************
+         SPACE
+ZSRC     EQU   *
+ZMAC     MVC   LINE,LINE-1
+         LA    R1,LINE
+         MVC   LINE(8),EXNAME
+         MVC   LINE+10(4),=C'FMID'
+         MVC   LINE+15(7),IOPFMID
+         MVC   LINE+24(4),=C'RMID'
+         MVC   LINE+29(7),IOPRMID
+         MVC   LINE+38(7),=C'DISTLIB'
+         MVC   LINE+46(8),IOPMCDLB
+         MVC   LINE+56(13),=C'SYSLIB (NONE)'
+         CLI   IOPMCSYS,C' '       IS THERE A SYSLIB
+         BE    *+10                NO
+         MVC   LINE+63(8),IOPMCSYS YES
+         BAL   R14,PUTL
+         MVC   LINE,LINE-1
+         LA    R2,IOPMACVR
+ZMAC1    CLI   0(R2),255           IOPEOLST
+         BE    ZMAC9
+         LA    R15,LINE+56
+         CLI   8(R2),IOPUMID
+         BE    ZMAC2
+         CLI   8(R2),3             IS IT SOMETHING WE CAN HANDLE
+         BH    ZMAC3               NO, IGNORE IT
+ZMAC2    SLR   R1,R1
+         IC    R1,8(,R2)
+         CLI   8(R2),IOPUMID
+         BNE   *+8
+         LA    R1,4
+         SLL   R1,3                MULTIPLY BY 8
+         LA    R1,MCIND(R1)
+         MVC   0(6,R15),0(R1)
+         MVC   7(8,R15),0(R2)
+         CLI   14(R15),0           IS 8TH CHAR HEX ZERO
+         BNE   *+8                 NO
+         MVI   14(R15),C' '        YES, MAKE IT BLANK
+         BAL   R14,PUTL
+         MVC   LINE,LINE-1
+ZMAC3    LA    R2,9(,R2)
+         B     ZMAC1
+ZMAC9    EQU   *
+         CLI   LINE,C' '
+         BE    SFNEXT
+         BAL   R14,PUTL
+         B     SFNEXT
+         SPACE
+************************************************************
+*                                                          *
+*         FORMAT AN LMOD ENTRY                             *
+*                                                          *
+************************************************************
+         SPACE
+ZLMD     MVC   LINE,LINE-1
+         LA    R1,LINE
+         MVC   LINE(8),EXNAME
+         MVC   LINE+10(13),=C'ATTRIBUTES = '
+         LA    R15,LINE+23
+         LR    R0,R15
+         TM    IOPLMDF1,IOPAPF
+         BZ    *+14
+         MVC   0(4,R15),=C'AC=1'
+         LA    R15,5(,R15)
+         TM    IOPLMDF1,IOPRENT
+         BZ    *+14
+         MVC   0(4,R15),=C'RENT'
+         LA    R15,5(,R15)
+         TM    IOPLMDF1,IOPREUS
+         BZ    *+14
+         MVC   0(4,R15),=C'REUS'
+         LA    R15,5(,R15)
+         TM    IOPLMDF1,IOPREFR
+         BZ    *+14
+         MVC   0(4,R15),=C'REFR'
+         LA    R15,5(,R15)
+         TM    IOPLMDF1,IOPOVLY
+         BZ    *+14
+         MVC   0(4,R15),=C'OVLY'
+         LA    R15,5(,R15)
+         TM    IOPLMDF1,IOPSCTR
+         BZ    *+14
+         MVC   0(4,R15),=C'SCTR'
+         LA    R15,5(,R15)
+         TM    IOPLMDF1,IOPDC
+         BZ    *+14
+         MVC   0(2,R15),=C'DC'
+         LA    R15,3(,R15)
+         TM    IOPLMDF2,IOPPAGA
+         BZ    *+14
+         MVC   0(6,R15),=C'ALIGN2'
+         LA    R15,7(,R15)
+         TM    IOPLMDF2,IOPNE
+         BZ    *+14
+         MVC   0(2,R15),=C'NE'
+         LA    R15,3(,R15)
+         TM    IOPLMDF5,IOPCOPY
+         BZ    *+14
+         MVC   0(7,R15),=C'IEBCOPY'
+         LA    R15,8(,R15)
+         TM    IOPLMDF5,IOPCHREP
+         BZ    *+14
+         MVC   0(3,R15),=C'C/R'
+         LA    R15,4(,R15)
+         CR    R15,R0
+         BNE   *+10
+         MVC   0(6,R15),=C'(NONE)'
+         BAL   R14,PUTL
+         MVC   LINE,LINE-1
+         MVC   LINE+10(17),=C'SYSTEM LIBRARY = '
+         LA    R15,LINE+27
+         LR    R0,R15
+         LA    R2,IOPLNTRY
+ZLMD1    CLI   0(R2),255           IOPEOLST
+         BE    ZLMD9
+         CLI   8(R2),1             IS IT SOMETHING WE CAN HANDLE
+         BNE   ZLMD3               NO, IGNORE IT
+         MVC   0(8,R15),0(R2)
+         LA    R15,9(,R15)
+ZLMD3    LA    R2,9(,R2)
+         B     ZLMD1
+ZLMD9    EQU   *
+         CR    R15,R0
+         BNE   *+10
+         MVC   0(6,R15),=C'(NONE)'
+         BAL   R14,PUTL
+         SPACE
+************************************************************
+*                                                          *
+*         DISPLAY AND/OR PUNCH LMOD LINKEDIT STATEMENTS    *
+*                                                          *
+************************************************************
+         SPACE
+*
+*              SOME STATEMENTS HAVE A SPECIAL CHARACTER IN COLUMN 1.
+*              SEE LMOD(IEFAB4E5) FOR EXAMPLE.
+*              *IEFBR14 AOSB3
+*              @CHANGE IEFBR14(IEFAB4E1)
+*
+         TM    IOPLMDF5,IOPCOPY    IS THIS AN IEBCOPY LMOD
+         BO    LINKX               YES - BYPASS LINKEDIT CARD LOGIC
+         CLI   LINKKW+1,1          LINK KEYWORD SPECIFIED
+         BNE   LINKEND             NO, BRANCH
+         MVC   LINE,LINE-1
+         LA    R5,24(,R6)
+LINKLOOP LA    R5,80(,R5)
+         CLI   0(R5),0
+         BE    LINKEND
+         CLI   0(R5),255
+         BE    LINKEND
+         MVC   LINE(72),0(R5)
+         BAL   R14,PUTL
+         B     LINKLOOP
+LINKEND  EQU   *
+         CLI   DECKKW+1,1          DECK KEYWORD SPECIFIED
+         BNE   LINKX               NO, BRANCH
+         CLI   124(R6),255         ANY LINKEDIT CARDS PRESENT
+         BE    LINKX               NO, BRANCH
+         CLI   124(R6),0           ANY LINKEDIT CARDS PRESENT
+         BE    LINKX               NO, BRANCH
+         MVC   PUNDCBW(PUNDCBL),PUNDCB
+         LA    R5,PUNDCBW
+         MVI   OPEN,X'80'
+         OPEN  ((R5),OUTPUT),MF=(E,OPEN)
+         TM    48(R5),X'10'        WAS THERE A SYSPUNCH ALLOCATED
+         BNO   LINKX               NO, IGNORE DECK OPTION
+         MVC   LINE,LINE-1
+         LA    R5,24(,R6)
+DECKLOOP LA    R5,80(,R5)
+         CLI   0(R5),0
+         BE    DECKEND
+         CLI   0(R5),255
+         BE    DECKEND
+         MVC   LINE(72),0(R5)
+         PUT   PUNDCBW,LINE
+         B     DECKLOOP
+DECKEND  EQU   *
+         LA    R5,PUNDCBW
+         MVI   CLOSE,X'80'
+         CLOSE ((R5)),MF=(E,CLOSE)
+         FREEPOOL (R5)
+LINKX    EQU   *
+         B     SFNEXT
+         SPACE
+PUNEXITO CLC   62(2,R1),=H'0'      IS BLKSIZE ZERO
+         BNER  R14                 NO, EXIT
+         MVC   62(2,R1),=H'80'     YES, MAKE IT 80
+         BR    R14                 EXIT
+         SPACE
+************************************************************
+*                                                          *
+*         GET NEXT 80-BYTE RECORD FROM MEMBER              *
+*                                                          *
+************************************************************
+         SPACE
+GET      STM   14,1,GETSAVE
+         LM    14,1,GETHOLD
+         LTR   R14,R14             STILL DEBLOCKING LAST BLOCK
+         BP    GETL                YES, BRANCH
+GETREAD  XC    PDSDECBW(4),PDSDECBW
+         L     R2,BUFPTR
+         SPACE
+         READ  PDSDECBW,SF,(R4),(R2),'S',MF=E
+         SPACE
+         CHECK PDSDECBW
+         SPACE
+         TM    STATUS,STATSYNA     SYNAD EXIT FLAG
+         BZ    OKREAD
+         LA    R1,SYNADMSG
+         LA    R0,78
+         B     EXIT12M
+OKREAD   LH    R0,BLKSI(,R4)       GET BLKSIZE
+         L     R15,PDSDECBW+16     GET IOB ADDRESS
+         SH    R0,14(,R15)         SUBTRACT RESIDUAL COUNT
+         SRDL  R0,32
+         LH    R15,GETLRECL
+         DR    R0,R15
+         LR    R14,R1              NUMBER OF RECORDS IN THIS BLOCK
+         L     R1,BUFPTR           ADDRESS OF 1ST RECORD IN BLOCK
+GETEXIT  STM   14,1,GETHOLD
+         LM    14,0,GETSAVE
+         BR    R14
+GETL     AH    R1,GETLRECL         ADDRESS OF NEXT RECORD IN BLOCK
+         BCT   R14,GETEXIT         RETURN IF IN THIS BLOCK
+         B     GETREAD             OTHERWISE READ NEXT BLOCK
+         SPACE
+PDSEOD   EQU   *
+         L     R15,EODPTR
+         BR    R15
+         B     EXIT0
+         SPACE
+PDSSYN   EQU   *
+         SYNADAF ACSMETH=BPAM
+         MVC   SYNADMSG(78),50(R1)
+         OI    STATUS,STATSYNA     SYNAD EXIT FLAG
+         SYNADRLS
+         BR    R14
+         SPACE
+HEX      MVC   1(1,R15),0(R1)      MOVE BYTE
+         UNPK  0(3,R15),1(2,R15)   UNPACK
+         TR    0(2,R15),HEXTRAN-240
+         LA    R15,2(,R15)
+         LA    R1,1(,R1)
+         BCT   R0,HEX
+         MVI   0(R15),C' '
+         BR    R14
+         SPACE
+HEXTRAN  DC    C'0123456789ABCDEF'
+         SPACE
+************************************************************
+*                                                          *
+*        PUTMSG ROUTINE                                    *
+*                                                          *
+************************************************************
+         SPACE
+PUTMSG   STM   R14,R1,PUTSAVE
+         XC    MYOLD(8),MYOLD
+         XC    MYSEG1(4),MYSEG1
+         MVC   MYPTPB(12),MODLPTPM
+         LA    R14,1               NO. OF MESSAGE SEGMENTS
+         ST    R14,MYOLD
+         LA    R14,MYSEG1          POINT TO 1ST SEGMENT
+         ST    R14,MYOLD+4
+         LR    R14,R0              LENGTH IN R0
+         LA    R14,4(,R14)         ADD 4
+         LA    R15,MYSEG1+4
+         CLC   0(3,R1),=C'IKJ'     IS DATA PRECEEDED BY MESSAGE ID?
+         BE    *+16                YES - BRANCH
+         LA    R14,1(,R14)         ADD 1 TO LENGTH
+         MVI   0(R15),C' '         INSERT LEADING BLANK
+         LA    R15,1(,R15)         BUMP POINTER
+         STH   R14,MYSEG1
+         LR    R14,R0
+         BCTR  R14,0
+         B     *+10
+         MVC   0(0,R15),0(R1)      MOVE MESSAGE IN
+         EX    R14,*-6
+         LA    R1,MYIOPL
+         L     R15,MYPUTLEP
+         SPACE
+         PUTLINE PARM=MYPTPB,OUTPUT=(MYOLD),ENTRY=(15),MF=(E,(1))
+         SPACE
+         LM    R14,R1,PUTSAVE
+         BR    R14
+         SPACE
+************************************************************
+*                                                          *
+*        PUTLINE ROUTINE                                   *
+*                                                          *
+************************************************************
+         SPACE
+PUTL     LA    R1,LINE
+         LA    R0,80
+PUTLINE  STM   R14,R1,PUTSAVE
+         XC    MYSEG1(4),MYSEG1
+         MVC   MYPTPB(12),MODLPTPB
+         LR    R14,R0              LENGTH IN R0
+         LA    R14,4(,R14)         ADD 4
+         STH   R14,MYSEG1
+         LR    R14,R0
+         BCTR  R14,0
+         B     *+10
+         MVC   MYSEG1+4(0),0(R1)   MOVE TEXT IN
+         EX    R14,*-6
+         LA    R1,MYIOPL
+         L     R15,MYPUTLEP
+         SPACE
+         PUTLINE PARM=MYPTPB,OUTPUT=(MYSEG1,DATA),ENTRY=(15),MF=(E,(1))
+         SPACE
+         LM    R14,R1,PUTSAVE
+         BR    R14
+         SPACE
+************************************************************
+*                                                          *
+*         CALL DYNAMIC ALLOCATION INTERFACE ROUTINE        *
+*                                                          *
+************************************************************
+         SPACE
+CALLDAIR LR    R8,R14
+         L     R15,16
+         TM    X'2DC'(R15),X'80'
+         BNO   DAIRLINK
+         L     R15,X'2DC'(,R15)
+         BALR  R14,R15
+         B     DAIRFINI
+DAIRLINK EQU   *
+         LINK  EP=IKJDAIR,SF=(E,LINKAREA)
+DAIRFINI LR    R14,R8
+         BR    R14
+         SPACE
+************************************************************
+*                                                          *
+*        DYNAMIC ALLOCATION FAILURE ROUTINE                *
+*                                                          *
+************************************************************
+         SPACE
+*               PROBLEM: THIS ROUTINE WILL ISSUE MESSAGE
+*               'IKJ56228I HELP DATA SET NOT IN CATALOG'
+*               WHEN DAIR RETURNS '17080008' IN DA24DARC
+*               AND 8 IN R15.
+*               SOLUTION: CHANGE DAPB FROM A TYPE '24' TO
+*               A TYPE '08' WHEN CALLING DAIRFAIL.
+         SPACE
+DAIRFAIL ST    R14,MYDFREGS
+         MVI   MYDAPB+1,8    SO MESSAGE WILL NOT SAY 'HELP DATASET'
+         LA    R1,MYDFPARM
+         USING DFDSECTD,R1
+         ST    R15,MYDFRC
+         LA    R15,MYDFRC
+         ST    R15,DFRCP
+         LA    R15,MYDAPL
+         ST    R15,DFDAPLP
+         SLR   R15,R15
+         ST    R15,MYJEFF02
+         LA    R15,MYJEFF02
+         ST    R15,DFJEFF02
+         LA    R15,DFDAIR
+         STH   R15,MYDFID
+         LA    R15,MYDFID
+         ST    R15,DFIDP
+         L     R15,CPPLPTR
+         ST    R15,DFCPPLP
+         LINK  EP=IKJEFF18,SF=(E,LINKAREA)
+         L     R15,MYDFRC
+         DROP  R1
+         L     R14,MYDFREGS
+         BR    R14
+         SPACE
+************************************************************
+*                                                          *
+*         TERMINATION                                      *
+*                                                          *
+************************************************************
+         SPACE 1
+EXIT0    SR    R15,R15             RETURN CODE ZERO
+         B     EXIT
+EXIT12M  BAL   R14,PUTMSG
+EXIT12   LA    R15,12              RETURN CODE 12
+EXIT     LR    R2,R15              SAVE RETURN CODE
+         TM    STATUS,STATGOTM     FREEMAIN NEEDED
+         BZ    NOX20               NO, BRANCH
+         LM    R0,R1,GETSIZE
+         FREEMAIN R,LV=(0),A=(1)
+NOX20    EQU   *
+         TM    STATUS,STATOPEN     CLOSE NEEDED
+         BZ    NOX40               NO, BRANCH
+         LA    R1,CLOSE
+         MVI   0(R1),X'80'
+         CLOSE ((R4)),MF=(E,(1))
+NOX40    EQU   *
+         TM    STATUS,STATALLC     UNALLOCATE NEEDED
+         BZ    NOX80               NO, BRANCH
+         LA    R15,MYDAPB
+         USING DAPB18,R15
+         LM    R0,R1,DA24DDN-DAPB24(R15)
+         XC    0(40,R15),0(R15)
+         MVI   DA18CD+1,X'18'
+         STM   R0,R1,DA18DDN
+         MVC   DA18MNM(8),=CL8' '
+         MVC   DA18SCLS(2),=CL8' '
+         LA    R1,MYDAPL
+         BAL   R14,CALLDAIR
+NOX80    EQU   *
+         IKJRLSA MYANS
+         LTR   R2,R2               IS RC ZERO?
+         BZ    STACKDX             YES, BRANCH
+         MVC   MYSTPB(STACKDL),STACKD
+         SPACE
+         STACK DELETE=ALL,PARM=MYSTPB,MF=(E,MYIOPL)
+         SPACE
+         TCLEARQ
+STACKDX  EQU   *
+EXITX    LR    R15,R2              RESTORE RETURN CODE
+         LR    R1,R13              POINT R1 TO AREA TO BE FREED
+         L     R0,@SIZE            SUBPOOL AND LENGTH
+         L     R13,4(,R13)         RESTORE PREVIOUS SAVEAREA
+         ST    R15,16(,R13)        STORE RETURN CODE FOR LM
+         FREEMAIN R,A=(1),LV=(0)
+         LM    14,12,12(R13)       LOAD RETURN ADDRESS AND RC
+         BR    14                  RETURN
+         SPACE
+************************************************************
+*                                                          *
+*        CONSTANTS                                         *
+*                                                          *
+************************************************************
+         SPACE
+         LTORG
+         SPACE
+*              THIS TABLE IS USED TO CONVERT KWINDEX INTO AN
+*              OFFSET OF THE TYPECHR TABLE.
+*
+*              CURRENTLY THE KWINDEX IS THE SAME AS THE OFFSET
+*              BUT THAT COULD CHANGE IN THE FUTURE.
+*
+*              THIS TABLE ORIGINATED IN AN EARLIER VERSION
+*              AND APPEARS TO HAVE NO PURPOSE IN THE CURRENT VERSION.
+*              HOWEVER, IF WE WANTED TO MAKE THE 'SYSMOD' AND 'PTF'
+*              KEYWORDS NOT MUTUALLY EXCLUSIVE, BUT STILL MEAN THE
+*              SAME THING, THIS TABLE WOULD COME IN HANDY, SO WE
+*              ARE LEAVING IT IN.
+TYPENUM  DC    H'0'
+         DC    AL2(1)              01 - 'SYSTEM'
+*                                       'SYS'
+         DC    AL2(2)              02 - 'SYSMOD'
+*                                       'SY'
+*                                       'S'
+*                                       'PTF'
+         DC    AL2(3)              03 - 'MACRO'
+         DC    AL2(4)              04 - 'ASSEM'
+         DC    AL2(5)              05 - 'SOURCE'
+*                                  05 - 'SRC'
+         DC    AL2(6)              06 - 'MOD'
+*                                       'M'
+         DC    AL2(7)              07 - 'LMOD'
+         DC    AL2(8)              08 - 'DLIB'
+         SPACE
+*              THE NEXT BYTES DO NOT HAVE TO BE IN THE SAME ORDER AS
+*              THE PARSE KEYWORDS ARE DEFINED.  THE PARSE KEYWORD IS
+*              CONVERTED TO A NUMBER FROM THE TABLE ABOVE, WHICH IS
+*              USED AS AN OFFSET INTO THIS TABLE.
+TYPECHR  DC    X'00'               NOT USED
+         DC    X'00'               SYSTEM
+         DC    C'3'                SYSMOD
+         DC    C'G'                MAC
+         DC    C'A'                ASSEM
+         DC    C'M'                SRC
+         DC    C'J'                MOD
+         DC    C'D'                LMOD
+         DC    C'P'                DLIB
+         SPACE
+SYSMODTP DC    C'UNKNOWN USERMOD APAR    PTF     FUNCTION'
+PIND     DC    C'UNKNOWN MOD     SZAP    XZAP    MACREP  MACUP   '
+         DC    C'SRCREP  SRCUP   ASSEM   '
+MDIND    DC    C'UNKNOW  LMOD    TALIAS  DALIAS  COMMENT UMID    '
+MCIND    DC    C'UNKNOW  GENASM  MALIAS  COMMENT UMID    '
+         SPACE
+MODLPTPM PUTLINE OUTPUT=(1,TERM,SINGLE,INFOR),                         X
+               TERMPUT=(EDIT,WAIT,NOHOLD,NOBREAK),MF=L
+         SPACE
+MODLPTPB PUTLINE OUTPUT=(1,TERM,SINGLE,DATA),                          X
+               TERMPUT=(EDIT,WAIT,NOHOLD,NOBREAK),MF=L
+         SPACE
+STACKD   STACK DELETE=ALL,MF=L
+STACKDL  EQU   *-STACKD
+         SPACE
+MSG01    DC    C'ERROR IN PARSE'
+MSG02    DC    C'SMPCDS IS NOT A PARTITIONED DATA SET'
+MSG03    DC    C'UNABLE TO OPEN SMPCDS DATA SET'
+MSG04    DC    C'NOT FOUND IN CDS'
+MSG05    DC    C'FOUND IN CDS (FORMATTED DISPLAY NOT YET IMPLEMENTED)'
+MSG06    DC    C'DUMP OF DATA IN DIRECTORY ENTRY'
+MSG07    DC    C'DUMP OF DATA IN FIRST 2 RECORDS'
+SYSDSN   DC    H'11',CL44'SYS1.SMPCDS'
+         PRINT NOGEN
+PUNDCB   DCB   DDNAME=SYSPUNCH,DSORG=PS,MACRF=PM,                      +
+               RECFM=FB,LRECL=80,EXLST=PUNEXLST
+PUNDCBL  EQU   *-PUNDCB
+PUNEXLST DC    0F'0',X'85',AL3(PUNEXITO)
+         SPACE
+PDSDCB   DCB   DDNAME=DYNAM,DSORG=PO,MACRF=R,EODAD=0,SYNAD=0
+PDSDCBL  EQU   *-PDSDCB
+         PRINT GEN
+         READ  PDSDECB,SF,4,6,'S',MF=L
+PDSDECBL EQU   *-PDSDECB
+         SPACE
+EODAD    EQU   32                  DCB OFFSET
+RECFM    EQU   36                  DCB OFFSET
+DDNAM    EQU   40                  DCB OFFSET
+BLKSI    EQU   62
+LRECL    EQU   82
+OFLGS    EQU   48                  DCB OFFSET
+SYNAD    EQU   56                  DCB OFFSET
+         DC    0D'0'
+CNVTRAN  DC    256X'00'
+         ORG   CNVTRAN+C'A'
+         DC    AL1(28,29,30,31,32,33,34,35,36)
+         ORG   CNVTRAN+C'J'
+         DC    AL1(37,38,39,40,41,42,43,44,45)
+         ORG   CNVTRAN+C'S'
+         DC    AL1(46,47,48,49,50,51,52,53)
+         ORG   CNVTRAN+C'0'
+         DC    AL1(54,55,56,57,58,59,60,61,62,63)
+         ORG   CNVTRAN+X'40'
+         DC    AL1(1)
+         ORG
+         SPACE
+************************************************************
+*                                                          *
+*        PARSE PCL                                         *
+*                                                          *
+************************************************************
+         SPACE
+         PRINT NOGEN
+LCDSPCL  IKJPARM
+KW01     IKJKEYWD
+         IKJNAME 'SYSTEM'
+         IKJNAME 'SYS'
+KW02     IKJKEYWD
+         IKJNAME 'SYSMOD',SUBFLD=SUBF02
+         IKJNAME 'SY',SUBFLD=SUBF02
+         IKJNAME 'S',SUBFLD=SUBF02
+         IKJNAME 'PTF',SUBFLD=SUBF02
+KW03     IKJKEYWD
+         IKJNAME 'MACRO',SUBFLD=SUBF03
+KW04     IKJKEYWD
+         IKJNAME 'ASSEM',SUBFLD=SUBF04
+KW05     IKJKEYWD
+         IKJNAME 'SOURCE',SUBFLD=SUBF05
+         IKJNAME 'SRC',SUBFLD=SUBF05
+KW06     IKJKEYWD
+         IKJNAME 'MOD',SUBFLD=SUBF06
+         IKJNAME 'M',SUBFLD=SUBF06
+KW07     IKJKEYWD
+         IKJNAME 'LMOD',SUBFLD=SUBF07
+KW08     IKJKEYWD
+         IKJNAME 'DLIB',SUBFLD=SUBF08
+DUMPKW   IKJKEYWD
+         IKJNAME 'DUMP',SUBFLD=DUMPSF
+LINKKW   IKJKEYWD DEFAULT='LINK'
+         IKJNAME 'LINK'
+         IKJNAME 'NOLINK'
+DECKKW   IKJKEYWD DEFAULT='NODECK'
+         IKJNAME 'DECK'
+         IKJNAME 'NODECK'
+SUBF02   IKJSUBF
+SF02     IKJIDENT 'ENTRY NAME',LIST,                                   +
+               FIRST=ALPHANUM,OTHER=ALPHANUM,MAXLNTH=7,                +
+               PROMPT='SYSMOD NAME'
+SUBF03   IKJSUBF
+SF03     IKJIDENT 'ENTRY NAME',LIST,                                   +
+               FIRST=ALPHANUM,OTHER=ALPHANUM,MAXLNTH=8,                +
+               PROMPT='MACRO NAME'
+SUBF04   IKJSUBF
+SF04     IKJIDENT 'ENTRY NAME',LIST,                                   +
+               FIRST=ALPHANUM,OTHER=ALPHANUM,MAXLNTH=8,                +
+               PROMPT='ASSEM NAME'
+SUBF05   IKJSUBF
+SF05     IKJIDENT 'ENTRY NAME',LIST,                                   +
+               FIRST=ALPHANUM,OTHER=ALPHANUM,MAXLNTH=8,                +
+               PROMPT='SOURCE NAME'
+SUBF06   IKJSUBF
+SF06     IKJIDENT 'ENTRY NAME',LIST,                                   +
+               FIRST=ALPHANUM,OTHER=ALPHANUM,MAXLNTH=8,                +
+               PROMPT='MODULE NAME'
+SUBF07   IKJSUBF
+SF07     IKJIDENT 'ENTRY NAME',LIST,                                   +
+               FIRST=ALPHANUM,OTHER=ALPHANUM,MAXLNTH=8,                +
+               PROMPT='LMOD NAME'
+SUBF08   IKJSUBF
+SF08     IKJIDENT 'ENTRY NAME',LIST,                                   +
+               FIRST=ALPHANUM,OTHER=ALPHANUM,MAXLNTH=8,                +
+               PROMPT='DLIB NAME'
+DUMPSF   IKJSUBF
+RECKW    IKJKEYWD
+         IKJNAME 'REC'
+DIRKW    IKJKEYWD
+         IKJNAME 'DIR'
+         IKJENDP
+         PRINT GEN
+         SPACE
+************************************************************
+*                                                          *
+*        DSECTS                                            *
+*                                                          *
+************************************************************
+         SPACE
+@DATA    DSECT
+         DS    18F                 REGISTER SAVEAREA
+DOUBLE   DS    D                   DOUBLEWORD WORK AREA
+LINKAREA DS    2F
+CPPLPTR  DS    F
+STATUS   DS    H
+STATALLC EQU   X'80'
+STATOPEN EQU   X'40'
+STATGOTM EQU   X'20'
+STATKWXX EQU   X'02'               A TYPE WAS SPECIFIED
+STATSYNA EQU   X'01'
+TYPE     DS    H
+IDENTP   DS    F
+EODPTR   DS    F
+BUFPTR   DS    F
+OPEN     DS    0F
+CLOSE    DS    F
+GETSIZE  DS    F
+GETADDR  DS    F
+MYPPL    DS    7F                  USED BY PARSE
+MYANS    DS    F                   USED BY PARSE
+MYECB    DS    F                   USED BY PUTLINE, PARSE
+MYIOPL   DS    4F                  USED BY PUTLINE ROUTINE
+MYPTPB   DS    3F                  USED BY PUTLINE ROUTINE
+MYPUTLEP DS    F                   USED BY PUTLINE ROUTINE
+MYOLD    DS    2F                  USED BY PUTLINE ROUTINE
+MYSEG1   DS    2H,CL256            USED BY PUTLINE ROUTINE
+PUTSAVE  DS    4F                  USED BY PUTLINE ROUTINE
+GETSAVE  DS    4F
+GETHOLD  DS    4F
+GETLRECL DS    H
+KWINDEX  DS    F
+MYSTPB   DS    5F                  STACK PARAMETER BLOCK
+MYDAPL   DS    5F
+MYDAPB   DS    21F
+DSNAME   DS    H,CL44
+EXNAME   DS    CL8
+MEMBER   DS    CL8
+CNVSAVE  DS    3F
+MYDFPARM DS    5F  USED BY DAIRFAIL
+MYDFREGS DS    F   USED BY DAIRFAIL
+MYDFRC   DS    F   USED BY DAIRFAIL
+MYJEFF02 DS    F   USED BY DAIRFAIL
+MYDFID   DS    H   USED BY DAIRFAIL
+PDSDCBW  DS    0D,(PDSDCBL)X
+PUNDCBW  DS    0D,(PUNDCBL)X
+*
+BLDLW    DS    2H
+BLDLMEM  DS    CL8
+BLDLTTR  DS    CL3
+BLDLB    DS    CL2
+BLDLC    DS    CL1
+BLDLU    DS    CL62
+*
+PDSDECBW DS    5F
+LINEB    DS    CL1
+LINE     DS    0CL80
+MSGWK    DS    CL256
+SYNADMSG DS    CL78
+IOPWFFA  DS    F
+IOPWMAX  EQU   150                 MAX RECORDS WE WILL READ PER MEMBER
+IOPW     DS    CL24
+         DS    (IOPWMAX)CL80       ROOM FOR (IOPWMAX) RECORDS
+IOPWFF   DS    CL18
+         DS    0D
+@DATAL   EQU   *-@DATA
+         SPACE
+IOP      DSECT
+IOPUDATA DS    0CL24
+*
+*         SYSMOD ENTRY
+*
+IOPPTFDR DS    0CL24         MAX DIRECTORY DATA
+         DS    AL1           SAME AS IOPNTLVL
+IOPPTYPE DS    AL1           PTF TYPE
+IOPPUSER EQU   1             001 - USER MOD
+IOPPAPAR EQU   2             002 - APAR
+IOPPPTF  EQU   3             003 - PTF
+IOPPFUNC EQU   4             004 - FUNCTION
+IOPPSTAT DS    0XL1          PTF STATUS INDICATORS
+IOPPTFF1 DS    0XL1          PTF STATUS 1
+IOPFLGS5 DS    AL1           PTF STATUS 1
+IOPAPP   EQU   X'80'         PTF APPLIED
+IOPRES   EQU   X'40'         RESTORE ATTEMPTED
+IOPACC   EQU   X'20'         PTF ACCEPTED
+IOPERROR EQU   X'10'         SYSTEM ERROR ENCOUNTERED
+IOPDUMMP EQU   X'04'         SUPED OR DELETED ENTRY
+IOPBYP   EQU   X'02'         BYPASS WAS USED
+IOPREGEN EQU   X'01'         DEFAULT APPLIED VIA SYSGEN
+IOPPTFF2 DS    XL1           PTF STATUS 2
+IOPDELP  EQU   X'80'         PTF HAS DEL PRESENT
+IOPIRQP  EQU   X'40'         PTF HAS IREQS PRESENT
+IOPNPRP  EQU   X'20'         PTF HAS NPRE PRESENT
+IOPPREP  EQU   X'10'         PTF HAS PRE PRESENT
+IOPREQP  EQU   X'08'         PTF HAS REQS
+IOPSUPP  EQU   X'04'         PTF HAS SUP PRESENT
+IOPJCLP  EQU   X'02'         PTF HAS INLINE JCLIN
+IOPLRFP  EQU   X'01'         PTF HAS RELFILES
+         DS    XL1
+IOPPADDP EQU   X'02'         PTF ADDED CDS ENTRY
+IOPPMDLP EQU   X'01'         PTF HAS DELETED MODS
+IOPPTFF3 DS    XL1
+IOPSBYP  EQU   X'80'         PTF HAS SUPBY PRESENT IN
+IOPDBYNO DS    CL7           DELETING FUNCTION
+IOPSBYNO DS    CL7           SUPERCEDING SYSMOD
+         DS    CL4           UNUSED
+IOPPTFFX DS    0CL80         FIXED DATA FIELDS
+         DS    CL8           SAME AS IOPBUNT
+         DS    CL33          UNUSED
+IOPPDTES DS    0CL32         PTF STATUS DATES
+IOPRECD  DS    CL3           PTF RECEIVED DATE
+IOPRECT  DS    CL3           PTF RECEIVED TIME
+IOPAPPD  DS    CL3           PTF APPLIED DATE
+IOPAPPT  DS    CL3           PTF APPLIED TIME
+IOPRSTD  DS    CL3           PTF RESTORED DATE
+IOPRSTT  DS    CL3           PTF RESTORED TIME
+IOPACCD  DS    CL3           PTF ACCEPTED DATE
+IOPACCT  DS    CL3           PTF ACCEPTED TIME
+IOPUCLD  DS    CL3           PTF UCLIN DATE
+IOPUCLT  DS    CL3           PTF UCLIN TIME
+         DS    CL2
+IOPPFMID DS    CL7           FUNCTION ID
+IOPPTEND DS    0C
+*
+IOPPTFVR DS    0C            VARIABLE LIST
+IOPPNTRY DS    0CL9          PTF MEMBER ENTRIES
+IOPPMODS DS    CL8           MOD, MAC, SOURCE AFFECTED
+IOPPIND  DS    AL1           TYPE (MOD,ZAP,MAC,SRC,SUP,REQ)
+IOPPMOD  EQU   1             MODULE REPLACEMENT
+IOPPZAP  EQU   2             ZAP
+IOPPXPD  EQU   3             EXPAND/ZAP
+IOPPMCR  EQU   4             MACRO REPLACEMENT
+IOPPMCU  EQU   5             MACRO UPDATE
+IOPPSCR  EQU   6             SOURCE REP
+IOPPSCU  EQU   7             SOURCE UPDATE
+IOPPASM  EQU   8             ASSEMBLY CAUSE BY MAC
+*
+*         MOD ENTRY
+*
+         ORG   IOPUDATA
+IOPMODDR DS    0CL24         MAX DIRECTORY DATA
+IOPNTLVL DS    AL1           ENTRY LEVEL
+IOPRMIDE DS    0CL8          RMID ENTRY
+IOPRMID  DS    CL7           RMID NUMBER
+IOPRMST  DS    AL1           RMID STATUS BITS
+IOPFMIDE DS    0CL8          FUNCTION ID
+IOPFMID  DS    CL7           FUNCTION ID
+IOPFMST  DS    XL1           FUNCTION ID FLAGS
+         DS    CL7           UNUSED
+IOPMODFX DS    0CL80         FIXED DATA FIELDS
+IOPBUNT  DS    0CL8          BACK UP DATA
+IOPBUSMD DS    CL7           SYSMOD NUM CAUSING BU
+IOPBUTYP DS    XL1           TYPE BU MODIFICATION
+IOPBUADD EQU   1             001 - ADD NEW ENTRY
+IOPBUDEL EQU   2             002 - DEL EXISTING ENTRY
+IOPBUMOD EQU   3             003 - MODIFY EXISTING ENTRY
+IOPMDLEP DS    XL4          MODULE LEPARMS
+         DS    CL60          UNUSED
+IOPDLIB  DS    CL8           DISTRIBUTION LIBRARY
+IOPDMEND DS    0C            END OF FIXED MOD
+*
+IOPMODVR DS    0C            VARIABLE LIST
+IOPMNTRY DS    0CL9
+IOPMDDTA DS    CL8
+IOPMDIND DS    AL1
+IOPMDLMD EQU   1             001 - LMOD NAME
+IOPMDTAL EQU   2             002 - TALIAS NAME
+IOPMDDAL EQU   3             003 - DALIAS NAME
+IOPMDCMT EQU   4             004 - COMMENT
+IOPUMID  EQU   50            050 - UMID
+*
+*         LMOD ENTRY
+*
+         ORG   IOPUDATA
+IOPLMDDR DS    0CL24         MAX DIRECTORY DATA
+         DS    AL1
+IOPLMLEP DS    0CL4          LMOD LEPARMS
+IOPLMDF1 DS    B             LEPARMS BYTE 1
+IOPAPF   EQU   X'80'          AC=1
+IOPRENT  EQU   X'40'          RENT
+IOPREUS  EQU   X'20'          REUS
+IOPSCTR  EQU   X'10'          SCATTER LOAD
+IOPOVLY  EQU   X'08'          OVERLAY
+IOPREFR  EQU   X'04'          REFR
+IOPDC    EQU   X'02'          DC
+IOPLMDF2 DS    B             LEPARMS BYTE 2
+IOPNE    EQU   X'80'          NOT EDITABLE
+IOPPAGA  EQU   X'40'          ALIGN 2
+IOPLMDF3 DS    B             LEPARMS BYTE 3
+IOPLMDF4 DS    B             LEPARMS BYTE 4
+IOPLMDF5 DS    B             FLAGS
+IOPCOPY  EQU   X'80'          COPIED AT SYSGEN
+IOPLINK  EQU   X'40'          LINK-EDIT PARMS OBTAINED
+IOPCHREP EQU   X'20'          CHANGE/REPLACE CARDS OCCUR
+         DS    CL18
+IOPLMDFX DS    0CL80         FIXED DATA FIELDS
+         DS    0CL8          BACK UP DATA               IOPBUNT
+         DS    CL7           SYSMOD NUM CAUSING BU      IOPBUSMD
+         DS    XL1           TYPE BU MODIFICATION       IOPBUTYP
+IOPLNTRY DS    0CL9          *** MAX 2 SYSLIB ENTRIES ***
+IOPLSYS  DS    CL8           SYSLIB NAME
+IOPLMIND DS    CL1
+IOPLMSYS EQU   1             ENTRY IS A SYSLIB NAME
+*
+*         LMOD ENTRY - CONTROL STATEMENTS
+*
+IOPLMCTL DS    0CL80
+IOPLMCC  DS    C
+IOPLMCRM EQU   C'*' MODULE CARD ASSOCIATED WITH FOLLOWING C/R
+IOPLMCRC EQU   C'@' C/R CARDS FOR MODULE IN PREVIOUS IOPLMCRM
+IOPLMCRN DS    CL8  MODULE NAME FOR WHICH C/R CC FOLLOW
+IOPLMCRD DS    CL8  DLIB NAME FOR MODULE
+         DS    CL63
+*
+*         MAC ENTRY
+*
+         ORG   IOPUDATA
+IOPMACDR DS    0CL24         MAX DIRECTORY DATA
+         DS    AL1           ENTRY LEVEL                IOPNTLVL
+         DS    0CL8          RMID ENTRY                 IOPRMIDE
+         DS    CL7           RMID NUMBER                IOPRMID
+         DS    AL1           RMID STATUS BITS           IOPRMST
+         DS    0CL8          FUNCTION ID                IOPFMIDE
+         DS    CL7           FUNCTION ID                IOPFMID
+         DS    XL1           FUNCTION ID FLAGS          IOPFMST
+         DS    CL7           UNUSED
+IOPMACFX DS    0CL80         FIXED DATA FIELDS
+         DS    0CL8          BACK UP DATA               IOPBUNT
+         DS    CL7           SYSMOD NUM CAUSING BU      IOPBUSMD
+         DS    XL1           TYPE BU MODIFICATION       IOPBUTYP
+*  BUADD EQU   1             001 - ADD NEW ENTRY        IOPBUADD
+*  BUDEL EQU   2             002 - DEL EXISTING ENTRY   IOPBUDEL
+*  BUMOD EQU   3             003 - MODIFY EXISTING ENT  IOPBUMOD
+         DS    CL56
+IOPMCSYS DS    CL8           OPERATING SYSTEM LIBRARY
+IOPMCDLB DS    CL8           DISTRIBUTION LIBRARY
+IOPMACVR DS    0C            VARIABLE LIST
+IOPMCENT DS    0CL9
+IOPMCDTA DS    0CL8
+IOPMCASM DS    CL8
+IOPMCIND DS    0AL1
+IOPMCTYP DS    AL1
+IOPMASMS EQU   1             001 - MAC ASSEMBLY FROM SYSGEN
+IOPMCMAL EQU   2             002 - MALIAS NAME
+IOPMCCMT EQU   3             003 - COMMENT
+*  UMID  EQU   50            050 - UMID
+*
+*         SYSTEM ENTRY
+*
+         ORG   IOPUDATA
+IOPSYSDR DS    0CL24         MAX DIRECTORY DATA
+         DS    AL1           ENTRY LEVEL                IOPNTLVL
+IOPSCNVL DS    AL1           CONVERSION LEVEL
+IOPPEMAX DS    AL2           SYSMOD ELEMENT MAX
+IOPSYSF1 DS    AL1           SYSTEM FLAGS
+IOPMTSNP EQU   X'80'         NO MTS PURGE AT APPLY      SAVEMTS=
+IOPSTSNP EQU   X'40'         NO STS PURGE AT APPLY      SAVESTS=
+IOPSYDL  EQU   X'20'         DOWNLEVEL DUE TO UNABLE TO REWRITE
+*                            AFTER IN-STORAGE UPDATE
+IOPSYNG  EQU   X'10'         NOT USABLE DUE TO ERROR DURING REWRITE
+         DS    CL19          UNUSED
+IOPSYSFX DS    0CL160
+         DS    CL8                                      IOPBUNT
+IOPSREL  DS    CL4           SYSTEM AND RELEASE            SREL=
+IOPNUCID DS    CL1           DEFAULT NUDIC FOR NUC UPDATE  NUCID=
+IOPSYSID DS    CL8           SYSTEM ID SET BY USER         CDSID=
+         DS    CL139
+         SPACE
+         IKJCPPL
+         SPACE
+         IKJIOPL
+         SPACE
+         IKJPPL
+         SPACE
+         IKJDAPL
+         SPACE
+         IKJDAP18
+         SPACE
+         IKJDAP24
+         SPACE
+         IKJEFFDF DFDSECT=YES
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         END

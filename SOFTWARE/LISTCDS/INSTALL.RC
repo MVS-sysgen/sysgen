@@ -1,0 +1,3 @@
+# Installing LISTCDS
+sh bash ../SOFTWARE/LISTCDS/01_build_jobstream.sh > ../SOFTWARE/LISTCDS/01_install_listcds.jcl
+sh ./submit.sh ../SOFTWARE/LISTCDS/01_install_listcds.jcl
