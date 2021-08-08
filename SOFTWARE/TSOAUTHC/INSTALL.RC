@@ -1,0 +1,3 @@
+# Installing TSOAUTHC
+sh bash ../SOFTWARE/TSOAUTHC/01_build_jobstream.sh > ../SOFTWARE/TSOAUTHC/01_install_tsoauthc.jcl
+sh ./submit.sh ../SOFTWARE/TSOAUTHC/01_install_tsoauthc.jcl
