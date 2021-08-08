@@ -20,7 +20,7 @@ SYSEPOCH  1900
 #TZOFFSET  -0100     # daylight savings time in effect
 PANRATE   250
 OSTAILOR  QUIET       # controls number of error messages logged
-
+CODEPAGE  819/1047 # Uses the 1047 ASCII/EBCDIC codepage
 ##
 # SYSGEN AUTOMATION
 ##
