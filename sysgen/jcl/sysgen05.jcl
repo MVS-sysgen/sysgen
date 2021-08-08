@@ -822,7 +822,7 @@ STREAM   DS    0C                                                       66810030
          DC    5C' '                                                    66811210
          DC    C'MM   VV VV   SS    SS    //'                           66811220
          DC    9C' '                                                    66811230
-         DC    C'SS    CC'                                              66811240
+         DC    C'CC    CC'                                              66811240
          DC    X'114C4C'    SBA(10,61)                                  66811250
 * (10,61) Normal Display                                                66811260
          DC    X'280000'                                                66811270
