@@ -700,54 +700,185 @@ EXIT
 EGSKIP   DS    0H                                 EGSKIP                23164832
 EGOK     DS    0H                                 EGOK                  23166010
 EGMSG    DS    0C                                 EGMSG                 66810010
-         DC    X'C3'                                                    66810020
-*                                                                       66810030
- DC X'11',X'C5C3',X'1D',X'E8',X'2842F5'                                 66810040
- DC C'MM     MM VV     VV  SSSSSS           //    TTTTTTTT  SSSSSS   '  66810050
- DC C'OOOOOOO '                                                         66810060
-*                                                                       66810070
- DC X'11',X'C6D3',X'1D',X'E8'                                           66810080
- DC C'MMM   MMM VV     VV SS    SS         //        TT    SS    SS O'  66810090
- DC C'O     OO'                                                         66810100
-*                                                                       66810110
- DC X'11',X'C7E3',X'1D',X'E8'                                           66810120
- DC C'MMMM MMMM VV     VV SS              //         TT    SS       O'  66810130
- DC C'O     OO'                                                         66810140
-*                                                                       66810150
- DC X'11',X'C8F3',X'1D',X'E8'                                           66810160
- DC C'MM MMM MM VV     VV  SSSSSS        //          TT     SSSSSS  O'  66810170
- DC C'O     OO'                                                         66810180
-*                                                                       66810190
- DC X'11',X'4AC3',X'1D',X'E8'                                           66810200
- DC C'MM  M  MM  VV   VV     SSSS       //           TT       SSSS  O'  66810210
- DC C'O     OO'                                                         66810220
-*                                                                       66810230
- DC X'11',X'4BD3',X'1D',X'E8'                                           66810240
- DC C'MM     MM  VV   VV        SS     //            TT          SS O'  66810250
- DC C'O     OO'                                                         66810260
-*                                                                       66810270
- DC X'11',X'4CE3',X'1D',X'E8'                                           66810280
- DC C'MM     MM   VV VV   SS    SS    //             TT    SS    SS O'  66810290
- DC C'O     OO'                                                         66810300
-*                                                                       66810310
- DC X'11',X'4DF3',X'1D',X'E8'                                           66810320
- DC C'MM     MM    VVV     SSSSSS    //              TT     SSSSSS   '  66810330
- DC C'OOOOOOO '                                                         66810340
-*                                                                       66810350
- DC X'11',X'D27B',X'1DF0',X'284100',X'2842F4'                           66810360
- DC C'Welcome to MVS3.8j, running under the Hercules emulator'          66810370
- DC X'1DF0',X'284200'                                                   66810371
-*                                                                       66810380
-*                                                                       66810390
-*                                                                       66810400
-*                                                                       66810401
-*                                                                       66810410
- DC X'11',X'5B60',X'1D',X'E8'                                           66810420
- DC C'TSO Logon ===>'                                                   66810430
- DC X'1D',X'C1'                                                         66810440
- DC X'13'                                                               66810450
-EGDATA DC CL8' ',C' ',CL8' '                                            66810460
-EGMSGLN  EQU   *-EGMSG                                                  66810470
+*        DC    X'C3'                                                    66810020
+STREAM   DS    0C                                                       66810030
+         DC    X'27'       ESCAPE CHAR                                  66810040
+         DC    X'F5'       ERASE/WRITE                                  66810050
+         DC    X'C3'       WCC                                          66810060
+         DC    X'114040'   SBA(1,1)                                     66810070
+         DC    X'1DF8'     SF (PROT,HIGH INTENSITY)                     66810080
+* (1,1) Normal Display                                                  66810090
+         DC    X'280000'                                                66810100
+         DC    9C' '                                                    66810110
+         DC    X'11C3F9'    SBA(4,10)                                   66810120
+* (4,10) Bold/Intense (FG) Cyan                                         66810130
+         DC    X'2841F82842F5'                                          66810140
+         DC    C'MM'                                                    66810150
+         DC    5C' '                                                    66810160
+         DC    C'MM VV'                                                 66810170
+         DC    5C' '                                                    66810180
+         DC    C'VV  '                                                  66810190
+         DC    6C'S'                                                    66810200
+         DC    11C' '                                                   66810210
+         DC    C'//    '                                                66810220
+         DC    6C'C'                                                    66810230
+         DC    C'  '                                                    66810240
+         DC    8C'E'                                                    66810250
+         DC    X'11C4F5'    SBA(4,70)                                   66810260
+* (4,70) Normal Display                                                 66810270
+         DC    X'280000'                                                66810280
+         DC    9C' '                                                    66810290
+         DC    X'11C5C9'    SBA(5,10)                                   66810300
+* (5,10) Bold/Intense (FG) Cyan                                         66810310
+         DC    X'2841F82842F5'                                          66810320
+         DC    C'MMM   MMM VV'                                          66810330
+         DC    5C' '                                                    66810340
+         DC    C'VV SS    SS'                                           66810350
+         DC    9C' '                                                    66810360
+         DC    C'//    CC    CC'                                        66810370
+         DC    X'11C57C'    SBA(5,61)                                   66810380
+* (5,61) Normal Display                                                 66810390
+         DC    X'280000'                                                66810400
+         DC    C' '                                                     66810410
+         DC    X'11C57D'    SBA(5,62)                                   66810420
+* (5,62) Bold/Intense (FG) Cyan                                         66810430
+         DC    X'2841F82842F5'                                          66810440
+         DC    C'EE'                                                    66810450
+         DC    X'11C650'    SBA(6,1)                                    66810460
+* (6,1) Normal Display                                                  66810470
+         DC    X'280000'                                                66810480
+         DC    9C' '                                                    66810490
+         DC    X'11C6D9'    SBA(6,10)                                   66810500
+* (6,10) Bold/Intense (FG) Cyan                                         66810510
+         DC    X'2841F82842F5'                                          66810520
+         DC    C'MMMM MMMM VV'                                          66810530
+         DC    5C' '                                                    66810540
+         DC    C'VV SS'                                                 66810550
+         DC    14C' '                                                   66810560
+         DC    C'//'                                                    66810570
+         DC    5C' '                                                    66810580
+         DC    C'CC'                                                    66810590
+         DC    7C' '                                                    66810600
+         DC    C'EE'                                                    66810610
+         DC    X'11C760'    SBA(7,1)                                    66810620
+* (7,1) Normal Display                                                  66810630
+         DC    X'280000'                                                66810640
+         DC    9C' '                                                    66810650
+         DC    X'11C7E9'    SBA(7,10)                                   66810660
+* (7,10) Bold/Intense (FG) Cyan                                         66810670
+         DC    X'2841F82842F5'                                          66810680
+         DC    C'MM MMM MM VV'                                          66810690
+         DC    5C' '                                                    66810700
+         DC    C'VV  '                                                  66810710
+         DC    5C'S'                                                    66810720
+         DC    9C' '                                                    66810730
+         DC    C'//'                                                    66810740
+         DC    6C' '                                                    66810750
+         DC    C'CC'                                                    66810760
+         DC    7C' '                                                    66810770
+         DC    5C'E'                                                    66810780
+         DC    X'11C8F0'    SBA(8,1)                                    66810790
+* (8,1) Normal Display                                                  66810800
+         DC    X'280000'                                                66810810
+         DC    9C' '                                                    66810820
+         DC    X'11C8F9'    SBA(8,10)                                   66810830
+* (8,10) Bold/Intense (FG) Cyan                                         66810840
+         DC    X'2841F82842F5'                                          66810850
+         DC    C'MM  M  MM  VV   VV'                                    66810860
+         DC    5C' '                                                    66810870
+         DC    C'SSSS'                                                  66810880
+         DC    7C' '                                                    66810890
+         DC    C'//'                                                    66810900
+         DC    7C' '                                                    66810910
+         DC    C'CC'                                                    66810920
+         DC    7C' '                                                    66810930
+         DC    C'EE'                                                    66810940
+         DC    X'114A40'    SBA(9,1)                                    66810950
+* (9,1) Normal Display                                                  66810960
+         DC    X'280000'                                                66810970
+         DC    9C' '                                                    66810980
+         DC    X'114AC9'    SBA(9,10)                                   66810990
+* (9,10) Bold/Intense (FG) Cyan                                         66811000
+         DC    X'2841F82842F5'                                          66811010
+         DC    C'MM'                                                    66811020
+         DC    5C' '                                                    66811030
+         DC    C'MM  VV   VV'                                           66811040
+         DC    8C' '                                                    66811050
+         DC    C'SS'                                                    66811060
+         DC    5C' '                                                    66811070
+         DC    C'//'                                                    66811080
+         DC    8C' '                                                    66811090
+         DC    C'CC'                                                    66811100
+         DC    7C' '                                                    66811110
+         DC    C'EE'                                                    66811120
+         DC    X'114B50'    SBA(10,1)                                   66811130
+* (10,1) Normal Display                                                 66811140
+         DC    X'280000'                                                66811150
+         DC    9C' '                                                    66811160
+         DC    X'114BD9'    SBA(10,10)                                  66811170
+* (10,10) Bold/Intense (FG) Cyan                                        66811180
+         DC    X'2841F82842F5'                                          66811190
+         DC    C'MM'                                                    66811200
+         DC    5C' '                                                    66811210
+         DC    C'MM   VV VV   SS    SS    //'                           66811220
+         DC    9C' '                                                    66811230
+         DC    C'SS    CC'                                              66811240
+         DC    X'114C4C'    SBA(10,61)                                  66811250
+* (10,61) Normal Display                                                66811260
+         DC    X'280000'                                                66811270
+         DC    C' '                                                     66811280
+         DC    X'114C4D'    SBA(10,62)                                  66811290
+* (10,62) Bold/Intense (FG) Cyan                                        66811300
+         DC    X'2841F82842F5'                                          66811310
+         DC    C'EE'                                                    66811320
+         DC    X'114C60'    SBA(11,1)                                   66811330
+* (11,1) Normal Display                                                 66811340
+         DC    X'280000'                                                66811350
+         DC    9C' '                                                    66811360
+         DC    X'114CE9'    SBA(11,10)                                  66811370
+* (11,10) Bold/Intense (FG) Cyan                                        66811380
+         DC    X'2841F82842F5'                                          66811390
+         DC    C'MM'                                                    66811400
+         DC    5C' '                                                    66811410
+         DC    C'MM    VVV'                                             66811420
+         DC    5C' '                                                    66811430
+         DC    6C'S'                                                    66811440
+         DC    C'    //'                                                66811450
+         DC    11C' '                                                   66811460
+         DC    6C'C'                                                    66811470
+         DC    C'  '                                                    66811480
+         DC    8C'E'                                                    66811490
+         DC    X'114DE5'    SBA(11,70)                                  66811500
+* (11,70) Normal Display                                                66811510
+         DC    X'280000'                                                66811520
+         DC    21C' '                                                   66811530
+         DC    X'1150E5'    SBA(14,22)                                  66811540
+* (14,22) Bold/Intense (FG) Green                                       66811550
+         DC    X'2841F82842F4'                                          66811560
+         DC    C'Welcome to MVS Community Edition'                      66811570
+         DC    X'11D1C5'    SBA(14,54)                                  66811580
+* (14,54) Normal Display                                                66811590
+         DC    X'280000'                                                66811600
+         DC    18C' '                                                   66811610
+         DC    X'11D1F2'    SBA(15,19)                                  66811620
+* (15,19) Bold/Intense (FG) Green                                       66811630
+         DC    X'2841F82842F4'                                          66811640
+         DC    C'Based on the Jay Moseley MVS3.8j Sysgen'               66811650
+         DC    X'11D2D9'    SBA(15,58)                                  66811660
+* (15,58) Normal Display                                                66811670
+         DC    X'280000'                                                66811680
+         DC    C'  '                                                    66811690
+*                                                                       66811700
+*                                                                       66811710
+*                                                                       66811720
+*                                                                       66811730
+*                                                                       66811740
+ DC X'11',X'5B60',X'1D',X'E8'                                           66811750
+ DC C'TSO Logon ===>'                                                   66811760
+ DC X'1D',X'C1'                                                         66811770
+ DC X'13'                                                               66811780
+EGDATA DC CL8' ',C' ',CL8' '                                            66811790
+EGMSGLN  EQU   *-EGMSG                                                  66811800
 //* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -UPDATE10
 //*
 //* ----------------------------------------------------------------- *
