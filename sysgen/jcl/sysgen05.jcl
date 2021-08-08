@@ -469,7 +469,7 @@ EXIT
 //             AC='NOACCT',       ACCOUNT CMD: ACCT/NOACCT             +00001100
 //             JC='JCL',          JOB CONTROL: JCL/NOJCL               +00001200
 //             MT='NOMOUNT',      TAPE MOUNT: MOUNT/NOMOUNT            +00001300
-//             SZ='SIZE(4096)',   DEFAULT REGION SIZE                  +00001400
+//             SZ='SIZE(8192)',   DEFAULT REGION SIZE                  +00001400
 //             UN='UNIT(SYSDA)'   DYNAMIC ALLOCATION UNIT               00001500
 //*                                                                     00001600
 //* IF ANY FILES WE WILL CREATE FOR NEW USER'S ID EXIST, DELETE THEM    00001700
