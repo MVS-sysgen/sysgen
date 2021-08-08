@@ -24,7 +24,7 @@ To add the TSO program `MVS4EVA` to the Authorized commands table do the followi
 
 ```
 LISTCDS MOD(IKJEFTE2)
-IKJEFTE2  FMID EBB1102  RMID TSA0006  DISTLIB AOST4     LMOD   IKJEFT02
-RX TSOAUTHC 'TSA0006 MVS4EVA This is the mvs for ever program'
+IKJEFTE2  FMID EBB1102  RMID JLM0003  DISTLIB AOST4     LMOD   IKJEFT02
+RX TSOAUTHC 'JLM0003 MVS4EVA This is the mvs for ever program'
 ```
 
