@@ -17,4 +17,4 @@ fi
 
 echo "Sending $1"
 
-cat $1 | ncat --send-only -w1 localhost 3505
+cat $1 | ncat --send-only -w1 127.0.0.1 3505
