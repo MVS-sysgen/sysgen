@@ -4,7 +4,7 @@ Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j first install the 
 
 **Ubuntu**:
 
-Run: `sudo apt-get install m4 make autoconf automake cmake flex build-essential regina-rexx libbz2-dev libregina3-dev zlib1g-dev unzip c3270 ncat libtool python3 nmap`
+Run: `sudo apt-get install m4 make autoconf automake cmake flex build-essential regina-rexx libbz2-dev libregina3-dev zlib1g-dev unzip c3270 ncat libtool libltdl-dev python3 nmap`
 
 Then run `./sysgen.sh`.
 
