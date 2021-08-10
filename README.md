@@ -86,6 +86,7 @@ In External Repos (clone these repos to the SOFTWARE folder):
 - [RAKF](https://github.com/MVS-sysgen/RAKF)*
 - [FTPD](https://github.com/MVS-sysgen/FTPD)*
 - [Adventure](https://github.com/MVS-sysgen/Adventure)
+- [KICKS](https://github.com/jake-mainframe/KICKS)
 
 
 To install any of these login and run `INSTALL THING` where *THING* is any of the folders in `SOFTWARE`.
