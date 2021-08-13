@@ -1,3 +1,0 @@
-* Installing MDDIAG8
-* Launching Automation REXX script
-exec ../automate.rexx ../SOFTWARE/MDDIAG8/install.txt hercules.log -d &&
