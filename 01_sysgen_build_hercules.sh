@@ -31,6 +31,7 @@ export NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 make -j$NUMCPUS --load-average=$NUMCPUS
 echo_step "Installing Hercules"
 sudo make install
+sudo ldconfig
 cd ..
 
 trap : 0
