@@ -1,4 +1,12 @@
-//RPFPROF0 JOB (SYS),'INSTALL RPF',CLASS=S,MSGCLASS=X
+//RPFPROF0 JOB (SYS),'INSTALL RPF',CLASS=A,MSGCLASS=A,
+//         USER=IBMUSER,PASSWORD=SYS1
+//****************************************************
+//*
+//* THIS JCL WAS BUILT FROM A TEMPLATE IN
+//* IN THE templates FOLDER DO NOT EDIT THIS
+//* FILE DIRECTLY
+//*
+//****************************************************
 //*********************************************************************
 //*
 //* DESC: INSTALL RPF PROFILE CLUSTER.

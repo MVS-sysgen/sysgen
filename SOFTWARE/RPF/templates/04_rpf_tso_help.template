@@ -2,7 +2,15 @@
 //             'Recieve XMI',
 //             CLASS=A,
 //             MSGCLASS=A,
-//             MSGLEVEL=(1,1)
+//             MSGLEVEL=(1,1),
+//         USER=IBMUSER,PASSWORD=SYS1
+//****************************************************
+//*
+//* THIS JCL WAS BUILT FROM A TEMPLATE IN
+//* IN THE templates FOLDER DO NOT EDIT THIS
+//* FILE DIRECTLY
+//*
+//****************************************************
 //*
 //* DESC: COPY THE TSO HELP MEMBERS OF RPF
 //*       THE DATASET REPRESENTED IN //HELPOUT SHOULD

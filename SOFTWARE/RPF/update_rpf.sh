@@ -1,5 +1,5 @@
 #!/bin/bash
-
+cd $(dirname $0)
 function echoc {
     echo "[+] $1"
 }
@@ -29,23 +29,24 @@ for x in $rpf_internet; do
         # Skip zos, source and maclib
         true
     else
-        #echoc "Version: ${x:3:3}"
+        echoc "Version: ${x:3:3}"
         if [[ ! -f "$x" ]]; then
             #echoc "$x exists skipping"
         #else
             #echoc "Checking $x"
             current_file=$(ls zip|grep ${x: -6})
-            if [ ! -z $current_file ]; then
+            if [[ ! -z $current_file ]]; then
                  echoc "Current Version $current_file"
                  echoc "Updated version $x"
                 if [ ${x:3:3} -gt ${current_file:3:3} ]; then
                     echoc "New version found"
                     echoc "Updating $current_file to $x"
-                    cd zip; curl -O http://www.prince-webdesign.nl//images/downloads/$x ; cd ..
+                    cd zip; curl -O http://www.prince-webdesign.nl//images/downloads/$x ;
                     if [ $? -gt 0 ]; then
                         check_return
                     fi
                     rm $current_file
+                    cd ..
                 fi
             else
                 echoc "rpf${x: -9} does not exist downloading"

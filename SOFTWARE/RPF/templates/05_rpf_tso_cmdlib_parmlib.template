@@ -2,10 +2,18 @@
 //             'Recieve XMI',
 //             CLASS=A,
 //             MSGCLASS=A,
-//             MSGLEVEL=(1,1)
+//             MSGLEVEL=(1,1),
+//         USER=IBMUSER,PASSWORD=SYS1
+//****************************************************
 //*
-//* The jobs $CMDLIB and $PARMLIB come premodified so we can submit
-//* them from the RPF.##CHANGEME##.SRPFJCL PDS
+//* THIS JCL WAS BUILT FROM A TEMPLATE IN
+//* IN THE templates FOLDER DO NOT EDIT THIS
+//* FILE DIRECTLY
+//*
+//****************************************************
+//*
+//* The job $CMDLIB premodified so we can submit
+//* it from the RPF.##CHANGEME##.SRPFJCL PDS
 //*
 //CMDLIB1  EXEC PGM=IKJEFT01,REGION=2048K
 //SYSPRINT DD  SYSOUT=*
@@ -14,10 +22,17 @@
 //SYSTSIN  DD  DATA
  SUBMIT 'RPF.##CHANGEME##.SRPFJCL($CMDLIB)'
 /*
-//PARMLIB2 EXEC PGM=IKJEFT01,REGION=2048K
+//EDITSTEP EXEC PGM=IKJEFT01,REGION=1024K,DYNAMNBR=50
 //SYSPRINT DD  SYSOUT=*
 //SYSTSPRT DD  SYSOUT=*
 //SYSTERM  DD  SYSOUT=*
-//SYSTSIN  DD  DATA
- SUBMIT 'RPF.##CHANGEME##.SRPFJCL($PARMLIB)'
+//SYSTSIN  DD  *
+ EDIT 'SYS1.PROCLIB(IKJACCNT)' CNTL OLD
+ LIST
+ TOP
+ FIND /SYSPROC/
+ INSERT //RPFPROF  DD  DISP=SHR,DSN=RPF.PROFILE
+ LIST
+ SAVE
+ END
 /*

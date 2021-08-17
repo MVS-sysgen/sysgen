@@ -1,7 +1,7 @@
 # Installs RPF
 # This installs RPF V1R8M8 and up
 # For use with Jay Moseley sysgen MVS only
-
+cd $(dirname $0)
 source ../00_sysgen_functions.sh
 trap 'check_return' 0
 
