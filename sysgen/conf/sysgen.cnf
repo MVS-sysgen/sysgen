@@ -4,8 +4,7 @@
 ####################################################################
 #
 # use for running SYSGEN to build target MVS 3.8j system
-# (last modified for use with Hercules 3.11 on 20 Dec 2014)
-#
+# last modified for use with SDL Hercules Hyperion 4.3 on 18 AUG 2021
 
 ARCHMODE  S/370
 CPUSERIAL 000611
@@ -18,7 +17,7 @@ LOADPARM  ........
 SYSEPOCH  1900
 #YROFFSET  -28       # offset for non-Y2k compliant OS
 #TZOFFSET  -0100     # daylight savings time in effect
-PANRATE   250
+PANOPT    RATE=250
 OSTAILOR  NULL       # controls number of error messages logged
 
 # .-----------------------------Device number
