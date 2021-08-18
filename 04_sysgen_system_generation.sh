@@ -3,6 +3,11 @@ source ./00_sysgen_functions.sh
 trap 'check_return' 0
 set -e
 
+if [ -d .git ]; then
+    FULLHASH=$(git log -1 | head -1 | awk '{print $2}')
+    SHORTHASH=${FULLHASH::7}
+fi;
+
 cd sysgen
 rm -rf dasd
 prev_dasd=$(ls -Art dasd.02.dlib.*.tar | tail -n 1)
@@ -11,6 +16,16 @@ tar -xvf $prev_dasd
 echo_step "Create additional DASD Volumes"
 bash create.dasd.sh sysgen
 chmod +x stage2.rexx
+
+echo_step "Updating sysgen05.jcl with git version if available"
+
+if [ -z ${SHORTHASH+x} ];
+then
+    sed  "s/@VERSN@/${SHORTHASH}/g" > jcl/sysgen05.template > jcl/sysgen05.jcl
+else
+    sed  "s/ver: @VERSN@/            /g" > jcl/sysgen05.template > jcl/sysgen05.jcl
+fi
+
 echo_step "Starting Hercules: hercules -f conf/sysgen.cnf -r ../04_sysgen_system_generation.rc"
 $HERCULES -f conf/sysgen.cnf -r ../04_sysgen_system_generation.rc > hercules.log
 echo_step "Backing up hercules.log to hercules_log.sysgen.$date_time.log"

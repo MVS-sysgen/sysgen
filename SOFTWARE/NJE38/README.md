@@ -4,7 +4,7 @@ To install type `INSTALL NJE38` :warning: Do not exit/logoff TSO during the inst
 
 The configuration file is located at `SYS2.PARMLIB(NJE38C00)`
 
-This install comes with a simple configuration, make sure you edit both `SYS2.PARMLIB(NJE38C00)` and `sysgen/conf/local.cnf` to match your enfironment.
+This install comes with a simple configuration, make sure you edit both `SYS2.PARMLIB(NJE38C00)` and `sysgen/conf/local.cnf` to match your environment.
 
 To start NJE38 run `/S NJE38` on the master console
 
