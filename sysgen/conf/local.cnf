@@ -3,8 +3,8 @@
 #                HERCULES EMULATOR CONTROL FILE                    #
 ####################################################################
 #
-# use for running newly built MVS 3.8j system
-# (last modified for use with Hercules 3.11 on 20 Dec 2014)
+# use for running newly built MVS/CE 3.8j system
+# last modified for use with SDL Hercules Hyperion 4.3 on 18 AUG 2021
 #
 
 ARCHMODE  S/370
@@ -18,7 +18,6 @@ LOADPARM  ........
 SYSEPOCH  1900
 #YROFFSET  -28       # offset for non-Y2k compliant OS
 #TZOFFSET  -0100     # daylight savings time in effect
-PANRATE   250
 OSTAILOR  QUIET       # controls number of error messages logged
 CODEPAGE  819/1047 # Uses the 1047 ASCII/EBCDIC codepage
 ##
@@ -27,7 +26,7 @@ CODEPAGE  819/1047 # Uses the 1047 ASCII/EBCDIC codepage
 REXX MSGP ON
 SHCMDOPT ENABLE
 DIAG8CMD ENABLE
-PANOPT MSGCOLOR=DARK
+PANOPT MSGCOLOR=DARK RATE=250
 # .-----------------------------Device number
 # |     .-----------------------Device type
 # |     |       .---------------File name
@@ -73,6 +72,3 @@ PANOPT MSGCOLOR=DARK
 0015    1403    mvslog.txt   # hardcopy of master console
 # ----------------------------------------------- 3270's for TSO
 0400.8  3270
-
-
-

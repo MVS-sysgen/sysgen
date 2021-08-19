@@ -18,7 +18,7 @@ LOADPARM  ........
 SYSEPOCH  1900
 #YROFFSET  -28       # offset for non-Y2k compliant OS
 #TZOFFSET  -0100     # daylight savings time in effect
-PANRATE   250
+PANOPT    RATE=250
 OSTAILOR  NULL       # controls number of error messages logged
 # .-----------------------------Device number
 # |     .-----------------------Device type
