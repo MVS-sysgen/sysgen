@@ -121,12 +121,13 @@ do while lines(commands) \= 0
 
       if left(response,8) = '## CHECK' then do /* Check MAX CC */
         parse var response . . jobNameIn maxccIn .
+        max = '0004'
         call pd "Checking" jobnamein "with maxcc" maxccIn
         maxcc_failed = 0
         maxcc_failed = checkCC(jobnamein maxccIn)
         if maxcc_failed then do
           call pd "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-          call pd "JOB:" jobnamein "failed with max cc greater than" maxccIn
+          call pd "JOB:" jobnamein "failed with max cc greater than" max
           call pd "              Exiting hercules"
           call pd "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
           x = sleep(5)
@@ -153,7 +154,7 @@ do while lines(commands) \= 0
       leave
     end
     /* in some cases the text is read before we read the response */
-    call slowdown 0.1
+    call slowdown 0.5
   end
 end
 
