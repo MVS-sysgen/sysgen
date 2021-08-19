@@ -8,6 +8,16 @@ if [ -d .git ]; then
     SHORTHASH=${FULLHASH::7}
 fi;
 
+
+if git tag > /dev/null 2>&1; then
+    echo_step "Repository exists!";
+    FULLHASH=$(git log -1 | head -1 | awk '{print $2}')
+    SHORTHASH=${FULLHASH::7}
+else
+    echo_step "Not a github repo removing version"
+    SHORTHASH="ZIPPED "
+fi
+
 cd sysgen
 rm -rf dasd
 prev_dasd=$(ls -Art dasd.02.dlib.*.tar | tail -n 1)
@@ -18,13 +28,7 @@ bash create.dasd.sh sysgen
 chmod +x stage2.rexx
 
 echo_step "Updating sysgen05.jcl with git version if available"
-
-if [ -z ${SHORTHASH+x} ];
-then
-    sed  "s/@VERSN@/${SHORTHASH}/g" > jcl/sysgen05.template > jcl/sysgen05.jcl
-else
-    sed  "s/ver: @VERSN@/            /g" > jcl/sysgen05.template > jcl/sysgen05.jcl
-fi
+sed  "s/ver: @VERSN@/ver: ${SHORTHASH}/g" jcl/sysgen05.template > jcl/sysgen05.jcl
 
 echo_step "Starting Hercules: hercules -f conf/sysgen.cnf -r ../04_sysgen_system_generation.rc"
 $HERCULES -f conf/sysgen.cnf -r ../04_sysgen_system_generation.rc > hercules.log

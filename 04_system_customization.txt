@@ -15,12 +15,15 @@ file conf/mvs.script processing ended;sh ./submit.sh jcl/mvs00.jcl
 /*10 ICK003D REPLY U TO ALTER VOLUME 0224 CONTENTS, ELSE T;/r 10,u
 /*11 ICK003D REPLY U TO ALTER VOLUME 0225 CONTENTS, ELSE T;/r 11,u
 # Creating user catalogs
-/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;sh ./submit.sh jcl/mvs01.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;## CHECK mvs00
+[AUTOMATE] Job mvs00 completed succesfully;sh ./submit.sh jcl/mvs01.jcl
 # Adding TSO User IDs HMVS01 and HMVS02
-/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;sh ./submit.sh jcl/mvs02.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;## CHECK mvs01
+[AUTOMATE] Job mvs01 completed succesfully;sh ./submit.sh jcl/mvs02.jcl
 /*12 IEC301A S JOB MVS02    DSNAME SYS1.VSAM.MASTER.CATALOG;/r 12,sysprog
 /*13 IEC301A S JOB MVS02    DSNAME SYS1.VSAM.MASTER.CATALOG;/r 13,sysprog
-/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;sh ./submit.sh jcl/date.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;## CHECK mvs02
+[AUTOMATE] Job mvs02 completed succesfully;sh ./submit.sh jcl/date.jcl
 / $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;/s net
 / IKT005I TCAS IS INITIALIZED;/P TSO
 / $HASP395 TSO      ENDED;/Z NET,QUICK
