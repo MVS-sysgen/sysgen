@@ -37,4 +37,5 @@ SOFTWARE/TSOAUTHC/01_install_tsoauthc.jcl
 SOFTWARE/RAKF
 SOFTWARE/FTPD
 release/
+sysgen/jcl/sysgen05.jcl
 
