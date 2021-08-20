@@ -4,7 +4,7 @@
 
 source ./00_sysgen_functions.sh
 trap 'check_return' 0
-
+command="./sysgen.sh --skip-sysgen"
 set -e
 
 cd sysgen

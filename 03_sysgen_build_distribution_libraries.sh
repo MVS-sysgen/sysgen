@@ -2,7 +2,7 @@
 source ./00_sysgen_functions.sh
 trap 'check_return' 0
 set -e
-
+command="./sysgen.sh --skip-starter"
 echo_step "Using SMP4 to Build the Distribution Libraries"
 cd sysgen
 echo_step "Removing previously built dasd"

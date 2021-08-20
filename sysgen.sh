@@ -1,7 +1,7 @@
 #!/bin/bash
 
 source ./00_sysgen_functions.sh
-trap 'check_return' 0
+trap 'sysgen_check_return' 0
 
 # Sysgen automated installer
 
@@ -142,6 +142,10 @@ fi
 echo "cd sysgen" > start_mvs.sh
 echo "hercules -f conf/local.cnf -r autostart.rc > hercules.log" >> start_mvs.sh
 chmod +x start_mvs.sh
+
+
+GITLONG=$( git_long )
+sed  "s/@@@@@VERSION@@@@@/${GITLONG}/g" sysgen/herclogo.template > sysgen/herclogo.txt
 
 echo_step "System Generation complete"
 if [ $USERNAME != "0" ]; then

@@ -13,13 +13,16 @@
 */
 parse arg commands logfile .
 
-/* **********************************
-   Set to 1 to enable  debug messages
-   Set to 0 to disable debug messages
-   **********************************/
+/* *************************************
+   Set to 1 to enable verbose messages
+   Set to 0 to disable verbose messages
+   *************************************/
 DEBUG=1
-/* **********************************
-   **********************************/
+/* ************************************
+   ************************************/
+
+FAILURE_STATES.0 = 1
+FAILURE_STATES.1 = "HASP095 JES2 SYSTEM CATASTROPHIC ERROR."
 
 IF LENGTH(commands)=0 | LENGTH(logfile)=0 THEN DO
   SAY 'Hercules REXX Automation Script'
@@ -55,6 +58,7 @@ CALL pd 'Verbose messages enabled'
 do while lines(logfile) \= 0
       readline = linein(logfile)
 end
+
 
 
 do while lines(commands) \= 0
@@ -94,6 +98,19 @@ do while lines(commands) \= 0
     if lines(logfile) \= 0 then do
       /* If there's new lines, read them */
       readline = linein(logfile)
+    end
+
+    /* Checks known failures and exits */
+    do i=1 to FAILURE_STATES.0
+      if wordpos(FAILURE_STATES.i, readline) \= 0 then do
+        call pd "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        call pd " Catastrophic Failure!"
+        call pd " Error:" FAILURE_STATES.i
+        call pd "              Exiting hercules"
+        call pd "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        x = sleep(5)
+        address hercules "quit force"
+      end
     end
 
     if wordpos(expect, readline) \= 0 then do

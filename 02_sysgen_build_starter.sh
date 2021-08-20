@@ -1,6 +1,7 @@
 # Using SMP4 to Build the Distribution Libraries
 source ./00_sysgen_functions.sh
 trap 'check_return' 0
+command="./sysgen.sh --skip-hercules"
 set -e
 echo_step "Building the MVS Starter System"
 cd sysgen

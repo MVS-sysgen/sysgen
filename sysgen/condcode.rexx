@@ -160,12 +160,11 @@ DO WHILE LINES(printFile)\=0    /* while there are lines remaining to be process
       ccPos=POS(ccKey,inpLine)+LENGTH(ccKey); /* location of cc in message line */
       condCode=SUBSTR(inpLine,ccPos,4);     /* extract condition code from message line */
 
-      IF condCode\='0000' THEN DO           /* make non-zero condition codes stand out */
+      IF condCode > max THEN DO           /* make non-zero condition codes stand out */
         ccFlag=' <--';
-	      if condCode > max THEN
-	        failed=1
+        failed=1
       end
-    ELSE
+      ELSE
         ccFlag='';
 
       rcRecap.steps = rcRecap.steps + 1;    /* count this step in total steps */

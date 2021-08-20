@@ -2,7 +2,7 @@
 # For use with Jay Moseley sysgen MVS only
 
 source 00_sysgen_functions.sh
-
+command="./sysgen.sh --skip-custom"
 cd SOFTWARE
 echo_step "Downloading FTPD"
 git clone https://github.com/MVS-sysgen/FTPD.git

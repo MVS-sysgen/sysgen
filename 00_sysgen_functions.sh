@@ -1,25 +1,45 @@
 # Sysgen Functions
 
+command="./sysgen.sh"
 
 function check_return {
-
-
     if [[ -z "${TERM}" ]]; then
-        echo >&2 "
-        ***************
-        *** ABORTED ***
-        ***************
-        "
-        echo "[!] Error encoutered exiting." >&2
+        echo ""
     else
-        echo >&2 "$(tput bold)$(tput setaf 1)
-        ***************
-        *** ABORTED ***
-        ***************
-        "
-        echo "[!] Error encoutered exiting.$(tput sgr0)" >&2
+        echo "$(tput sgr0)"
     fi
-        exit 1
+    echo >&2 "
+        ********************************
+        *** !!ERROR!! SYSGEN ABORTED ***
+        ********************************
+        "
+    echo "[!] Error encoutered Sysgen aborted." >&2
+    echo "[!] To rerun this step issue the command $command" >&2
+
+    exit 1
+}
+
+function git_long {
+    if git tag > /dev/null 2>&1; then
+        echo $(git log -1 | head -1 | awk '{print $2}')
+    fi
+}
+
+function git_short {
+    SHORTHASH=$( git_long )
+    if [ -n "$SHORTHASH" ]; then
+        echo ${SHORTHASH::7}
+    else
+        echo "ZIPPED "
+    fi
+}
+
+
+function sysgen_check_return {
+    echo ""
+    echo "[!] Sysgen failed with the error above. Try rerunning the step."
+    echo "[!] If the issue persists please submit an issue with the hercules.log and sysgen/prt00e.txt files attached."
+    echo ""
 }
 
 function echo_step {
