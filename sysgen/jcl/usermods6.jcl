@@ -18319,7 +18319,7 @@ R15      EQU   15                                                       01257000
         .
 /*
 //*
-/STEP18   EXEC SMPAPP,WORK='SYSALLDA',COND=(0,NE)
+//STEP18   EXEC SMPAPP,WORK='SYSALLDA',COND=(0,NE)
 //SMPCNTL  DD  *
   APPLY
         SELECT(ZP60039,ZP60040)
