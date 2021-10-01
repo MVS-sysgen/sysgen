@@ -24,6 +24,7 @@ file conf/mvs.script processing ended;sh ./submit.sh jcl/mvs00.jcl
 /*13 IEC301A S JOB MVS02    DSNAME SYS1.VSAM.MASTER.CATALOG;/r 13,sysprog
 / $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;## CHECK mvs02
 [AUTOMATE] Job mvs02 completed succesfully;sh ./submit.sh jcl/date.jcl
+/ $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;sh ./submit.sh jcl/dynproc.jcl
 / $HASP099 ALL AVAILABLE FUNCTIONS COMPLETE;/s net
 / IKT005I TCAS IS INITIALIZED;/P TSO
 / $HASP395 TSO      ENDED;/Z NET,QUICK
