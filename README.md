@@ -105,7 +105,7 @@ The arguments below are for more granular control of where to start sysgen from.
 |:---------:|:--------:|
 | IBMUSER   | SYS1     |
 | MVSCE01   | CUL8TR   |
-| MVSCE01   | PASS4U   |
+| MVSCE02   | PASS4U   |
 
 :warning: *IBMUSER* and *MVSCE01* are RAKF and TSO admins.
 
