@@ -1,0 +1,42 @@
+@ALIGN NONE
+@SBA 0,0
+@SF P
+Hercules Version :
+@SF HP
+$(VERSION)
+@NL
+@SF P
+Host OS          :
+@SF HP
+$(HOSTOS)-$(HOSTOSREL)
+@NL
+@SF P
+Host OS Version  :
+@SF HP
+$(HOSTOSVER)
+@NL
+@SF P
+MVS/CE GIT Rev   :
+@SF HP
+@@@@@VERSION@@@@@
+@NL
+@NL
+@SF P
+@ALIGN LEFT
+     888b     d888 888     888  .d8888b.        d88P  .d8888b.  8888888888
+     8888b   d8888 888     888 d88P  Y88b      d88P  d88P  Y88b 888
+     88888b.d88888 888     888 Y88b.          d88P   888    888 888
+     888Y88888P888 Y88b   d88P  "Y888b.      d88P    888        8888888
+     888 Y888P 888  Y88b d88P      "Y88b.   d88P     888        888
+     888  Y8P  888   Y88o88P         "888  d88P      888    888 888
+     888   "   888    Y888P    Y88b  d88P d88P       Y88b  d88P 888
+     888       888     Y8P      "Y8888P" d88P         "Y8888P"  8888888888
+@NL
+@SF HP
+@ALIGN CENTER
+Welcome to MVS Community Edition
+Based on the Jay Moseley MVS3.8j Sysgen
+@NL
+@SF P
+CLEAR the screen or hit ENTER
+You can login with "logon username/password"
