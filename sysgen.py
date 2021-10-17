@@ -322,7 +322,7 @@ class sysgen:
         os._exit(1)
 
     def print_logo(self):
-        print(Style.BRIGHT+ + Fore.BLUE + logo, flush=True)
+        print(Style.BRIGHT+ Fore.BLUE + logo, flush=True)
 
     def print(self, text='', color=Fore.WHITE):
         print(Style.BRIGHT+ "[+] " + color + text, flush=True)
