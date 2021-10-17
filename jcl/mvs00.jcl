@@ -135,5 +135,16 @@
 //HASPLIST DD  DDNAME=IEFRDER                                           
 ./ ENDUP                                                                
 ><                                                                      
-//* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-//                                                                      
+//* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//*********************************************************************
+//* Rename load module IFCRDE03 in SYS1.LINKLIB to eliminate the
+//* message IFB010D at IPL (reason for IPL).
+//*********************************************************************
+//*                                                                    
+//PROGM EXEC PGM=IEHPROGM 
+//SYSPRINT DD SYSOUT=* 
+//DD1 DD UNIT=3350,VOL=SER=MVSRES,DISP=OLD 
+//SYSIN DD *
+  RENAME DSNAME=SYS1.LINKLIB,VOL=3350=MVSRES,MEMBER=IFCRDE03,          C 
+               NEWNAME=IFCRDEX3 
+// 

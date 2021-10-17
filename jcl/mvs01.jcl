@@ -109,6 +109,7 @@
   /* to make sure that any additions/deletions/changes to      */
   /* the Master Catalog require operator approval.             */
 
-  ALTER SYS1.VSAM.MASTER.CATALOG -
-        UPDATEPW(SYSPROG)
+  /* DISABLED FOR MVSCE */
+  /* ALTER SYS1.VSAM.MASTER.CATALOG -
+        UPDATEPW(SYSPROG) */
 //
