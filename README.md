@@ -1,100 +1,115 @@
-# Automated MVS3.8j Sysgen
+# MVS Community Edition Sysgen
 
-Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j first install the required packages:
+:warning: This is a new version of sysgen without any software, if you are looking for the previous version checkout the `original` branch.
 
-**Ubuntu**:
+To use this version of MVS you can download the current release and run `bash start_mvs.sh`.
 
-Run: `sudo apt-get install m4 make autoconf automake cmake flex build-essential regina-rexx libbz2-dev libregina3-dev zlib1g-dev unzip c3270 ncat libtool libltdl-dev python3 nmap`
+Requirements:
 
-Then run `./sysgen.sh`.
+- Linux
+- hercules SDL >= 4.0 (see below how to build SDL Hercules)
+- python3
+- git
+
+The following is also recommended:
+
+- c3270/x3270
+- ncat
+
+## Building and Installing Hercules
+
+**Ubuntu**: Install m4, make, autoconf, automake, cmake, flex, build-essential, libbz2-dev, libregina3-dev, zlib1g-dev, libtool and, libltdl-dev with:
+`sudo apt install m4 make autoconf automake cmake flex build-essential libbz2-dev libregina3-dev zlib1g-dev libtool libltdl-dev`
+
+The following script will then autobuild and install hercules for you.
+
+```bash
+# MVS3.8 Sysgen Automation - Build hercules
+set -e
+if [ -d "build" ]; then rm -rf build/; fi
+mkdir build
+cd build
+mkdir ./hercpkgs
+mkdir ./WORK
+
+for i in crypto decNumber SoftFloat telnet; do
+    git clone https://github.com/SDL-Hercules-390/$i.git
+    mkdir ./WORK/$i
+    cd ./WORK/$i
+    ../../$i/build --pkgname . --all --install ../../hercpkgs
+    cd ../../
+done
+
+echo_step "Building Hercules Hyperion SDL"
+git clone https://github.com/SDL-Hercules-390/hyperion.git
+cd hyperion
+./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-regina-rexx --enable-extpkgs=$(realpath ../hercpkgs) --enable-optimization="-O3 -march=native"
+
+echo_step "Compiling Hercules"
+# thanks Mike Grossman for the CPU/o3
+export NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
+make -j$NUMCPUS --load-average=$NUMCPUS
+
+echo_step "Installing Hercules"
+sudo make install
+sudo ldconfig
+cd ..
+echo "Done!"
+```
+
+## Sysgen
 
 Currently only Debian/Ubuntu based systems are supported. If your system requires a password for sudo commands you may get prompted for your password to install needed software.
 
 :warning: **DO NOT** run this script as root, there is a bug in hercules which will cause it to eat up all your machine resources :warning:
 
-*depending on your system this could take upward of two hours.* If you want to follow along you can use `tail -F ./sysgen/hercules.log`.
+*depending on your system this could take upward of two hours.* If you want to follow along you can use `tail -F sysgen.log`.
 
-Running sysgen will:
+Running MVS/CE sysgen will:
 
 - Compile the newest version of SDL Hercules and install it
-- Build the Jay Moseley sysgen MVS 3.8J automatically
-- Install RAKF
-- Install MDDIAG8
-- Install `INSTALL`, a clist that uses MDDIAG8 to install software contained in the [SOFTWARE](SOFTWARE) folder.
-- Install Review Front End
-- Install IND$FILE v205
-- Install FTP server
+- Build a modified Jay Moseley sysgen MVS 3.8J
 - Install BREXX
+- Install RAKF
 
-`sysgen.sh` can take multiple arguments:
+To build MVS/CE use `sysgen.py`. This python script can take many arguments:
 
-- `-h`/`--help` Display this help message.
-- `-n`/`--no-install` This setting will prevent this script from installing any software other than RAKF.
-- `-r`/`--no-rakf` Do not install any software after the customization step
-- `--username <username>` This replaces the *HMVS01* user with the user id supplied
-- `--password <password>` This replaces the *HMVS01* user password (CUL8TR) with the one supplied. If none is passed a random password is generated.
-The remaining arguments will skip the previous steps and start the system generation process from the next step. It will remove the current `dasd` folder and extract the most recent backed up dasd folder from the previous step. For example, if you made changes to any of the `jcl/sysgen*.jcl` files you don't have to rebuild the whole environment, just use `./sysgen.sh --skip-distrib` and it will start rebuilding from the sysgen process onward.
+- `--version` This sets the version number displayed at logon and in `SYS1.PARMLIB(RELEASE)`
+- `--users` By default sysgen will use the users in the file `users.conf`, you can supply your own with this argument
+- `--profiles` By default sysgen will use the RAKF profiles in the file `profiles.conf`, you can supply your own with this argument
+- `--username`/`--password` These arguments add an admin user with the username/password supplied
+- `--nobrexx` Do not install brexx (this will also prevent RAKF from installing)
+- `--norakf ` Do not install RAKF
+- `--timeout` Sometimes hercules will end up in a state which can deadlock sysgen, to prevent it from running forever a timeout has been set. The defaul it thirty minutes. Use this argument to change it to something shorter/longer, in seconds.
+- `--hercules` Path to a specific hercules binary
+- `--no-compress` By default this script will compress DASD files, that is not needed on some file systems, this will disable compression
+- `--keep-backup` This script backups after every step then removes the backups when completed, if you'd like to keep the backup DASD images use this flag
+- `--keep-temp` This script generates multiple temp files during sysgen and removes the folder when completed, if you wish to keep the temp files pass this flag
 
-- `--skip-hercules` Skip building hercules, remove any dasd and start automated sysgen
-- `--skip-starter`  Skip building hercules and building starter
-- `--skip-distrib`  Skip building hercules, starter and distribution
-- `--skip-sysgen`   Skip building hercules, starter, distribution and sysgen
-- `--skip-custom`   Skip all steps and install RAKF/Software
+### Automation control options
 
-Logs of both hercules output and the hercules printer is saved for each step. If a step fails you can review the log to see the error.
+The arguments below are for more granular control of where to start sysgen from. These can be used if a step has failed of if you make changes to a step and start the install from that step instead of starting over. Some steps are atomic, some have multiple sub steps. With the arguments below you can continue/restart from either.
+
+- `-l` or  `--list` This will list all available steps and substeps.
+- `--step` Restart sysgen from this step. The install will continue from here.
+- `--substep` Restart sysgen from a steps substep.
+
+- `-C` or `--CONTINUE` If sysgen fails for any reason a file (`.step`) is created prior to exit, this argument reads that file and continues building MVS/CE from where it left off. This superscedes the `--step` and `--substep` arguments.
+
 
 ## Usernames/Passwords
 
-**RAKF**
+**RAKF**/**TSO**
 
-| Username | Password |
-|:--------:|:--------:|
-| IBMUSER  | SYS1     |
-| HMVS01*  | CUL8TR   |
-| HMVS02   | PASS4U   |
+| Username  | Password |
+|:---------:|:--------:|
+| IBMUSER   | SYS1     |
+| MVSCE01   | CUL8TR   |
+| MVSCE01   | PASS4U   |
 
-\* Can be replaced with the `--username` flag
+:warning: *IBMUSER* and *MVSCE01* are RAKF and TSO admins.
 
-**Without RAKF**
-
-Without RAKF installed the account do not need a password
-
-| Username | Password |
-|:--------:|:--------:|
-| HMVS01   | -        |
-| HMVS02   | -        |
-
-## Available Software
-
-Included with this repo:
-
-- BREXX*
-- MACLIBS
-- INDFILE*
-- MDDIAG8*
-- OFFLOAD
-- QUEUE
-- REVIEW*
-- RPF
-- IMON370
-- STARTREK
-- KLINGON
-- EZASMI (TCP/IP socket lib/macros)
-
-In External Repos (clone these repos to the SOFTWARE folder):
-
-- [RAKF](https://github.com/MVS-sysgen/RAKF)*
-- [FTPD](https://github.com/MVS-sysgen/FTPD)*
-- [Adventure](https://github.com/MVS-sysgen/Adventure)
-- [KICKS](https://github.com/jake-mainframe/KICKS)
-
-
-To install any of these login and run `INSTALL THING` where *THING* is any of the folders in `SOFTWARE`.
-
-
-\* These items are installed automatically unless disabled by passing the sysgen script `--no-install` and `--no-rakf`
-
-In the [SOFTWARE](SOFTWARE) folder is software that comes with this SYSGEN. Other software, such as FTPD and RAKF exist in other repos but can be installed by cloning the repo to the `SOFTWARE` folder and following their instructions.
+You can add a admin user using the `--username` flag. To add more users edit the `users.conf` file.
 
 ## Changes From Jay Moseley Sysgen
 
@@ -104,6 +119,8 @@ In the [SOFTWARE](SOFTWARE) folder is software that comes with this SYSGEN. Othe
 * Added `SYSGEN` alias to `UCPUB001` for software installs in `jcl/mvs01.jcl`
 * Modified `jcl/sysgen05.jcl` changing `,DYNAMNBR=20` to `,DYNAMNBR=64`
 * Added `SYS2.PARMLIB` for 3rd party configurations (NJE38, FTPD, etc)
+
+and many more
 
 ## Info
 
