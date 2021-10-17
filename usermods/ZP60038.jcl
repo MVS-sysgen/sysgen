@@ -1,0 +1,964 @@
+//ZP60038  JOB (SYSGEN),'J03 M49: ZP60038',
+//             CLASS=A,
+//             MSGCLASS=A,
+//             MSGLEVEL=(1,1),
+//             REGION=4096K
+/*JOBPARM LINES=100
+//JOBCAT   DD  DSN=SYS1.VSAM.MASTER.CATALOG,DISP=SHR
+//*
+//*  ADD CLIST VARIABLE PROCESSING APPLICATION PROGRAM INTERFACE
+//*
+//STEP01  EXEC PGM=IEBGENER
+//SYSPRINT DD  SYSOUT=*
+//SYSUT1   DD  DATA
+++USERMOD(ZP60038) REWORK(20190727)  /* ADD CLIST VARIABLE API */ .
+++VER(Z038) FMID(EBB1102)
+  PRE(UY01301,ZP60014)
+ /*
+   PROBLEM DESCRIPTION:
+     THERE IS NO PROGRAMATIC INTERFACE FOR CLIST VARIABLE PROCESSING.
+       APPLICATIONS RUNNING IN A TSO CLIST ENVIRONMENT HAVE NO
+       SUPPORTED METHOD OF RETRIEVING OR SETTING THE VALUES OF CLIST
+       SYMBOLIC VARIABLES.
+
+       THIS USERMOD SUPPLIES A NEW MODULE CALLED IKJCT441 WHICH
+       PROVIDES AN API TO ALLOW PROGRAMS TO PROCESS CLIST SYMBOLIC
+       VARIABLES.  THE PARAMETER LIST AND RETURN CODE INTERFACE IS
+       COMPATIBLE WITH THAT OF THE IKJCT441 MODULE IN IBM'S TSO/E.
+
+
+   SPECIAL CONDITIONS:
+     ACTION:
+       A "CLPA" MUST BE PERFORMED AT IPL TIME FOR THIS SYSMOD TO
+       BECOME ACTIVE.
+
+       THE MODULE SUPPLIED IN THIS SYSMOD CALLS AN ENTRY POINT
+       CREATED BY SYSMOD ZP60014.
+
+   COMMENTS:
+     PRYCROFT SIX P/L PUBLIC DOMAIN USERMOD FOR MVS 3.8 NUMBER 38.
+
+     REWORK HISTORY:
+       2018-01-20: INITIAL AVAILABILITY.
+       2019-07-27: ALLOW A RETRIEVE/CREATE REQUEST TO SET A NON-NULL
+                   INITIAL VALUE WHEN THE SYMBOL IS BEING CREATED.
+
+     THE FOLLOWING MODULES AND/OR MACROS ARE AFFECTED BY THIS USERMOD:
+     MODULES:
+       IKJCT441
+     MACROS:
+       SGIKJ441
+ */.
+++JCLIN.
+//P638    EXEC PGM=IEWL,PARM='NCAL,LIST,XREF,LET,REUS,RENT'
+//SYSPRINT DD  SYSOUT=*
+//AOST4    DD  DISP=SHR,DSN=SYS1.AOST4
+//SYSLMOD  DD  DISP=SHR,DSN=SYS1.LPALIB
+//SYSLIN DD *
+    ORDER IKJEFT30,IKJEFT35,IKJEFT40,IKJEFT45
+    ORDER IKJEFT52,IKJEFT53,IKJEFT54,IKJEFT55
+    ORDER IKJEFT56,IKJRBBMC,IKJCT433,IKJCT434
+    ORDER IKJCT436,IKJCT441
+    INCLUDE AOST4(IKJEFT30,IKJEFT35,IKJEFT40)
+    INCLUDE AOST4(IKJEFT45,IKJEFT52,IKJEFT53)
+    INCLUDE AOST4(IKJEFT54,IKJEFT55,IKJEFT56)
+    INCLUDE AOST4(IKJRBBMC,IKJCT441)
+    INCLUDE AOST4(IKJCT433,IKJCT434,IKJCT436)
+    ALIAS IKJGETL,IKJPUTL,IKJSTCK,IKJCT441
+    ENTRY IKJPTGT
+ NAME IKJPTGT(R)
+++MOD(IKJCT441) DISTLIB(AOST4).
+/*
+//SYSUT2   DD  DSN=&&SMPMCS,DISP=(NEW,PASS),UNIT=SYSALLDA,
+//             SPACE=(CYL,3),
+//             DCB=(DSORG=PS,RECFM=FB,LRECL=80,BLKSIZE=4080)
+//SYSIN    DD  DUMMY
+//*
+//STEP02  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
+//SYSPRINT DD  SYSOUT=*
+//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
+//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
+//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
+//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
+//         DD  DSN=SYS1.SMPMTS,DISP=SHR
+//         DD  DSN=SYS1.AMODGEN,DISP=SHR
+//         DD  DSN=SYS1.APVTMACS,DISP=SHR
+//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
+//SYSIN    DD  *
+IKJCT441 TITLE ' CLIST VARIABLE ACCESS ROUTINE '
+*
+*  NAME        - IKJCT441
+*
+*  FUNCTION    - TO PROVIDE AN INTERFACE FOR USER-WRITTEN PROGRAMS
+*                TO RETRIEVE AND UPDATE CLIST VARIABLES.
+*
+*  ATTRIBUTES  - REENTRANT, REFRESHABLE, NO APF REQUIREMENTS.
+*
+*  ENVIRONMENT - ADDRESS SPACE CONTROLLED BY THE TERMINAL MONITOR
+*                PROGRAM WHERE A CLIST IS BEING EXECUTED.
+*                THE CALLER IS EXPECTED TO BE RUNNING IN THE TASK
+*                TREE WHICH CAN ACQUIRE AND FREE STORAGE IN THE
+*                SUBPOOL 78 SHARED BY THE TMP.
+*
+*  AUTHOR      - GREG PRICE - JANUARY 2018.
+*
+*                THIS PROGRAM USES MACROS FROM:
+*                SYS1.MACLIB, SYS1.AMODGEN AND SYS1.APVTMACS.
+*
+*  CHANGE LOG:
+*    20JAN2018 - DELIVERED IN USERMOD ZP60038.
+*    27JUL2019 - ALLOW A RETRIEVE/CREATE REQUEST TO SET A NON-NULL
+*                INITIAL VALUE WHEN THE SYMBOL IS BEING CREATED.
+*                THE FIX WAS TO DELETE 7 LINES OF CODE LOCATED 2
+*                LINES AFTER THE LABEL LOCNTFND WHICH ERRONEOUSLY
+*                DIFFERENTIATED BETWEEN THE RETRIEVE/CREATE AND THE
+*                UPDATE/CREATE REQUEST TYPES.
+*
+         TITLE ' PARAMETER LIST '
+*
+*  6, 7, 8 OR 9 WORD PARAMETER LIST:
+*
+*     *****************************                  1=RETURN/CREATE
+*     *                           *   ************   2=UPDATE/CREATE
+*  +0 * -> ENTRY CODE             *-->* ECODE    *   3=LOCATE ALL
+*     *                           *   ************  18=RETURN/NOCREATE
+*     *****************************
+*     *                           *   ************   *****************
+*  +4 * -> VARIABLE NAME ADDRESS  *-->* NAMEPTR  *-->* VARIABLE NAME *
+*     *                           *   ************   *****************
+*     *****************************
+*     *                           *   ************
+*  +8 * -> VARIABLE NAME LENGTH   *-->* NAMELEN  *
+*     *                           *   ************
+*     *****************************
+*     *                           *   ************   ************
+* +12 * -> VARIABLE VALUE ADDRESS *-->* VALUEPTR *-->* VALUE    *
+*     *                           *   ************   ************
+*     *****************************
+*     *                           *   ************
+* +16 * -> VARIABLE VALUE LENGTH  *-->* VALUELEN *
+*     *                           *   ************
+*     *****************************
+*     *                           *   ************   TOKEN MUST EXIST
+* +20 * -> TOKEN                  *-->* TOKEN    *   AND START AS ZERO
+*     *                           *   ************   FOR "LOCATE ALL"
+*     *****************************
+*     *                           *   ************   IF HIGH VALUES OR
+* +24 * -> ECT                    *-->* ECTPARM  *   NOT IN PLIST THEN
+*     *                (OPTIONAL) *   ************   USE LWAPECT
+*     *****************************
+*     *                           *   ************   REQUIRED IF
+* +28 * -> RETURN CODE            *-->* RETCODE  *   NEXTLIST IS
+*     *                (OPTIONAL) *   ************   PRESENT
+*     *****************************
+*     *                           *   ************   *****************
+* +32 * -> NEXT PLIST ADDRESS     *-->* NEXTLIST *-->* -> ENTRY CODE *
+*     *                (OPTIONAL) *   ************   *****************
+*     *****************************                  *               *
+*                                                    ~~~~~~~~~~~~~~~~~
+         TITLE ' ENTRY AND RETURN CODES '
+*
+*  ENTRY CODES (WITH NAMES FROM THE Z/OS IKJTSVT MACRO):
+*
+*      1 - TSVERETR - RETRIEVE/CREATE REQUEST
+*      2 - TSVEUPDT - UPDATE/CREATE REQUEST
+*      3 - TSVELOC  - LOCATE ALL REQUEST (WHICH USES THE TOKEN)
+*     18 - TSVNOIMP - RETRIEVE/NOCREATE REQUEST
+*
+*  NOTE THAT UPDATE FUNCTIONS (REQUIRED WHEN CREATING AND UPDATING
+*  VARIABLES) WILL BE PERFORMED BY CALLS TO IKJINIT, WHICH IS THE
+*  SAME AS IKJUPDT EXCEPT THAT NON-EXISTENT VARIABLES ARE CREATED.
+*
+*  IKJINIT AND IKJUPDT ARE ENTRY POINTS OF MODULE IKJCT433.
+*  IKJINIT WAS CREATED BY USERMOD ZP60014 (CLIST EXTENSIONS).
+*
+*
+*  RETURN CODES:
+*
+*      0 - SUCCESS
+*      4 - VARIABLE RETURNED SHOULDN'T BE RE-SCANNED
+*      8 - VARIABLE RETURNED REQUIRES EVALUATION
+*     12 - VARIABLE RETURNED IS A LABEL (CANNOT UPDATE)
+*     16 - SYSTEM VARIABLE - CAN'T BE UPDATED BY THE USER
+*     20 - FOR LOCATE - NO MORE VARIABLES TO RETURN
+*     32 - GETMAIN/FREEMAIN FAILURE
+*     36 - NAME LENGTH < 1 OR > 252 -OR- VALUE LENGTH < 0 OR > 32767
+*     40 - INCORRECT ENVIRONMENT - PLIST ERROR OR NO CLIST ACTIVE
+*     44 - INVALID ENTRY CODE
+*     52 - UNDEFINED VARIABLE
+*
+*  NOTE THAT GPR15 WILL RETURN WITH THE FIRST NON-ZERO RETURN CODE
+*  IN A REQUEST LIST, OR ZERO IF ALL REQUESTS SUCCEEDED.
+*
+*  IF ADDITIONAL RETURN CODES ARE REQUIRED THEN THEY SHOULD BE
+*  CHOSEN SUCH THAT INCOMPATIBILITIES WITH THE Z/OS VERSION OF
+*  IKJCT441 ARE MINIMIZED.  THERE ARE OTHER IKJCT441 RETURN CODE
+*  VALUES NOT USED HERE.  SEE:
+*  SA32-0973 Z/OS TSO/E PROGRAMMING SERVICES
+*            - CHAPTER 24. USING THE VARIABLE ACCESS ROUTINE IKJCT441
+*
+         TITLE ' REGISTER EQUATES AND SYSTEM DATA AREAS '
+R0       EQU   0
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         SPACE
+         PRINT NOGEN
+         SPACE
+         IHAPSA DSECT=YES          PREFIXED SAVE AREA
+         SPACE
+         IHAASCB DSECT=YES         ADDRESS SPACE CONTOL BLOCK
+         SPACE
+         IHAASXB DSECT=YES         ADDRESS SPACE EXTENSION BLOCK
+         SPACE
+         IKJEFLWA ,                LOGON WORK AREA
+         SPACE
+         IKJPSCB ,                 PROTECTED STEP CONTROL BLOCK
+         SPACE
+         PRINT GEN
+         TITLE ' TSO DATA AREAS '
+*
+*         ENVIRONMENT CONTROL TABLE
+*
+         IKJECT ,                  LWAPECT -> SESSION'S FIRST ECT
+         SPACE
+*
+*         I/O SERVICE ROUTINE WORK AREA
+*
+IOSRL    DSECT ,                   ECTIOWA -> IOSRL
+IOSTELM  DS    A                   TOP STACK ELEMENT POINTER
+IOSBELM  DS    A                   BOTTOM ELEMENT POINTER
+IOSTLEN  DS    H                   STACK SIZE
+IOSNELM  DS    H                   NUMBER OF ELEMENTS
+IOSUNUSD DS    F                   SPARE
+         SPACE
+*
+*         INPUT STACK ELEMENT
+*
+INSTACK  DSECT ,                   IOSTELM -> TOP ELEMENT
+INSCODE  DS    X                   INPUT STACK OPTIONS
+INSTERM  EQU   X'80'               TERMINAL INPUT STACK ENTRY
+INSSTOR  EQU   X'40'               IN STORAGE LIST
+INSINDD  EQU   X'20'               INPUT FROM DD VIA DCB
+INSOTDD  EQU   X'10'               OUTPUT TO DD VIA DCB
+INSEXEC  EQU   X'08'               EXEC COMMAND STACK ENTRY
+INSPROM  EQU   X'04'               PROMPT ALLOWED
+INSPROC  EQU   X'02'               PROCEDURE FLAG
+INSLIST  EQU   X'01'               LIST LINES BEFORE EXEC
+INSADLSD DS    AL3                 POINTER TO LSD
+         SPACE
+*
+*         (IN-STORAGE) LIST SOURCE DESCRIPTOR
+*
+         IKJLSD ,                  INSADLSD -> LSD
+         SPACE
+*
+*         EXECDATA CONTROL BLOCK
+*
+EXECDATA DSECT ,                   LSDEXEC -> EXECDATA
+SNTABFST DS    A                   -> FIRST SNTAB
+SVTABFST DS    A                   -> FIRST SVTAB
+GEXECDAT DS    A                   -> GLOBAL EXECDATA
+LASTTSO  DS    A                   -> LAST TSO COMMAND EXECUTED
+EXINSAVE DS    X                   TERMIN INSTACK SAVE AREA
+         DS    XL3
+ERACTSTR DS    A                   -> START OF THE ERROR ACTION FOR
+*                                  THIS CLIST - THIS FIELD IS ZERO
+*                                  WHEN THERE IS NO ERROR ACTION
+ERACTEND DS    A                   -> END OF THE ERROR ACTION RANGE
+RETPTR   DS    A                   -> THE COMMAND AFTER THE 1 IN ERROR
+EXDATFLG DS    X                   EXEC DATA FLAG AREA (1ST BYTE)
+CONLST   EQU   X'80'               ON IF CONTROL STATEMENTS ARE
+*                                  TO BE LISTED AS THEY ARE EXECUTED
+ERRCMD   EQU   X'40'               ON IF AN ERROR COMMAND IS IN EFFECT
+NOFLUSH  EQU   X'20'               ON IF NOFLUSH OPTION IN EFFECT
+SYMLST   EQU   X'10'               ON IF SYMLIST OPTION IN EFFECT
+ERINCNTL EQU   X'08'               ON WHEN THE PROCESSING IN AN
+*                                  ERROR RANGE IS A DIRECT RESULT
+*                                  OF A CLIST STMT ERROR
+CMAIN    EQU   X'04'               ON FOR CONTROL CLIST (MAIN)
+NOMSG    EQU   X'02'               ON FOR NOMSG OPTION
+ATTNCMD  EQU   X'01'               ON IF ATTENTION CMD IN EFFECT
+EXDATFL1 DS    X                   EXEC DATA FLAG AREA (2ND BYTE)
+ATINCNTL EQU   X'80'               IN ATTN ON BEHALF OF ATTN
+NOLASTCC EQU   X'40'               SKIP LASTCC UPDATE AFTER STMT
+*        EQU   X'20'               RESERVED
+*        EQU   X'10'               RESERVED
+*        EQU   X'08'               RESERVED
+*        EQU   X'04'               RESERVED
+*        EQU   X'02'               RESERVED
+*        EQU   X'01'               RESERVED
+STAECNT  DS    H                   CT433 STAE LOOP CTL
+GEXECCNT DS    F                   NUMBER OF GLOBAL VARIABLES
+*                                  SUPPORTED FOR NESTED PROCEDURES
+EXDLMPTR DS    A                   -> TERMIN DELIMS
+ATACTSTR DS    A                   -> ATTENTION ACTION START
+ATACTEND DS    A                   -> ATTENTION ACTION END
+RETPTR2  DS    A                   -> ALTERNATE RETURN
+FILEDCBS DS    A                   -> FILE I/O DCB CHAIN
+         DS    F
+         SPACE
+*
+*         SYMBOLIC NAME TABLE
+*
+SNTAB    DSECT ,                   SNTABPTR -> SNTAB
+SNTABNXT DS    A                   -> NEXT SNTAB
+SNTABLNG DS    F                   LENGTH OF THIS SNTAB
+SNTABUSE DS    F                   USED BYTES IN THIS SNTAB
+SNTELFST DS    0X                  FIRST SNTAB ELEMENT
+         SPACE
+*
+*         SYMBOLIC NAME TABLE ELEMENT
+*
+SNTELEM  DSECT ,                   SNTAB ELEMENT
+SNTVLPTR DS    0A                  ADDRESS OF THE SVTAB ELEMENT
+*                                  FOR THIS SYMBOLIC PARAMETER OR
+SNTGVAL  DS    F                   THE GLOBAL VARIABLE NAME IF
+*                                  PARAMETER IS GLOBAL
+SNTFLAGS DS    X                   SNTAB ELEMENT FLAGS (1ST BYTE)
+*                                  - DEFINES THE TYPE OF PARM
+SNTPOSIT EQU   X'80'               POSITIONAL ELEMENT
+SNTKEY   EQU   X'40'               KEYWORD ELEMENT
+SNTKEYW  EQU   X'20'               KEYWORD WITH VALUE ELEMENT
+SNTLABEL EQU   X'10'               LABEL ELEMENT
+SNTNOSCN EQU   X'08'               VARIABLE NOT RESCANNABLE
+SNTNAUTH EQU   X'04'               CONTROL VARIABLE CAN NOT BE
+*                                  SET BY THE USER
+SNTEVAL  EQU   X'02'               CONTROL VARIABLE REQUIRES
+*                                  IMMEDIATE EVALUATION
+SNTLAST  EQU   X'01'               DEFINES THE LAST ELEMENT IN
+*                                  THIS SNTAB
+SNTFLAG1 DS    X                   SNTAB ELEMENT FLAGS (2ND BYTE)
+SNTGLOB  EQU   X'80'               VARIABLE IS A GLOBAL VARIABLE
+*        EQU   X'40'               RESERVED
+*        EQU   X'20'               RESERVED
+*        EQU   X'10'               RESERVED
+*        EQU   X'08'               RESERVED
+*        EQU   X'04'               RESERVED
+*        EQU   X'02'               RESERVED
+*        EQU   X'01'               RESERVED
+SNTLNG   DS    H                   SYMBOLIC PARAMETER NAME LENGTH
+SNTDATA  DS    0C                  SYMBOLIC PARAMETER NAME
+         SPACE
+*
+*         SYMBOLIC VALUE TABLE
+*
+SVTAB    DSECT ,                   SVTABPTR -> SNTAB
+SVTABNXT DS    A                   -> NEXT SVTAB
+SVTABLNG DS    F                   LENGTH OF THIS SVTAB
+SVTABUSE DS    F                   USED BYTES IN THIS SVTAB
+SVTABFRE DS    F                   UNUSED BYTES IN THIS SVTAB
+SVTELFST DS    0X                  FIRST SVTAB ELEMENT
+         SPACE
+*
+*         SYMBOLIC VALUE TABLE ELEMENT
+*
+SVTELEM  DSECT ,                   SVTAB ELEMENT
+SVTLNG   DS    H                   CURRENT VALUE LENGTH
+SVTORIG  DS    H                   ORIGINAL VALUE LENGTH
+SVTDATA  DS    0C                  CURRENT VALUE
+         TITLE ' INITIALIZATION '
+*
+*         ENTRY - ACQUIRE WORKING STORAGE
+*
+         USING PSA,0
+         USING IKJCT441,R15
+IKJCT441 CSECT
+         B     $START
+         DC    AL1(25),CL25'IKJCT441 ZP60038 20180120'
+         DROP  R15                 (IKJCT441)
+         USING IKJCT441,R12
+$START   STM   R14,R12,12(R13)     SAVE REGISTERS
+         LR    R12,R15             SET LOCAL BASE
+         LA    R2,0(,R1)           COPY PARAMETER LIST ADDRESS
+         LA    R0,$WKSIZE          GET WORKING STORAGE SIZE
+         GETMAIN RC,LV=(0)         GET WORKING STORAGE
+         LTR   R15,R15             SUCCESS?
+         BZ    WRKSTGOK            YES
+         LM    R14,R12,12(R13)     NO, RESTORE REGISTERS
+         LA    R15,32              SET RC=32
+         BR    R14                 RETURN TO CALLER
+*
+*         ENTRY - PREPARE WORKING STORAGE FOR USE
+*
+WRKSTGOK LR    R14,R1              POINT TO THE NEW STORAGE
+         LA    R15,$WKSIZE         GET ITS SIZE
+         SR    R3,R3               ZERO SOURCE LENGTH AND PAD
+         MVCL  R14,R2              ZERO THE NEW STORAGE
+         ST    R13,4(,R1)          CHAIN BACK TO CALLER'S SAVE AREA
+         ST    R1,8(,R13)          CHAIN FORWARD TO NEW SAVE AREA
+         LR    R13,R1              POINT TO NEW CURRENT SAVE AREA
+         USING WORKAREA,R13
+         MVC   LOCALID,=CL8'WRKCT441'
+         LTR   R2,R2               ANY PARAMETERS SUPPLIED?
+         BZ    EXIT40              NO, BAD PARAMETER LIST
+         ST    R2,PARM9            SAVE PAREMETER LIST ADDRESS
+*
+*         MAIN LOOP - PROCESS NEXT REQUEST
+*
+NEXTRQST L     R3,PARM9            POINT TO PARAMETER LIST
+         LTR   R3,R3               MORE TO DO?
+         BZ    FINISHUP            NO, TIME TO FINISH UP
+         XC    PARMLIST($PRMSIZE),PARMLIST
+         LA    R0,=F'-1'           POINT TO A WORD OF HIGH VALUES
+         ST    R0,PARM7            SET DEFAULT ECT SPEC.
+         LA    R4,PARMLIST         POINT TO LOCAL PLIST AREA
+         LA    R0,$PRMSIZE/4       GET MAXIMUM PLIST WORD COUNT
+REQPRMLP L     R2,0(,R3)           LOAD PLIST ENTRY
+         LA    R1,0(,R2)           ENSURE ADDRESS FORMAT
+         ST    R1,0(,R4)           SAVE IT
+         LTR   R2,R2               LAST PARAMETER?
+         BM    CHKPARMS            YES
+         LA    R3,4(,R3)           POINT TO NEXT PLIST ENTRY
+         LA    R4,4(,R4)           POINT TO NEXT PLIST ENTRY COPY AREA
+         BCT   R0,REQPRMLP         KEEP COPYING PLIST ENTRIES
+CHKPARMS LA    R0,5                GET INITIAL CHECK WORD COUNT
+         LA    R3,PARMLIST         POINT TO PLIST COPY
+CHKPRMLP ICM   R2,15,0(R3)         ZERO ADDRESS SUPPLIED?
+         BZ    EXIT40              YES, SO END THIS REQUEST
+         LA    R3,4(,R3)           NO, POINT TO NEXT PLIST ENTRY
+         BCT   R0,CHKPRMLP         CHECK FIRST SEVERAL PLIST ENTRIES
+         L     R2,PARM1            POINT TO ECODE
+         L     R2,0(,R2)           LOAD ECODE
+         ST    R2,ECODE            SAVE A COPY LOCALLY
+         ICM   R2,14,ECODE         RELOAD THE FIRST 3 BYTES OF ECODE
+         BNZ   EXIT40              INVALID ECODE IF NOT ZERO
+         CLI   ECODE1,EC$EUPDT     UPDATE/CREATE REQUEST?
+         BE    ECODEOK             YES, ECODE IS VALID
+         CLI   ECODE1,EC$ERETR     RETRIEVE/CREATE REQUEST?
+         BE    ECODEOK             YES, ECODE IS VALID
+         CLI   ECODE1,EC$NOIMP     RETRIEVE/NOCREATE REQUEST?
+         BE    ECODEOK             YES, ECODE IS VALID
+         CLI   ECODE1,EC$ELOC      LOCATE ALL REQUEST?
+         BNE   EXIT40              NO, ECODE IS INVALID
+         ICM   R2,15,PARM6         YES, WAS A TOKEN SUPPLIED?
+         BZ    EXIT40              NO, INVALID FOR LOCATE ALL
+ECODEOK  ICM   R2,15,PARM2         HAVE ADDRESS OF NAMEPTR?
+         BZ    EXIT40              NO, INVALID FOR ALL CALL TYPES
+         ICM   R2,15,PARM3         HAVE ADDRESS OF NAMELEN?
+         BZ    EXIT40              NO, INVALID FOR ALL CALL TYPES
+         ICM   R2,15,PARM4         HAVE ADDRESS OF VALUEPTR?
+         BZ    EXIT40              NO, INVALID FOR ALL CALL TYPES
+         ICM   R2,15,PARM5         HAVE ADDRESS OF VALUELEN?
+         BZ    EXIT40              NO, INVALID FOR ALL CALL TYPES
+         ICM   R2,15,PARM9         IS ANOTHER REQUEST CHAINED?
+         BZ    PRMCHKOK            NO, END OF INITIAL PLIST CHECK
+         ICM   R3,15,PARM8         WAS A RETCODE ADDRESS SUPPLIED?
+         BZ    EXIT40              NO, INVALID
+PRMCHKOK DC    0H'0'               END OF INITIAL PLIST CHECK
+*
+*         ACQUIRE ECT TO USE IF NONE WAS SPECIFIED
+*
+         ICM   R7,15,PARM7         POINT TO ECTPARM
+         BZ    EXIT40              A ZERO ECT ADDRESS IS INVALID
+         L     R1,PSAAOLD          POINT TO THE CURRENT ASCB
+         L     R2,ASCBASXB-ASCB(,R1)    AND THEN TO THE ASXB
+         L     R1,ASXBLWA-ASXB(,R2)     AND THEN TO THE LWA
+         L     R3,LWAPECT-LWA(,R1)      AND THEN TO THE ECT
+         L     R2,LWAPSCB-LWA(,R1)      AND ALSO TO THE PSCB
+         L     R2,PSCBUPT-PSCB(,R2)     AND THEN TO THE UPT
+         CLC   =F'-1',0(R7)        DEFAULT ECT REQUESTED?
+         BNE   PARM7OK             NO
+         ST    R3,PARM7            SAVE THE ECT ADDRESS
+*
+*         SET UP THE IKJINIT PARAMETER LIST
+*
+PARM7OK  MVC   ECT@,PARM7          COPY ECT ADDRESS
+         ST    R2,UPT@             SAVE THE UPT ADDRESS
+         LA    R0,ECBAREA          POINT TO THE ECB AREA
+         ST    R0,ECB@             SAVE THE ADDRESS IN THE PLIST
+         LA    R0,UPLIST           POINT TO THE UPDATE PLIST
+         ST    R0,UPLIST@          SAVE THE ADDRESS IN THE PLIST
+*
+*         VERIFY THE CLIST ENVIRONMENT
+*
+REDRIVE  L     R7,ECT@             POINT TO THE ECT
+         USING ECT,R7
+         L     R6,ECTIOWA          POINT TO IOSRL
+         DROP  R7                  (ECT)
+         USING IOSRL,R6
+         L     R8,IOSTELM          POINT TO TOP STACK ELEMENT
+         DROP  R6                  (IOSRL)
+         USING INSTACK,R8
+         TM    INSCODE,INSEXEC     IS A CLIST ACTIVE?
+         BNO   EXIT40              NO, INVALID CALL
+*
+*         LOCATE THE FIRST SYMBOL NAME TABLE
+*
+         SLR   R7,R7               CLEAR FOR INSERT
+         ICM   R7,7,INSADLSD       POINT TO THE LSD
+         USING LSD,R7
+         L     R7,LSDEXEC          POINT TO EXECDATA
+         DROP  R7,R8               (LSD, INSTACK)
+         USING EXECDATA,R7
+         LA    R4,SNTABFST         POINT TO FIRST SNTAB ADDRESS
+         ST    R7,SVLCLED@         SAVE LOCAL EXECDATA BLOCK ADDRESS
+         MVC   SVGLBED@,GEXECDAT   SAVE GLOBAL EXECDATA BLOCK ADDRESS
+         DROP  R7                  (EXECDATA)
+*
+*         DIVERGE IF "LOCATE ALL" REQUEST
+*
+         CLI   ECODE1,EC$ELOC      LOCATE ALL REQUEST?
+         BE    ALLLOCAT            YES
+*
+*         VALIDATE PRESENCE OF VARIABLE NAME
+*
+         L     R2,PARM2            POINT TO NAMEPTR
+         L     R2,0(,R2)           POINT TO NAME
+         LA    R2,0(,R2)           ENSURE ADDRESS FORMAT
+         LTR   R2,R2               WAS AN ACTUAL NAME SUPPLIED?
+         BZ    EXIT40              NO, INVALID
+*
+*         VALIDATE LENGTH OF VARIABLE NAME
+*
+         L     R3,PARM3            POINT TO NAMELEN
+         L     R3,0(,R3)           GET THE LENGTH
+         LTR   R3,R3               IS THE LENGTH POSITIVE?
+         BNP   EXIT36              NO, INVALID
+         CH    R3,=H'252'          IS THE LENGTH TOO LONG?
+         BH    EXIT36              YES, INVALID
+         TITLE ' LOCATE RELEVANT SYMBOL NAME TABLE ELEMENT '
+*
+*  AT THIS STAGE:
+*     R2 = SYMBOL NAME ADDRESS
+*     R3 = SYMBOL NAME LENGTH
+*     R4 = ADDRESS OF POINTER TO THE FIRST SYMBOL NAME TABLE
+*
+         LR    R15,R3              GET THE NAME LENGTH
+         BCTR  R15,0               GET THE NAME LENGTH CODE
+*
+*         CHAIN TO THE NEXT SNTAB
+*
+         USING SNTAB,R4
+LOCSNT   L     R4,SNTABNXT         POINT TO THE NEXT SNTAB
+         LTR   R4,R4               DOES IT EXIST?
+         BZ    LOCNTFND            NO, SYMBOL NOT FOUND
+         LA    R5,SNTELFST         YES, POINT TO FIRST ELEMENT
+*
+*         LOOK AT THE SNTAB ELEMENT
+*
+         USING SNTELEM,R5
+LOCSNTEL CH    R3,SNTLNG           SAME LENGTH AS NAME TO FIND?
+         BNE   LNXTSNTE            NO, IT HAS A DIFFERENT LENGTH
+         EX    R15,NAMECLC         DOES THE NAME MATCH?
+         BE    LGOTSNTE            YES, FOUND IT
+LNXTSNTE TM    SNTFLAGS,SNTLAST    LAST ELEMENT IN SNTAB?
+         BO    LOCSNT              YES, GO GET THE NEXT SNTAB
+         LH    R1,SNTLNG           NO, GET THE NAME'S LENGTH
+         LA    R5,SNTDATA(R1)      POINT TO THE NEXT SNTAB ELEMENT
+         B     LOCSNTEL            GO LOOK AT IT
+         SPACE
+NAMECLC  CLC   SNTDATA(0),0(R2)    <<< EXECUTED >>>
+         SPACE
+*
+*         CHECK FOR A GLOBAL VARIABLE
+*
+LGOTSNTE ST    R5,SVLSNTE@         SAVE LOCAL SNTEL ADDRESS
+         TM    SNTFLAG1,SNTGLOB    GLOBAL ELEMENT?
+         BNO   HAVESNTE            NO, FOUND VARIABLE DETAILS
+         BAL   R14,GLOCATE         YES, FIND THE GLOBAL SNTEL
+         LTR   R15,R15             WAS IT FOUND?
+         BNZ   LOCNTFND            NO, SYMBOL NOT FOUND
+         L     R5,SVGSNTE@         POINT TO FOUND SNTEL ADDRESS
+HAVESNTE L     R6,SNTVLPTR         POINT TO SYMBOL VALUE ELEMENT
+*
+*         DIVERGE AFTER SUCCESSFUL LOCATION IF UPDATE REQUEST
+*
+         CLI   ECODE1,EC$EUPDT     UPDATE/CREATE REQUEST?
+         BE    UPDATE              YES
+*
+*         RETRIEVE VALUE FOR CALLER
+*
+         USING SVTELEM,R6
+         LH    R0,SVTLNG           GET THE VALUE LENGTH
+         LA    R1,SVTDATA          GET THE VALUE ADDRESS
+         L     R2,PARM4            POINT TO VALUEPTR
+         L     R3,PARM5            POINT TO VALUELEN
+         ST    R1,0(,R2)           SET VALUEPTR
+         ST    R0,0(,R3)           SET VALUELEN
+         TM    SNTFLAGS,SNTLABEL   IS THIS SYMBOL A LABEL?
+         BO    EXIT12              YES
+         TM    SNTFLAGS,SNTNOSCN   NON-RESCANABLE SYMBOL?
+         BO    EXIT04              YES
+         TM    SNTFLAGS,SNTEVAL    EVALUATION REQUIRED?
+         BO    EXIT08              YES
+         B     EXIT00              RETURN WITH SUCCESS
+         DROP  R5,R6               (SNTELEM, SVTELEM)
+*
+*         HANDLE UNDEFINED SYMBOL
+*
+LOCNTFND CLI   ECODE1,EC$NOIMP     RETRIEVE/NOCREATE REQUEST?
+         BE    EXIT52              YES, UNDEFINED VARIABLE
+         B     NEWVELEM            GO CREATE NEW VARIABLE
+         TITLE ' UPDATE VARIABLE VALUE '
+         USING SNTELEM,R5
+         USING SVTELEM,R6
+         USING EXECDATA,R7
+UPDATE   L     R7,SVLCLED@         POINT TO LOCAL EXECDATA BLOCK
+         C     R5,SVLSNTE@         CORRECT ONE?
+         BE    UPDATE01            YES
+         L     R7,SVGLBED@         NO, USE THE ONE FOR GLOBALS
+UPDATE01 TM    SNTFLAGS,SNTNAUTH   SYSTEM/CONTROL VARIABLE?
+         BO    EXIT16              YES, UPDATE NOT ALLOWED
+         TM    SNTFLAGS,SNTLABEL   IS THIS SYMBOL A LABEL?
+         BO    EXIT12              YES, UPDATE NOT ALLOWED
+         LA    R2,SVTABFST         POINT TO FIRST SVTAB ADDRESS
+         DROP  R5                  (SNTELEM)
+*
+*         SEARCH FOR SYMBOL VALUE TABLE IN WHICH SVTEL RESIDES
+*
+         USING SVTAB,R2
+UPDLPSVT L     R2,SVTABNXT         POINT TO NEXT SVTAB
+         LTR   R2,R2               IS THERE A NEXT ONE?
+         BZ    EXIT40              NO, DATA CORRUPTION IT SEEMS
+         CLR   R6,R2               IS ELEMENT ADDRESS LOWER?
+         BNH   UPDLPSVT            YES, SO CAN'T BE IN THIS SVTAB
+         L     R15,SVTABLNG        GET THE SIZE OF THIS SVTAB
+         AR    R15,R2              POINT PAST THIS SVTAB
+         CLR   R6,R15              IS THIS ALSO PAST THE ELEMENT?
+         BNL   UPDLPSVT            NO, SO CAN'T BE IN THIS SVTAB
+*
+*         DETERMINE IF THE NEW DATA WILL FIT IN EXISTING SVTELEM
+*
+         L     R4,PARM4            POINT TO VALUEPTR
+         L     R5,PARM5            POINT TO VALUELEN
+         CLC   =F'32767',0(R5)     IS THE VALUE LENGTH VALID?
+         BL    EXIT36              NO, REJECT THE OPERATION
+         L     R4,0(,R4)           POINT TO VALUE
+         L     R5,0(,R5)           LOAD VALUELEN
+         CH    R5,SVTORIG          WILL IT FIT?
+         BH    NEWVELEM            NO, NEED A NEW VALUE ELEMENT
+*
+*         UPDATE THE EXISTING VALUE ELEMENT
+*
+         LH    R0,SVTLNG           GET THE OLD LENGTH
+         SR    R0,R5               SUBTRACT THE NEW LENGTH
+         A     R0,SVTABFRE         GET NEW SNTAB "GAS" TOTAL
+         ST    R0,SVTABFRE         SAVE IT
+         LA    R0,SVTDATA          GET THE TARGET ADDRESS
+         LH    R1,SVTORIG          GET THE TARGET LENGTH
+         STH   R5,SVTLNG           SET THE NEW VALUE LENGTH
+         MVCL  R0,R4               UPDATE THE DATA (WITH NUL PAD)
+         B     EXIT00              VARIABLE SUCCESSFULLY UPDATED
+*
+*         UPDATE THE SYMBOL VALUE - CREATING IT IF NECESSARY
+*
+NEWVELEM LM    R2,R5,PARM2         POINT TO UPDATE PLIST ITEMS
+         MVC   LCVALPTR,0(R2)      SUPPLY LOCATE VALUE ADDRESS
+         MVC   LCVALLEN,0(R3)         AND THE ADDRESS OF ITS LENGTH
+         MVC   UPVALPTR,0(R4)      SUPPLY UPDATE VALUE ADDRESS
+         MVC   UPVALLEN,0(R5)         AND THE ADDRESS OF ITS LENGTH
+         LA    R1,UPDTPL           POINT TO PARAMETER LIST
+         L     R15,=V(IKJINIT)     POINT TO ROUTINE ENTRY POINT
+         BALR  R14,R15             UPDATE VARIABLE
+         CH    R15,=H'300'         PROTECTED VARIABLE?
+         BE    EXIT16              YES, REPORT WITH RC=16
+         CH    R15,=H'16'          VIRTUAL STORAGE PROBLEM?
+         BE    EXIT32              YES, REPORT WITH RC=32
+         CH    R15,=H'940'         IS NAME TOO LONG?
+         BE    EXIT36              YES, REPORT WITH RC=36
+         CH    R15,=H'904'         WAS NAME NOT FOUND?
+         BE    EXIT52              YES, REPORT WITH RC=52
+         LTR   R15,R15             ANY OTHER PROBLEM?
+         BNZ   SETRC               YES, FEED BACK THE CODE
+         CLI   ECODE1,EC$ERETR     RETRIEVE/CREATE REQUEST?
+         BE    REDRIVE             YES, GO REDRIVE THE REQUEST
+         B     EXIT00              VARIABLE SUCCESSFULLY UPDATED
+         TITLE ' LOCATE GLOBAL VARIABLE '
+*
+*  A LOCAL VARIABLE SYMBOL NAME TABLE ELEMENT OF INTEREST HAS BEEN
+*  FOUND, BUT IT HAS BEEN DISCOVERED TO BE A GLOBAL VARIABLE.  NOW
+*  IN ORDER TO ASCERTAIN ITS VALUE, ITS GLOBAL NAME MUST BE LOCATED
+*  IN THE SYNBOL NAME TABLE.  THE GLOBAL NAME RETRIEVED FROM THE
+*  FIRST 4 BYTES OF THE LOCAL SNT ELEMENT MUST BE SEARCHED FOR IN
+*  THE ORIGINAL OR OUTER-MOST SNT CHAIN OF A NESTED CLIST EXECUTION
+*  ENVIRONMENT.  IN PRACTICE, THE GLOBAL VARIABLE "NAMES" ARE SIMPLY
+*  FULLWORD VALUES OF THE GLOBAL VARIABLE SEQUENTIAL NUMBER.
+*
+*  ON ENTRY:
+*     SVLSNTE@ POINTS TO THE LOCAL SNT ELEMENT WITH SNTGLOB SET.
+*
+*  ON EXIT:
+*     R15 = 0  =>  SVGSNTE@ POINTS TO THE GLOBAL SNT ELEMENT.
+*     R15 = 4  =>  THE GLOBAL VARIABLE COULD NOT BE FOUND.
+*
+         SPACE
+GLOCATE  STM   R14,R12,12(R13)     SAVE REGISTERS
+         L     R5,SVLSNTE@         POINT TO LOCAL SNTEL
+         USING SNTELEM,R5
+         XC    SVGSNTE@,SVGSNTE@   RESET GLOBAL SNTEL ADDRESS
+         L     R6,SNTGVAL          GET GLOBAL VARIABLE "NAME"
+         L     R7,SVGLBED@         POINT TO GLOBAL EXECDATA BLOCK
+         USING EXECDATA,R7
+         LA    R4,SNTABFST         POINT TO FIRST SNTAB ADDRESS
+         DROP  R7                  (EXECDATA)
+*
+*         CHAIN TO THE NEXT SNTAB
+*
+         USING SNTAB,R4
+GLBSNT   L     R4,SNTABNXT         POINT TO THE NEXT SNTAB
+         LTR   R4,R4               DOES IT EXIST?
+         BZ    GLBNTFND            NO, SYMBOL NOT FOUND
+         LA    R5,SNTELFST         YES, POINT TO FIRST ELEMENT
+*
+*         LOOK AT THE SNTAB ELEMENT
+*
+GLBSNTEL CLC   =H'4',SNTLNG        SAME LENGTH AS NAME TO FIND?
+         BNE   GNXTSNTE            NO, IT HAS A DIFFERENT LENGTH
+         CLM   R6,15,SNTDATA       DOES THE "NAME" MATCH?
+         BE    GGOTSNTE            YES, FOUND IT
+GNXTSNTE TM    SNTFLAGS,SNTLAST    LAST ELEMENT IN SNTAB?
+         BO    GLBSNT              YES, GO GET THE NEXT SNTAB
+         LH    R1,SNTLNG           NO, GET THE NAME'S LENGTH
+         LA    R5,SNTDATA(R1)      POINT TO THE NEXT SNTAB ELEMENT
+         B     GLBSNTEL            GO LOOK AT IT
+         DROP  R4,R5               (SNTAB, SNTELEM)
+*
+*         RETURN AFTER FINDING THE GLOBAL VARIABLE
+*
+GGOTSNTE ST    R5,SVGSNTE@         SAVE GLOBAL VARIABLE SNTEL ADDRESS
+         LM    R14,R12,12(R13)     RESTORE REGISTERS
+         SLR   R15,R15             SET RC=0
+         BR    R14                 RETURN TO CALLER
+*
+*         RETURN AFTER NOT FINDING THE GLOBAL VARIABLE
+*
+GLBNTFND LM    R14,R12,12(R13)     RESTORE REGISTERS
+         LA    R15,4               SET RC=4
+         BR    R14                 RETURN TO CALLER
+         TITLE ' RETRIEVE EACH SYMBOL IN TURN '
+*
+*  AT THIS STAGE:
+*     R4 = ADDRESS OF POINTER TO THE FIRST SYMBOL NAME TABLE
+*
+ALLLOCAT L     R6,PARM6            POINT TO THE TOKEN
+         ICM   R7,15,0(R6)         GET THE TOKEN
+*
+*         CHAIN TO THE NEXT SNTAB
+*
+         USING SNTAB,R4
+ALLSNT   L     R4,SNTABNXT         POINT TO THE NEXT SNTAB
+         LTR   R4,R4               DOES IT EXIST?
+         BZ    ALLNTFND            NO, END OF SNTAB CHAIN
+         LA    R5,SNTELFST         YES, POINT TO FIRST ELEMENT
+*
+*         LOOK AT THE SNTAB ELEMENT
+*
+         USING SNTELEM,R5
+ALLSNTEL LTR   R7,R7               RETRIEVE THIS SYMBOL?
+         BZ    ALLLOCOK            YES
+         CLR   R5,R7               FOUND SYMBOL FROM LAST TIME?
+         BNE   ALLLNEXT            NO, KEEP LOOKING
+         SR    R7,R7
+ALLLNEXT TM    SNTFLAGS,SNTLAST    LAST ELEMENT IN SNTAB?
+         BO    ALLSNT              YES, GO GET THE NEXT SNTAB
+         LH    R1,SNTLNG           NO, GET THE NAME'S LENGTH
+         LA    R5,SNTDATA(R1)      POINT TO THE NEXT SNTAB ELEMENT
+         B     ALLSNTEL            GO LOOK AT IT
+*
+*         RETRIEVE SYMBOL NAME DETAILS FOR CALLER
+*
+ALLLOCOK L     R2,PARM2            POINT TO NAMEPTR
+         L     R3,PARM3            POINT TO NAMELEN
+         LH    R0,SNTLNG           GET THE SYMBOL NAME LENGTH
+         LA    R1,SNTDATA          GET THE SYMBOL NAME ADDRESS
+         CLI   SNTLNG+1,4          GLOBAL VARIABLE KEY NAME LENGTH?
+         BNE   ALLLNOTG            NO, NOT GLOBAL VARIABLE VALUE ENTRY
+         CLI   0(R1),C'$'          GLOBAL VARIABLE VALUE ENTRY?
+         BL    ALLLNEXT            YES, DO NOT RETURN IT
+ALLLNOTG ST    R5,0(,R6)           UPDATE THE TOKEN FOR NEXT TIME
+         ST    R0,0(,R3)           UPDATE NAMELEN
+         ST    R1,0(,R2)           UPDATE NAMEPTR
+*
+*         RETRIEVE SYMBOL VALUE DETAILS FOR CALLER
+*
+         ST    R5,SVLSNTE@         SAVE LOCAL SNTEL ADDRESS
+         L     R2,PARM4            POINT TO VALUEPTR
+         L     R3,PARM5            POINT TO VALUELEN
+         ST    R7,0(,R2)           RESET VALUEPTR
+         ST    R7,0(,R3)           RESET VALUELEN
+         TM    SNTFLAG1,SNTGLOB    GLOBAL ELEMENT?
+         BNO   ALLLRITE            NO, FOUND VARIABLE DETAILS
+         BAL   R14,GLOCATE         YES, FIND THE GLOBAL SNTEL
+         LTR   R15,R15             WAS IT FOUND?
+         BNZ   EXIT52              NO, BIG TROUBLE SOMEWHERE
+         L     R5,SVGSNTE@         POINT TO FOUND SNTEL ADDRESS
+ALLLRITE L     R6,SNTVLPTR         POINT TO SYMBOL VALUE ELEMENT
+         USING SVTELEM,R6
+         LH    R0,SVTLNG           GET THE VALUE LENGTH
+         LA    R1,SVTDATA          GET THE VALUE ADDRESS
+         ST    R1,0(,R2)           SET VALUEPTR
+         ST    R0,0(,R3)           SET VALUELEN
+         TM    SNTFLAGS,SNTLABEL   IS THIS SYMBOL A LABEL?
+         BO    EXIT12              YES
+         TM    SNTFLAGS,SNTNOSCN   NON-RESCANABLE SYMBOL?
+         BO    EXIT04              YES
+         TM    SNTFLAGS,SNTEVAL    EVALUATION REQUIRED?
+         BO    EXIT08              YES
+         B     EXIT00              RETURN WITH SUCCESS
+         DROP  R4,R5,R6            (SNTAB, SNTELEM, SVTELEM)
+*
+*         HANDLE REACHING THE END OF THE SNTAB CHAIN
+*
+ALLNTFND LTR   R7,R7               RETURNING VERY NEXT SYMBOL?
+         BNZ   EXIT40              NO, CORRUPT TOKEN (BAD PLIST)
+         LM    R2,R5,PARM2         POINT TO NAME/VALUE DESCRIPTORS
+         ST    R7,0(,R2)           RESET NAMEPTR
+         ST    R7,0(,R3)           RESET NAMELEN
+         ST    R7,0(,R4)           RESET VALUEPTR
+         ST    R7,0(,R5)           RESET VALUELEN
+         B     EXIT20              NO MORE VARIABLES TO RETURN
+         TITLE ' TERMINATION AND EXIT '
+*
+*         REQUEST TERMINATION
+*
+EXIT52   LA    R15,52              RC=52 - UNDEFINED VARIABLE
+         B     SETRC
+EXIT40   LA    R15,40              RC=40 - BAD ENVIRONMENT OR PLIST
+         B     SETRC
+EXIT36   LA    R15,36              RC=36 - INVALID NAME LENGTH
+         B     SETRC
+EXIT32   LA    R15,32              RC=32 - GETMAIN/FREEMAIN ERROR
+         B     SETRC
+****24   LA    R15,24              RC=24 - SYMBOL IS A PROCEDURE NAME
+****     B     SETRC
+EXIT20   LA    R15,20              RC=20 - NO MORE VARIABLES TO RETURN
+         B     SETRC
+EXIT16   LA    R15,16              RC=16 - CANNOT UPDATE SYSTEM SYMBOL
+         B     SETRC
+EXIT12   LA    R15,12              RC=12 - SYMBOL IS A LABEL
+         B     SETRC
+EXIT08   LA    R15,08              RC=08 - SYMBOL REQUIRES EVALUATION
+         B     SETRC
+EXIT04   LA    R15,04              RC=04 - SYMBOL MUST NOT BE RESCANNED
+         B     SETRC
+EXIT00   SR    R15,R15             RC=00 - SUCCESS
+SETRC    ICM   R0,15,GPR15RC       HAD A PREVIOUS NON-ZERO RETURN CODE?
+         BNZ   RCSET               YES, DO NOT OVERLAY IT
+         ST    R15,GPR15RC         NO, CLEAR TO SET RETURN CODE NOW
+RCSET    ICM   R8,15,PARM8         POINT TO SUPPLIED RETCODE AREA
+         BZ    NEXTRQST            THERE IS NONE SO ON TO NEXT REQUEST
+         ST    R15,0(,R8)          SET RETURN CODE FOR THIS REQUEST
+         B     NEXTRQST            ON TO NEXT REQUEST
+*
+*         INVOCATION TERMINATION
+*
+FINISHUP L     R2,GPR15RC          PRESERVE PROGRAM RETURN CODE
+         ST    R2,LOCALID          FLAG AREA NOW INACTIVE
+         LR    R1,R13              POINT TO WORKING STORAGE
+         LA    R0,$WKSIZE          GET WORKING STORAGE SIZE
+         L     R13,4(,R13)         POINT TO CALLER'S SAVE AREA
+         FREEMAIN RU,LV=(0),A=(1)  FREE WORKING STORAGE
+         L     R14,12(,R13)        RESTORE RETURN ADDRESS
+         LR    R15,R2              SET PROGRAM RETURN CODE
+         LM    R0,R12,20(R13)      RESTORE REMAINING REGISTERS
+         BR    R14                 RETURN TO CALLER
+         DROP  R12,R13             (IKJCT441, WORKAREA)
+         TITLE ' CONSTANTS AND LITERALS '
+         LTORG
+         DC    0D'0'               END OF CSECT
+         DROP  0                   (PSA)
+         SPACE
+         TITLE ' WORKING STORAGE '
+WORKAREA DSECT
+         DS    18F                 REGISTER SAVE AREA
+         SPACE
+LOCALID  DS    CL8                 STORAGE AREA IDENTIFIER
+         SPACE
+PARMLIST DS    0F                  PARAMETER LIST SAVE AREA
+PARM1    DS    F                   POINTER TO SUPPLIED ECODE
+PARM2    DS    F                   POINTER TO SUPPLIED NAMEPTR
+PARM3    DS    F                   POINTER TO SUPPLIED NAMELEN
+PARM4    DS    F                   POINTER TO SUPPLIED VALUEPTR
+PARM5    DS    F                   POINTER TO SUPPLIED VALUELEN
+PARM6    DS    F                   POINTER TO SUPPLIED TOKEN
+PARM7    DS    F                   POINTER TO SUPPLIED ECTPARM
+PARM8    DS    F                   POINTER TO SUPPLIED RETCODE
+PARM9    DS    F                   POINTER TO SUPPLIED NEXTLIST
+$PRMSIZE EQU   *-PARMLIST          MAXIMUM SIZE OF PARAMETER LIST
+         SPACE
+ECODE    DS    F                   LOCAL COPY OF ENTRY CODE
+ECODE1   EQU   ECODE+3,1           LOW-ORDER ENTRY CODE BYTE
+         SPACE
+EC$ERETR EQU   1                   RETRIEVE/CREATE REQUEST
+EC$EUPDT EQU   2                   UPDATE/CREATE REQUEST
+EC$ELOC  EQU   3                   LOCATE ALL REQUEST
+EC$NOIMP EQU   18                  RETRIEVE/NOCREATE REQUEST
+         SPACE
+GPR15RC  DS    F                   RETURN CODE VALUE FOR GPR15
+         SPACE
+SVLCLED@ DS    A                   LOCAL EXECDATA ADDRESS SAVE AREA
+SVGLBED@ DS    A                   GLOBAL EXECDATA ADDRESS SAVE AREA
+SVLSNTE@ DS    A                   LOCAL SNTEL ADDRESS SAVE AREA
+SVGSNTE@ DS    A                   GLOBAL SNTEL ADDRESS SAVE AREA
+         SPACE
+UPDTPL   DS    0F                  IKJINIT / IKJUPDT  PARAMETER  LIST
+UPT@     DS    A                   UPT ADDRESS
+ECT@     DS    A                   ECT ADDRESS
+ECB@     DS    A                   ECB ADDRESS
+UPLIST@  DS    A                   UPDATE PARAMETER LIST ADDRESS
+         SPACE
+ECBAREA  DS    F                   ECB
+         SPACE
+UPLIST   EQU   *,16                UPDATE PARAMETER LIST
+LCVALPTR DS    A                   -> LOCATE VALUE
+LCVALLEN DS    A                   -> LOCATE VALUE LENGTH (FULLWORD)
+UPVALPTR DS    A                   -> UPDATE VALUE
+UPVALLEN DS    A                   -> UPDATE VALUE LENGTH (FULLWORD)
+         SPACE
+WORKEND  DS    0D                  END OF DSECT
+$WKSIZE  EQU   WORKEND-WORKAREA
+         SPACE
+         END   IKJCT441
+/*
+//*
+//STEP03  EXEC PGM=IEBGENER
+//SYSPRINT DD  SYSOUT=*
+//SYSUT1   DD  *
+  IDENTIFY IKJCT441('ZP60038')
+++MACUPD(SGIKJ441) DISTLIB(AGENLIB).
+./ CHANGE NAME=SGIKJ441
+.* CHANGES = ZP60038 ADD IKJCT441 CLIST SYMBOL API TO IKJPTGT  @ZP60038 00096900
+         PUNCH '    ORDER IKJCT436,IKJCT441 '                  @ZP60038 00770000
+         PUNCH '    INCLUDE AOST4(IKJRBBMC,IKJCT441)'          @ZP60038 00807000
+         PUNCH '    ALIAS IKJGETL,IKJPUTL,IKJSTCK,IKJCT441'    @ZP60038 00830000
+/*
+//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
+//SYSIN    DD  DUMMY
+//*
+//STEP04  EXEC SMPREC,WORK='SYSALLDA'
+//SMPPTFIN DD  DSN=&&SMPMCS,DISP=(OLD,DELETE)
+//SMPCNTL  DD  *
+  RECEIVE
+          SELECT(ZP60038)
+          .
+/*
+//*
+//STEP05CK EXEC SMPAPP,WORK='SYSALLDA'
+//SMPCNTL  DD  *
+  APPLY
+        SELECT(ZP60038)
+        CHECK
+        .
+/*
+//*
+//STEP05  EXEC SMPAPP,COND=(0,NE),WORK='SYSALLDA'
+//SMPCNTL  DD  *
+  APPLY
+        SELECT(ZP60038)
+        DIS(WRITE)
+        .
+//*
+//
