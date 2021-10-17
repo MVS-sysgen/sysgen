@@ -1,1 +1,0 @@
-sh ./submit.sh ../SOFTWARE/MDDIAG8/01_install_mddiag8.jcl

@@ -1,3 +1,0 @@
-# Installing KLINGON
-sh bash ../SOFTWARE/KLINGON/install.sh > ../SOFTWARE/KLINGON/01_klingon_files.jcl
-exec ../automate.rexx ../SOFTWARE/KLINGON/install.txt hercules.log -d &&

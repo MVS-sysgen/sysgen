@@ -1,3 +1,0 @@
-# Installing EZASMI TCP/IP for MVS 3.8J
-sh bash ../SOFTWARE/EZASMI/01_build_jobstream.sh > ../SOFTWARE/EZASMI/01_install_ezamsi.jcl
-sh ./submit.sh ../SOFTWARE/EZASMI/01_install_ezamsi.jcl

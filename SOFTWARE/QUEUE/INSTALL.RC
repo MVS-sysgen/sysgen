@@ -1,4 +1,0 @@
-* Installing QUEUE
-* Launching Automation REXX script
-sh bash ../SOFTWARE/QUEUE/install.sh
-exec ../automate.rexx ../SOFTWARE/QUEUE/install.txt hercules.log -d &&

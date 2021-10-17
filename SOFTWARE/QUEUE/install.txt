@@ -1,4 +1,0 @@
-# QUEUE Install
-/$CA
-$HASP000 OK;sh ./submit.sh ../SOFTWARE/QUEUE/01_install_queue.jcl
-/*02 IEC301A S JOB QUEUE1   DSNAME SYS1.VSAM.MASTER.CATALOG;/r 3,sysprog
