@@ -9,3 +9,4 @@ sysgen.log
 build/
 .step
 p*.txt
+tape/stage1.het
