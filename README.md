@@ -113,14 +113,16 @@ You can add a admin user using the `--username` flag. To add more users edit the
 
 ## Changes From Jay Moseley Sysgen
 
-* Edited `create.dasd.sh`: removed read to ask for compression. Always compress now.
-* Edited `condcode.rexx`: returns non-zero if any jobs have a return code greater than the third argument (defaults to 0004).
-* Edited `sysgen01.jcl`, `smp1.cnf`, `smp2.cnf`, and `sysgen.cnf` to change 3215 console to 3215-C for automation
-* Added `SYSGEN` alias to `UCPUB001` for software installs in `jcl/mvs01.jcl`
-* Modified `jcl/sysgen05.jcl` changing `,DYNAMNBR=20` to `,DYNAMNBR=64`
-* Added `SYS2.PARMLIB` for 3rd party configurations (NJE38, FTPD, etc)
+* Added usermod `SYZJ2001` which add job cc to notification
+* Added RAKF, BREXX
+* Installed usermod `DYNPROC` which allows for dynamic proclibs
+* Seperated out usermods to their own JCL to better automation control
+* Added `S NET` and changed JES2 startup parms in `sys1.parmlib(COMMND00)`
+* Automated startup using HAO hercules
+* Adds version to NETSOL
+* Added `SYS1.PARMLIB(RELEASE)` which contains release information
 
-and many more
+And many more. See the branch `original` which tracked changes to the original sysgen
 
 ## Info
 

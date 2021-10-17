@@ -99,7 +99,7 @@ class sysgen:
                  install_path = "MVSCE/DASD"
                 ):
 
-        self.print(logo, color=Fore.BLUE)
+        self.print_logo()
 
         self.herccmd = hercbin
         logging.debug("herccmd set to {}".format(hercbin))
@@ -320,6 +320,9 @@ class sysgen:
 
         self.print("ERROR - Hercules Exited Unexpectedly", color=Fore.RED)
         os._exit(1)
+
+    def print_logo(self):
+        print(Style.BRIGHT+ + Fore.BLUE + logo, flush=True)
 
     def print(self, text='', color=Fore.WHITE):
         print(Style.BRIGHT+ "[+] " + color + text, flush=True)
