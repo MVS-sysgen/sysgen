@@ -1685,9 +1685,9 @@ class sysgen:
                     groups = ' '
                     admin = False
                     group = "USER"
-                    if l[3].upper() == 'OPER':
+                    if len(l) > 3 and l[3].upper() == 'OPER':
                         oper = "Y"
-                    if  l[7].upper() == 'ADMIN':
+                    if len(l) > 7 and l[7].upper() == 'ADMIN':
                         admin = True
                         groups = "*"
                         group = "ADMIN"
