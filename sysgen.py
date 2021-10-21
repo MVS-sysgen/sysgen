@@ -2220,8 +2220,8 @@ def main():
                         epilog="Based on the Jay Moseley sysgen",
                         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    arg_parser.add_argument("--nobrexx", help="Do not install brexx (this will also prevent RAKF from installing)", action="store_true")
-    arg_parser.add_argument("--norakf", help="Do not install RAKF", action="store_true")
+    arg_parser.add_argument("--no-brexx", help="Do not install brexx (this will also prevent RAKF from installing)", action="store_true")
+    arg_parser.add_argument("--no-rakf", help="Do not install RAKF", action="store_true")
     arg_parser.add_argument("--release", help="This makes a release of MVS/CE", action="store_true")
     arg_parser.add_argument('-l', "--list", help="List all the steps and substeps", action="store_true")
     arg_parser.add_argument('--step', help="Restart sysgen from this step. The install will continue from here. Use --list to get a list of all steps/substeps.", choices=main_steps, default=False)
