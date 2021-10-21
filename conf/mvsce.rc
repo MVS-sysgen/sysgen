@@ -1,4 +1,6 @@
 * Starting MVS/CE
+facility enable HERC_TCPIP_EXTENSION
+facility enable HERC_TCPIP_PROB_STATE
 IPL 150
 hao tgt HHC00010A Enter input for console 0:0009
 hao cmd /
