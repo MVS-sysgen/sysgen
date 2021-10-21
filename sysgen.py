@@ -54,6 +54,21 @@ logo = '''
   ==============================================================
 '''
 
+release_readme = '''
+# MVS Community Edition
+Release: {codename}
+Version: {version}
+
+To run MVS/CE run the script `bash start_mvs.sh` and connect your tn3270 client
+to localhost (127.0.0.1) on port 3270 (e.g. `x3270 localhost:3270`)
+
+Users:
+
+{users}
+
+For more information see: https://github.com/MVS-sysgen/sysgen
+'''
+
 reply_num = 0
 
 init(autoreset=True)
@@ -96,7 +111,10 @@ class sysgen:
                  profiles=False,
                  keeptemp=False,
                  keepbackup=False,
-                 install_path = "MVSCE/DASD"
+                 release=False,
+                 install_path = "MVSCE/DASD",
+                 no_brexx = False,
+                 no_rakf = False
                 ):
 
         self.print_logo()
@@ -112,9 +130,20 @@ class sysgen:
         self.profiles = profiles
         self.keeptemp = keeptemp
         self.keepbackup = keepbackup
+        self.release = release
 
         self.path = Path(running_folder+install_path)
         self.timeout = timeout
+
+        self.git_hash = ''
+        self.step = ''
+        self.substep = ''
+
+        self.no_rakf = no_rakf
+        self.no_brexx = no_brexx
+
+        if no_brexx:
+            self.no_rakf = True
 
         if self.version:
             logging.debug("Version set to {}".format(version))
@@ -137,11 +166,23 @@ class sysgen:
         if self.timeout:
             logging.debug("Timeout set to {}".format(timeout))
 
+        if self.release:
+            logging.debug("Release Enabled")
+
         try:
             os.remove('prt00e.txt')
             logging.debug('Removed prt00e.txt')
         except OSError:
             pass
+
+        if self.no_brexx:
+            self.print("BREXX Install disabled")
+            logging.debug("BREXX install disabled")
+
+        if self.no_no_rakf:
+            self.print("RAKF Install disabled")
+            logging.debug("RAKF install disabled")
+
         #self.print("Creating MVSCE folder if it does not exist")
         Path(running_folder+"MVSCE").mkdir(parents=True, exist_ok=True)
         Path(running_folder+"backup").mkdir(parents=True, exist_ok=True)
@@ -150,47 +191,10 @@ class sysgen:
         self.print("Reading config file: {}".format(running_folder+config))
         self.read_configs(running_folder+config)
         self.hercproc = False
-        # self.print("Starting Hercules")
 
-        # self.hercproc = subprocess.Popen([self.herccmd, '--externalgui'],
-        #                   stdin=subprocess.PIPE,
-        #                   stdout=subprocess.PIPE,
-        #                   stderr=subprocess.PIPE,
-        #                   universal_newlines=True)
-
+        self.set_version()
         self.stderr_q = queue.Queue()
         self.stdout_q = queue.Queue()
-        self.step = ''
-        self.substep = ''
-        # self.printer_q = queue.Queue()
-
-        #self.start_threads()
-
-        # self.rc = self.hercproc.poll()
-        # if self.rc is not None:
-        #     raise("Unable to start hercules")
-
-        # while True:
-        #     try:
-        #         line = self.stdout_q.get(False)
-        #         #print( line.decode().strip())
-        #         if "HHC01413I" in line:
-        #             if line.split(' ')[3][0] != '4':
-        #                 raise 'Hercules version 4.4+ required'
-        #             else:
-        #                 self.print("Using {}".format( line.strip()[10:]), color=Fore.GREEN)
-
-        #         if "HHC01541I" in line:
-        #             break
-
-        #         #logging.debug(line.strip())
-        #     except queue.Empty:
-        #         continue
-
-        # self.print("Hercules launched")
-        # self.set_configs('generic')
-        # #self.write_logs()
-        # self.print("Hercules Initialization Complete")
 
     def install(self, step, substep):
 
@@ -234,7 +238,8 @@ class sysgen:
                 step = "step_08_rakf"
 
             if step == 'step_08_rakf':
-                self.step_08_rakf()
+                if not self.no_rakf:
+                    self.step_08_rakf()
                 step = "step_09_cleanup"
 
             if step == 'step_09_cleanup':
@@ -1250,39 +1255,28 @@ class sysgen:
         if self.skip_steps:
             self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
 
-        git_hash = ''
-        try:
-            git_query_path = subprocess.check_output(["which", "git"]).strip()
-            version = subprocess.check_output([git_query_path, 'rev-parse', '--short', 'HEAD'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).decode('ascii').strip()
-            git_hash = subprocess.check_output([git_query_path, 'rev-parse', 'HEAD'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).decode('ascii').strip()
-        except:
-            version = VERSION
-
-        if self.version:
-            version = self.version
-
-        netsol_version = "{:7.7}".format(version)
+        netsol_version = "{:7.7}".format(self.version)
 
         now = datetime.now()
 
         self.print('Setting version to {}'.format(netsol_version))
 
         release = "DISTRIB_ID=MVSCE\nDISTRIB_RELEASE={version}\nDISTRIB_CODENAME=\"{codename}\"\nDISTRIB_DESCRIPTION=\"{desc}\"\nDISTRIB_DATE=\"{date}\"\n".format(
-                    version=version, date=now.strftime("%x"), codename=CODENAME, desc="MVSCE {}".format(version))
+                    version=self.version, date=now.strftime("%x"), codename=CODENAME, desc="MVSCE {}".format(self.version))
 
         temp_jcl = open("temp/sysgen05a.jcl", 'w')
 
         with open("jcl/sysgen05a.jcl.template", 'r') as f:
             for line in f.readlines():
                 if "@VERSN@" in line:
-                    if git_hash and not self.version:
+                    if self.git_hash and not self.version:
                         temp_jcl.write(line.replace('@VERSN@', netsol_version))
                     else:
                         temp_jcl.write(line.replace('rev: @VERSN@', 'ver: {}'.format(netsol_version)))
                 elif "@replaceme@" in line:
                     temp_jcl.write(release)
-                    if git_hash:
-                        temp_jcl.write("DISTRIB_HASH={}".format(git_hash))
+                    if self.git_hash:
+                        temp_jcl.write("DISTRIB_HASH={}".format(self.git_hash))
 
                 else:
                     temp_jcl.write(line)
@@ -1503,7 +1497,7 @@ class sysgen:
             self.add_users()
             start = "brexx"
 
-        if start == 'brexx':
+        if start == 'brexx' and not self.no_brexx:
             self.brexx()
 
         self.print("Customization Complete",color=Fore.GREEN)
@@ -1681,7 +1675,7 @@ class sysgen:
             rakf_line = "{user:7.7}  {group:8.8}{groups:1}{password:8.8} {oper:1}\n"
             with open(self.users, 'r') as mvsusers:
                 for line in mvsusers.readlines():
-                    if "#" in line[0]:
+                    if "*" in line[0]:
                         # comment skipped
                         continue
                     l = line.strip().split()
@@ -1761,6 +1755,19 @@ class sysgen:
             outfolder, folder
             ]
         subprocess.check_call(args, stdout=subprocess.DEVNULL)
+
+    def set_version(self):
+        try:
+            git_query_path = subprocess.check_output(["which", "git"]).strip()
+            version = subprocess.check_output([git_query_path, 'rev-parse', '--short', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()
+            self.git_hash = subprocess.check_output([git_query_path, 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()
+        except:
+            version = VERSION
+
+        if not self.version:
+            self.version = version
+        logging.debug("Version: {}".format(self.version))
+        logging.debug("GIT Hash: {}".format(self.git_hash))
 
     def restore_dasd(self, step):
         logging.debug("Restoring DASD, from step: {}".format(step))
@@ -1979,11 +1986,36 @@ class sysgen:
 
         self.finalize()
 
+        v = self.git_hash
+        if not self.git_hash:
+            v = self.version
+        with open('conf/herclogo.template', 'r') as infile:
+            with open('MVSCE/herclogo.txt', 'w') as outfile:
+                for i in infile.readlines():
+                    outfile.write(i.replace("@@@@@VERSION@@@@@",v))
+
         Path(running_folder+"MVSCE/conf").mkdir(parents=True, exist_ok=True)
         shutil.copy(Path('conf/local.cnf').resolve(),Path(running_folder+"MVSCE/conf").resolve())
         shutil.copy(Path('conf/mvsce.rc').resolve(),Path(running_folder+"MVSCE/conf").resolve())
         Path(running_folder+"MVSCE/printers").mkdir(parents=True, exist_ok=True)
         Path(running_folder+"MVSCE/punchcards").mkdir(parents=True, exist_ok=True)
+
+
+        up = "| {:9} | {:8}|\n"
+
+        with open("temp/rakf_users.txt", 'r') as rakf_users:
+            users = "| Username  | Password |\n|:---------:|:--------:|\n"
+            prev = ''
+            for u in rakf_users.readlines():
+                if len(u.split()) > 0: # skip blank lines
+                    un = u.split()[0]
+                    pw = u.strip()[18:-1]
+                    if un != prev:
+                        users += up.format(un,pw)
+                    prev = un
+
+        with open("MVSCE/README.md", 'w') as readme:
+            readme.write(release_readme.format(codename=CODENAME,version=self.version,users=users))
 
         self.set_step(False,False)
         os.remove(".step")
@@ -2005,10 +2037,19 @@ class sysgen:
 
         self.print("Cleanup Complete",color=Fore.GREEN)
 
-        self.backup_dasd("MVSCE.backup",path="",folder="MVSCE")
+        if self.release:
+            self.backup_dasd("MVSCE.release.{}".format(self.version),path="",folder="MVSCE")
 
     def finalize(self):
-        self.restore_dasd("32_RAKF")
+        if self.no_brexx:
+            self.restore_dasd("30_MVS02")
+
+        if not self.no_brexx:
+            self.restore_dasd("31_BREXX")
+
+        if not self.no_rakf:
+            self.restore_dasd("32_RAKF")
+
         self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True)
         self.submit_file('jcl/finalize.jcl')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
@@ -2181,9 +2222,10 @@ def main():
 
     arg_parser.add_argument("--nobrexx", help="Do not install brexx (this will also prevent RAKF from installing)", action="store_true")
     arg_parser.add_argument("--norakf", help="Do not install RAKF", action="store_true")
+    arg_parser.add_argument("--release", help="This makes a release of MVS/CE", action="store_true")
     arg_parser.add_argument('-l', "--list", help="List all the steps and substeps", action="store_true")
     arg_parser.add_argument('--step', help="Restart sysgen from this step. The install will continue from here. Use --list to get a list of all steps/substeps.", choices=main_steps, default=False)
-    arg_parser.add_argument('--substep', help="Restart sysgen from a steps substep. The install will continue from here. Use --list to get a list of all steps/substeps.")
+    arg_parser.add_argument('--substep', help="Restart sysgen from a steps substep. The install will continue from here. Use --list to get a list of all steps/substeps.", default=False)
     arg_parser.add_argument("--timeout", help="How long to wait for specific steps to finish in seconds before failing", default=1800)
     arg_parser.add_argument("--hercules", help="Hercules binary", default='hercules')
     arg_parser.add_argument("--no-compress", help="Do not compress DASD images", default=False, action="store_true")
@@ -2207,7 +2249,7 @@ def main():
                     print("\tSubstep: {}".format(sub))
         sys.exit()
 
-    if args.step and steps[args.step] and args.substep not in steps[args.step]:
+    if args.step and args.substep and args.substep not in steps[args.step]:
         arg_parser.error("Substep '{}' not a valid substep name for '{}'. Use --list to see steps and substeps.".format(args.substep, args.step))
 
     if args.substep and not args.step:
@@ -2257,7 +2299,10 @@ def main():
                  profiles=profiles,
                  keeptemp=args.keep_temp,
                  keepbackup=args.keep_backup,
-                 no_compress=args.no_compress
+                 no_compress=args.no_compress,
+                 release=args.release,
+                 norakf=args.no_rakf,
+                 nobrexx=args.no_brexx
                  )
 
     mvsce.install(step, substep)
