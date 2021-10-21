@@ -45,12 +45,12 @@ git clone https://github.com/SDL-Hercules-390/hyperion.git
 cd hyperion
 ./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-regina-rexx --enable-extpkgs=$(realpath ../hercpkgs) --enable-optimization="-O3 -march=native"
 
-echo_step "Compiling Hercules"
+echo "Compiling Hercules"
 # thanks Mike Grossman for the CPU/o3
 export NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
 make -j$NUMCPUS --load-average=$NUMCPUS
 
-echo_step "Installing Hercules"
+echo "Installing Hercules"
 sudo make install
 sudo ldconfig
 cd ..
@@ -113,10 +113,10 @@ You can add a admin user using the `--username` flag. To add more users edit the
 
 ## Changes From Jay Moseley Sysgen
 
-* Added usermod `SYZJ2001` which add job cc to notification
-* Added RAKF, BREXX
+* Added usermod `SYZJ2001` which adds job cc to notification in TSO
+* Added RAKF, and BREXX
 * Installed usermod `DYNPROC` which allows for dynamic proclibs
-* Seperated out usermods to their own JCL to better automation control
+* Seperated out usermods to their own JCL for better automation control
 * Added `S NET` and changed JES2 startup parms in `sys1.parmlib(COMMND00)`
 * Automated startup using HAO hercules
 * Adds version to NETSOL
