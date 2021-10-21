@@ -179,7 +179,7 @@ class sysgen:
             self.print("BREXX Install disabled")
             logging.debug("BREXX install disabled")
 
-        if self.no_no_rakf:
+        if self.no_rakf:
             self.print("RAKF Install disabled")
             logging.debug("RAKF install disabled")
 
