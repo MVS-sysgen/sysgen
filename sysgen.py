@@ -2033,7 +2033,7 @@ class sysgen:
             shutil.rmtree(Path("temp").resolve())
 
         with open(running_folder+"MVSCE/start_mvs.sh", 'w') as script:
-            script.write("hercules -f conf/local.cnf -r conf/mvsce.rc")
+            script.write("#!/bin/bash\nhercules -f conf/local.cnf -r conf/mvsce.rc")
 
         self.print("Cleanup Complete",color=Fore.GREEN)
 
