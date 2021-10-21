@@ -2301,8 +2301,8 @@ def main():
                  keepbackup=args.keep_backup,
                  no_compress=args.no_compress,
                  release=args.release,
-                 norakf=args.no_rakf,
-                 nobrexx=args.no_brexx
+                 no_rakf=args.no_rakf,
+                 no_brexx=args.no_brexx
                  )
 
     mvsce.install(step, substep)
