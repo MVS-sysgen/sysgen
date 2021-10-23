@@ -215,6 +215,10 @@ W,05                   UNITED STATES, CENTRAL TIME ZONE
 //             UNIT=3350,VOL=SER=MVS000,DISP=(,CATLG),
 //             SPACE=(CYL,(2,1,20)),
 //             DCB=SYS1.HELP
+//SAMPLIB  DD  DSN=SYS2.SAMPLIB,DISP=(,CATLG,),
+//             UNIT=3350,VOL=SER=MVS000,
+//             SPACE=(CYL,(10,5,50)),
+//             DCB=(SYS1.SAMPLIB)
 //* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ALLOC03
 //*
 //BACKUP04 EXEC PGM=IEBGENER
