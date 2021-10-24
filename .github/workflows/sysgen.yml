@@ -1,5 +1,5 @@
 
-name: Build Brexx/370
+name: MVS/CE Sysgen
 
 on:
   push:
