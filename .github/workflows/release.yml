@@ -32,7 +32,10 @@ jobs:
         id: tag
         uses: dawidd6/action-get-tag@v1
 
-
+      - name: Running sysgen.py
+        id: sysgen
+        working-directory: /mvsce
+        run: ./sysgen.py --release --version ${{steps.tag.outputs.tag}}
 
       - name: Printing Debug Log
         if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
