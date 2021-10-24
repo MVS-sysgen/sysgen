@@ -31,7 +31,7 @@ jobs:
       - name: Running sysgen.py
         id: sysgen
         working-directory: /mvsce
-        run: ./sysgen.py --release --version ${{ github.event.release.tag_name }}
+        run: ./sysgen.py --release --version $(echo ${{ github.event.release.tag_name }})
 
       - name: Printing Debug Log
         if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
