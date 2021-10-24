@@ -30,12 +30,9 @@ jobs:
         working-directory: /mvsce
         run: ./sysgen.py
 
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      - name: Create a Release
+          uses: elgohr/Github-Release-Action@master
+          env:
+            GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           with:
-            repo_token: "${{ secrets.GITHUB_TOKEN }}"
-            automatic_release_tag: "latest"
-            prerelease: true
-            title: "Latest Build"
-            files: |
-              MVSCE/README.md
-              MVSCE.release.*.tar
+            args: Current MVS/CE Release
