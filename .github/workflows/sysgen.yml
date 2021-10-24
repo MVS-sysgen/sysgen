@@ -37,7 +37,8 @@ jobs:
         run: ./sysgen.py --release
 
       - name: Printing Debug Log
-        if: failure() && steps.sysgen.outcome == 'failure'
+        if: failure()
+        working-directory: /mvsce
         run: cat sysgen.log
 
       - uses: "marvinpinto/action-automatic-releases@latest"
@@ -46,6 +47,7 @@ jobs:
           automatic_release_tag: "latest"
           prerelease: true
           title: "Latest Build"
+          working-directory: /mvsce
           files: |
             MVSCE/README.md
             MVSCE.release.*.tar
