@@ -31,15 +31,15 @@ jobs:
         with:
           packages: colorama
 
-      # - name: Running sysgen.py
-      #   id: sysgen
-      #   working-directory: /mvsce
-      #   run: ./sysgen.py --release
+      - name: Running sysgen.py
+         id: sysgen
+         working-directory: /mvsce
+         run: ./sysgen.py --release
 
-      # - name: Printing Debug Log
-      #   if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
-      #   working-directory: /mvsce
-      #   run: cat sysgen.log
+      - name: Printing Debug Log
+         if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
+         working-directory: /mvsce
+         run: cat sysgen.log
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
@@ -48,6 +48,5 @@ jobs:
           prerelease: true
           title: "Latest MVS/CE Sysgen Build"
           files: |
-            /mvsce/sysgen.py
             /mvsce/MVSCE/README.md
             /mvsce/MVSCE.release.*.tar
