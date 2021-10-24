@@ -32,12 +32,17 @@ jobs:
           packages: colorama
 
       - name: Running sysgen.py
+        id: sysgen
         working-directory: /mvsce
-        run: ./sysgen.py
+        run: ./sysgen.py --release
+
+      - name: Printing Debug Log
+        if: failure() && steps.sysgen.outcome == 'failure'
+        run: cat sysgen.log
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          repo_token: "${{ secrets.RELEASE_TOKEN }}"
           automatic_release_tag: "latest"
           prerelease: true
           title: "Latest Build"
