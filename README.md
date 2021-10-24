@@ -1,3 +1,7 @@
+# :warning: THIS BRANCH IS NOT LONGER SUPPORTED USE THE MAIN BRANCH THIS IS KEPT FOR HISTORICAL REASONS :WARNING:
+
+
+
 # Automated MVS3.8j Sysgen
 
 Welcome to the automated MVS 3.8j sysgen. To install MVS 3.8j first install the required packages:
