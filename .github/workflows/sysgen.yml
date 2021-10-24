@@ -32,14 +32,14 @@ jobs:
           packages: colorama
 
       - name: Running sysgen.py
-         id: sysgen
-         working-directory: /mvsce
-         run: ./sysgen.py --release
+        id: sysgen
+        working-directory: /mvsce
+        run: ./sysgen.py --release
 
       - name: Printing Debug Log
-         if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
-         working-directory: /mvsce
-         run: cat sysgen.log
+        if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
+        working-directory: /mvsce
+        run: cat sysgen.log
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
