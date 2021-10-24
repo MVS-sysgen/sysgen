@@ -4,10 +4,10 @@ name: MVS/CE Sysgen
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
 jobs:
 # Sysgen
   mvsce-sysgen:
