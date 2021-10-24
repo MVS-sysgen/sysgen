@@ -49,6 +49,5 @@ jobs:
           prerelease: false
           title: "MVS/CE Sysgen"
           files: |
-            /mvsce/sysgen.py
             /mvsce/MVSCE/README.md
             /mvsce/MVSCE.release.*.tar
