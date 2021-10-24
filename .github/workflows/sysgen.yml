@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch
 jobs:
 # Sysgen
   mvsce-sysgen:
@@ -26,7 +27,7 @@ jobs:
           mv * /mvsce/
         shell: bash
 
-      - name: Sysgen
+      - name: Running sysgen.py
         working-directory: /mvsce
         run: ./sysgen.py
 
