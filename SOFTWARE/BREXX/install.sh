@@ -14,6 +14,6 @@ echo "[+] Collecting XMI"
 unzip -o BREXX370_$version.zip
 mkdir -p zip
 mv *.zip zip
-mv BREXX370_$version/BREXX.$version.XMIT ./BREXX.INSTALL.XMI
+mv BREXX370_$version/BREXX_$version.xmit ./BREXX.INSTALL.XMI
 
 echo "[+] Done"
