@@ -4,7 +4,7 @@ name: MVS/CE Sysgen Release
 on:
   push:
     tags:
-      - "V*R*M*"
+      - "v*"
   workflow_dispatch:
 jobs:
 # Sysgen
@@ -31,6 +31,7 @@ jobs:
       - name: Get git tag
         id: tag
         uses: dawidd6/action-get-tag@v1
+
 
 
       - name: Printing Debug Log
