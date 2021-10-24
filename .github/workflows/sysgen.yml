@@ -46,8 +46,7 @@ jobs:
           repo_token: "${{ secrets.RELEASE_TOKEN }}"
           automatic_release_tag: "latest"
           prerelease: true
-          title: "Latest Build"
-          working-directory: /mvsce
+          title: "Latest MVS/CE Sysgen Build"
           files: |
-            MVSCE/README.md
-            MVSCE.release.*.tar
+            /mvsce/MVSCE/README.md
+            /mvsce/MVSCE.release.*.tar
