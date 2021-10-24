@@ -31,8 +31,8 @@ jobs:
         run: ./sysgen.py
 
       - name: Create a Release
-          uses: elgohr/Github-Release-Action@master
-          env:
-            GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          with:
-            args: Current MVS/CE Release
+        uses: elgohr/Github-Release-Action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        with:
+          args: Current MVS/CE Release
