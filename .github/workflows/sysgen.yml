@@ -10,32 +10,32 @@ on:
       - master
 jobs:
 # Sysgen
-  build-brexx370:
+  mvsce-sysgen:
     name: Generating Sysgen
     runs-on: [ubuntu-latest]
     container: mainframed767/hyperion:latest
 
     steps:
 
-    - name: Checkout
-      uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v2
 
-    - name: Move MVS/CE sysgen
-      run: |
-        mkdir -p /mvsce/
-        mv * /mvsce/
-      shell: bash
+      - name: Move MVS/CE sysgen
+        run: |
+          mkdir -p /mvsce/
+          mv * /mvsce/
+        shell: bash
 
-    - name: Sysgen
-      working-directory: /mvsce
-      run: ./sysgen.py
+      - name: Sysgen
+        working-directory: /mvsce
+        run: ./sysgen.py
 
-    - uses: "marvinpinto/action-automatic-releases@latest"
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "latest"
-          prerelease: true
-          title: "Latest Build"
-          files: |
-            MVSCE/README.md
-            MVSCE.release.*.tar
+      - uses: "marvinpinto/action-automatic-releases@latest"
+          with:
+            repo_token: "${{ secrets.GITHUB_TOKEN }}"
+            automatic_release_tag: "latest"
+            prerelease: true
+            title: "Latest Build"
+            files: |
+              MVSCE/README.md
+              MVSCE.release.*.tar
