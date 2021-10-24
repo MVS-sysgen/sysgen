@@ -1677,7 +1677,7 @@ class sysgen:
             rakf_line = "{user:7.7}  {group:8.8}{groups:1}{password:8.8} {oper:1}\n"
             with open(self.users, 'r') as mvsusers:
                 for line in mvsusers.readlines():
-                    if "*" in line[0]:
+                    if line[0] in ["#","*"]:
                         # comment skipped
                         continue
                     l = line.strip().split()
