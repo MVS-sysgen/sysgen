@@ -306,6 +306,8 @@ class sysgen:
                 q.put(l)
 
                 for errors in error_check:
+                    if "Creating crash dump" in l:
+                        os._exit(1)
                     if errors in l:
                         print("Quiting! Irrecoverable Hercules error: {}".format(l.strip()))
                         kill_hercules.set()
