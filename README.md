@@ -1,5 +1,6 @@
-# :warning: THIS BRANCH IS NO LONGER SUPPORTED USE THE MAIN BRANCH THIS IS KEPT FOR HISTORICAL REASONS :warning:
+# :warning: THIS BRANCH IS NO LONGER SUPPORTED USE THE MAIN BRANCH :warning:
 
+This branch is only being kept for historical purposes and for tracking the original changes from Jay Moseley's sysgen.
 
 
 # Automated MVS3.8j Sysgen
