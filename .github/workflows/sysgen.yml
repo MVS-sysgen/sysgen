@@ -12,7 +12,7 @@ on:
 jobs:
 # Sysgen
   mvsce-sysgen:
-    name: Generating Sysgen
+    name: MVS 3.8j System Generation
     runs-on: [ubuntu-latest]
     container: mainframed767/hyperion:latest
 
@@ -37,7 +37,7 @@ jobs:
         run: ./sysgen.py --release
 
       - name: Printing Debug Log
-        if: failure()
+        if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
         working-directory: /mvsce
         run: cat sysgen.log
 
