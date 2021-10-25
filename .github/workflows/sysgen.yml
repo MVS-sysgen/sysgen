@@ -34,7 +34,7 @@ jobs:
       - name: Running sysgen.py
         id: sysgen
         working-directory: /mvsce
-        run: ./sysgen.py --release --version ${GITHUB_SHA}
+        run: ./sysgen.py --release --version ${GITHUB_SHA} --timeout 600
 
       - name: Printing Debug Log
         if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
