@@ -1678,6 +1678,7 @@ class sysgen:
             with open(self.users, 'r') as mvsusers:
                 for line in mvsusers.readlines():
                     if line[0] in ["#","*"]:
+                        logging.debug("Comment skipped: {}".format(line))
                         # comment skipped
                         continue
                     l = line.strip().split()
@@ -1693,7 +1694,7 @@ class sysgen:
                         admin = True
                         groups = "*"
                         group = "ADMIN"
-
+                    self.print("Adding RAKF user: {}".format(username))
                     out_rakf.write(rakf_line.format(user=username,password=password,group=group,groups=groups,oper=oper))
                     if admin:
                         out_rakf.write(rakf_line.format(user=username,password=password,group='RAKFADM',groups=groups,oper=oper))
