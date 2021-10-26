@@ -411,7 +411,7 @@ WRITE *                                         -
 WRITE *                    Welcome to MVS Commun-
 ity Edition                         *
 WRITE *                    =====================-
-====                                *
+===========                         *
 WRITE *                                         -
                                     *
 WRITE *                                         -
@@ -428,24 +428,12 @@ ALLOC FILE(SYSHELP) DSN('SYS1.HELP','SYS2.HELP') SHR
 /* FOR COMPILED C PROGRAMS */
 ALLOC FI(STDOUT)  DA(*)
 ALLOC FI(STDIN)  DA(*)
-/* */
-ALLOC FILE(X1) DSN('&SYSUID..CLIST(STDLOGON)') SHR
-IF &LASTCC = 0 THEN +
-   DO
-      WRITE Logging on using private logon procedure
-      FREE FILE(SYSPROC)
-      FREE FILE(X1)
-      ALLOC FILE(SYSPROC) DSN('&SYSUID..CLIST','SYS1.CMDPROC') SHR
-   END
-ELSE +
-   DO
-      WRITE Logging on using public logon procedure
-      FREE FILE(X1)
-   END
-ENDIF
-IF &SYSDSN('BREXX.V2R5M0.RXLIB') EQ &STR(OK) THEN DO
+/* Add user clist */
+ALLOC FILE(SYSPROC) DSN('&SYSUID..CLIST','SYS1.CMDPROC') SHR
+/* Add Brexx allocations */
+IF &SYSDSN('BREXX.CURRENT.RXLIB') EQ &STR(OK) THEN DO
  FREE FILE(RXLIB)
- ALLOC FILE(RXLIB) DSN('BREXX.V2R5M0.RXLIB') SHR
+ ALLOC FILE(RXLIB) DSN('BREXX.CURRENT.RXLIB') SHR
 END
 IF &SYSDSN('SYS2.EXEC') EQ &STR(OK) THEN DO
  FREE FILE(SYSEXEC)
@@ -456,7 +444,7 @@ IF &SYSDSN('&SYSUID..EXEC') EQ &STR(OK) THEN DO
  FREE FILE(SYSUEXEC)
  ALLOC FILE(SYSUEXEC) DSN('&SYSUID..EXEC') SHR
 END
-
+/* Done */
 %STDLOGON
 EXIT
 ./ ENDUP
@@ -506,6 +494,10 @@ EXIT
 //LOAD     DD  DSN=&ID..LOAD,DISP=(MOD,DELETE,DELETE),                  00002900
 //             UNIT=SYSDA,VOL=SER=PUB000,                               00003000
 //             SPACE=(CYL,0),DCB=SYS1.LINKLIB                           00003100
+//USREXEC  DD  DSN=&ID..EXEC,DISP=(MOD,DELETE,DELETE),                  00003110
+//             VOL=SER=MVS000,                                          00003120
+//             UNIT=SYSDA,                                              00003130
+//             SPACE=(CYL,0),DCB=SYS1.MACLIB                            00003140
 //*                                                                     00003200
 //* ALLOCATE STANDARD FILES FOR NEW USER'S ID                           00003300
 //*                                                                     00003400
@@ -522,6 +514,9 @@ EXIT
 //LOAD     DD  DSN=&ID..LOAD,DISP=(,KEEP,DELETE),                       00004500
 //             UNIT=SYSDA,VOL=SER=PUB000,                               00004600
 //             SPACE=(CYL,(1,1,20)),DCB=SYS1.LINKLIB                    00004700
+//USEREXEC  DD  DSN=&ID..EXEC,DISP=(,KEEP,DELETE),                      00004500
+//             UNIT=SYSDA,VOL=SER=MVS000,                               00004600
+//             SPACE=(CYL,(1,1,20)),DCB=SYS1.MACLIB                     00004700
 //*                                                                     00004800
 //* GENERATE COMMAND FILE TO CREATE NEW USER'S PROFILE                  00004900
 //*                                                                     00005000
@@ -602,11 +597,11 @@ EXIT
 //STEPLIB  DD  DSN=SYSC.LINKLIB,DISP=SHR                                00012500
 //SYSOUT   DD  DSN=&&IDCAMS,DISP=(MOD,PASS)                             00012600
 //*                                                                     00012700
-//PW14     EXEC PGM=PSU002,PARM=('\',                                   00012800
-//             ' REPRO INFILE(SYSPROC) ',                               00012900
-//             'OUTDATASET(&ID..CLIST(STDLOGON))')                      00013000
-//STEPLIB  DD  DSN=SYSC.LINKLIB,DISP=SHR                                00013100
-//SYSOUT   DD  DSN=&&IDCAMS,DISP=(MOD,PASS)                             00013200
+//*PW14     EXEC PGM=PSU002,PARM=('\',                                  00012800
+//*             ' REPRO INFILE(SYSPROC) ',                              00012900
+//*             'OUTDATASET(&ID..CLIST(STDLOGON))')                     00013000
+//*STEPLIB  DD  DSN=SYSC.LINKLIB,DISP=SHR                               00013100
+//*SYSOUT   DD  DSN=&&IDCAMS,DISP=(MOD,PASS)                            00013200
 //*                                                                     00013300
 //* DEFINE ALIAS FOR NEW USER'S ID AND CATALOG ENTRIES FOR STANDARD     00013400
 //* FILES FOR NEW USER                                                  00013500
