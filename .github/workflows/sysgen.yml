@@ -14,6 +14,7 @@ jobs:
   mvsce-sysgen:
     name: MVS 3.8j System Generation
     runs-on: [ubuntu-latest]
+    timeout-minutes: 50
     container: mainframed767/hyperion:latest
 
     steps:

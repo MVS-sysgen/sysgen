@@ -1999,8 +1999,8 @@ class sysgen:
         self.print("Step 9. Installing MVS/CE Package Manager MVP", color=Fore.CYAN)
         self.restore_dasd("32_RAKF")
         self.custjobs_ipl("Installing MVP", clpa=True)
-        self.git_clone("https://github.com/MVS-sysgen/MVP")
-        subprocess.check_output(['MVP/MVP','INSTALL_MVP'])
+        self.git_clone("https://github.com/MVS-sysgen/MVP", out_folder="MVSCE")
+        x= subprocess.check_output(['MVSCE/MVP/MVP','INSTALL_MVP'])
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("MVPINSTL")
         self.shutdown_mvs(cust=True)
@@ -2152,18 +2152,18 @@ class sysgen:
             subprocess.check_call(args, stdout=subprocess.DEVNULL)
             VOLUME += 1
 
-    def git_clone(self, repo):
+    def git_clone(self, repo, out_folder="temp"):
         try:
             git_query_path = subprocess.check_output(["which", "git"]).strip()
         except:
             raise Exception('git not found')
-        folder = running_folder+"temp/{}"
+        folder = running_folder+"{}/{}"
 
         args = [
             git_query_path,
             'clone',
             repo,
-            folder.format(repo.split("/")[-1])
+            folder.format(out_folder, repo.split("/")[-1])
         ]
 
         rc = subprocess.call(args, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
