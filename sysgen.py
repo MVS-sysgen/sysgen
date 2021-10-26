@@ -141,6 +141,7 @@ class sysgen:
 
         self.no_rakf = no_rakf
         self.no_brexx = no_brexx
+        self.no_mvp = False
 
         if no_brexx:
             self.no_rakf = True
@@ -178,10 +179,15 @@ class sysgen:
         if self.no_brexx:
             self.print("BREXX Install disabled")
             logging.debug("BREXX install disabled")
+            logging.debug("BREXX install disabled, disabling MVP install")
+            self.no_mvp = True
 
         if self.no_rakf:
             self.print("RAKF Install disabled")
             logging.debug("RAKF install disabled")
+
+            logging.debug("RAKF install disabled, disabling MVP install")
+            self.no_mvp = True
 
         #self.print("Creating MVSCE folder if it does not exist")
         Path(running_folder+"MVSCE").mkdir(parents=True, exist_ok=True)
@@ -240,10 +246,15 @@ class sysgen:
             if step == 'step_08_rakf':
                 if not self.no_rakf:
                     self.step_08_rakf()
-                step = "step_09_cleanup"
+                step = "step_09_mvp"
 
-            if step == 'step_09_cleanup':
-                self.step_09_cleanup()
+            if step == 'step_09_mvp':
+                if not self.no_mvp:
+                    self.step_09_mvp()
+                step = "step_10_cleanup"
+
+            if step == 'step_10_cleanup':
+                self.step_10_cleanup()
 
         finally:
             s, ss = self.get_step()
@@ -1984,8 +1995,20 @@ class sysgen:
             except queue.Empty:
                 continue
 
-    def step_09_cleanup(self):
-        self.print("Step 9. Finalizing and Cleaning Up", color=Fore.CYAN)
+    def step_09_mvp(self):
+        self.print("Step 9. Installing MVS/CE Package Manager MVP", color=Fore.CYAN)
+        self.restore_dasd("32_RAKF")
+        self.custjobs_ipl("Installing MVP", clpa=True)
+        self.git_clone("https://github.com/MVS-sysgen/MVP")
+        subprocess.check_output(['MVP/MVP','INSTALL_MVP'])
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("MVPINSTL")
+        self.shutdown_mvs(cust=True)
+        self.quit_hercules(msg=False)
+        self.backup_dasd("33_MVP")
+
+    def step_10_cleanup(self):
+        self.print("Step 10. Finalizing and Cleaning Up", color=Fore.CYAN)
 
         self.finalize()
 
@@ -2051,7 +2074,7 @@ class sysgen:
             self.restore_dasd("31_BREXX")
 
         if not self.no_rakf:
-            self.restore_dasd("32_RAKF")
+            self.restore_dasd("33_MVP")
 
         self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True)
         self.submit_file('jcl/finalize.jcl')
@@ -2059,7 +2082,7 @@ class sysgen:
         self.check_maxcc("FINALIZE")
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
-        self.backup_dasd("33_FINAL")
+        self.backup_dasd("34_FINAL")
 
 
     def dasdinit(self, dasd_to_create):
@@ -2205,7 +2228,8 @@ def main():
                                       ],
         'step_06_fdz1d02'           : False,
         'step_08_rakf'              : False,
-        'step_09_cleanup'           : False
+        'step_09_mvp'               : False,
+        'step_10_cleanup'           : False
     }
 
     main_steps = []
