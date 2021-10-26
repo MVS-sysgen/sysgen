@@ -156,3 +156,10 @@ U370WTO  0
 //* ------------------------------------------------------------------
 //* EDIT LOGON PROC
 //* ------------------------------------------------------------------
+//ALIASRXL EXEC PGM=IDCAMS
+//SYSIN    DD *
+  DEFINE ALIAS -
+          (NAME(BREXX.CURRENT.RXLIB) -
+          RELATE(BREXX.V2R5M0.RXLIB))-
+          CATALOG(UCPUB001)
+//SYSPRINT DD  SYSOUT=*
