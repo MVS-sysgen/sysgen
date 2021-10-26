@@ -418,6 +418,8 @@ WRITE *                                         -
                                     *
 WRITE ******************************************-
 *************************************
+WRITE Run RX MVP LIST to see a list of installable packages
+WRITE Run RX MVP for list of commands
 REVINIT
 ./ ADD NAME=TSOLOGON
         PROC 0
@@ -431,10 +433,8 @@ ALLOC FI(STDIN)  DA(*)
 /* Add user clist */
 ALLOC FILE(SYSPROC) DSN('&SYSUID..CLIST','SYS1.CMDPROC') SHR
 /* Add Brexx allocations */
-IF &SYSDSN('BREXX.CURRENT.RXLIB') EQ &STR(OK) THEN DO
- FREE FILE(RXLIB)
- ALLOC FILE(RXLIB) DSN('BREXX.CURRENT.RXLIB') SHR
-END
+FREE FILE(RXLIB)
+ALLOC FILE(RXLIB) DSN('BREXX.CURRENT.RXLIB') SHR
 IF &SYSDSN('SYS2.EXEC') EQ &STR(OK) THEN DO
  FREE FILE(SYSEXEC)
  ALLOC FILE(SYSEXEC) DSN('SYS2.EXEC') SHR
