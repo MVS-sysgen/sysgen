@@ -1289,7 +1289,7 @@ class sysgen:
                 elif "@replaceme@" in line:
                     temp_jcl.write(release)
                     if self.git_hash:
-                        temp_jcl.write("DISTRIB_HASH={}".format(self.git_hash))
+                        temp_jcl.write("DISTRIB_HASH={}\n".format(self.git_hash))
 
                 else:
                     temp_jcl.write(line)
