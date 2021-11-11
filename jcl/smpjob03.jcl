@@ -19,6 +19,7 @@
 //DLBUCL2 EXEC DLBSMP
 //SMPCNTL  DD  *
   ACCEPT G(EAS1102   /* XF ASSEMBLER                                 */
+             UZ52227
            EBB1102   /* BASE CONTROL PROGRAM                         */
            EDE1102   /* DISPLAY EXCEPTION MONITORING FACILITY        */
            EER1400   /* ENVIRONMENT RECORDING EDITING & PRINTING     */
@@ -28,6 +29,7 @@
            EMF1102   /* MF/1                                         */
            EMI1102   /* MICR/OCR                                     */
            EDM1102   /* DATA MANAGEMENT                              */
+             UZ72608
            EDS1102   /* DATA MANAGEMENT SUPPORT                      */
              UZ68825 UZ71903
            EPM1102   /* PROGRAM MANAGEMENT                           */
@@ -64,6 +66,7 @@
 //SMPCNTL  DD  *
   ACCEPT G(FBB1221   /* MVS PROCESSOR SUPPORT 2                      */
              UY10657
+             UZ50553
              UZ64216
              UZ67485
              UZ69168
