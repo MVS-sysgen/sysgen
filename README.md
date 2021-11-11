@@ -19,7 +19,7 @@ The following is also recommended:
 ## Building and Installing Hercules
 
 **Ubuntu**: Install m4, make, autoconf, automake, cmake, flex, build-essential, libbz2-dev, libregina3-dev, zlib1g-dev, libtool and, libltdl-dev with:
-`sudo apt install m4 make autoconf automake cmake flex build-essential libbz2-dev libregina3-dev zlib1g-dev libtool libltdl-dev`
+`sudo apt install m4 make autoconf automake cmake flex build-essential libbz2-dev zlib1g-dev libtool libltdl-dev`
 
 The following script will then autobuild and install hercules for you.
 
@@ -40,7 +40,7 @@ for i in crypto decNumber SoftFloat telnet; do
     cd ../../
 done
 
-echo_step "Building Hercules Hyperion SDL"
+echo "Building Hercules Hyperion SDL"
 git clone https://github.com/SDL-Hercules-390/hyperion.git
 cd hyperion
 ./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-regina-rexx --enable-extpkgs=$(realpath ../hercpkgs) --enable-optimization="-O3 -march=native"
