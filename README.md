@@ -1,7 +1,5 @@
 # MVS Community Edition Sysgen
 
-:warning: This is a new version of sysgen without any software, if you are looking for the previous version checkout the `original` branch.
-
 To use this version of MVS you can download the current release and run `bash start_mvs.sh`.
 
 Requirements:
