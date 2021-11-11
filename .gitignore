@@ -8,4 +8,5 @@ sysgen/herclogo.txt
 sysgen.log
 build/
 .step
+MVP/
 p*.txt
