@@ -36,7 +36,7 @@ usermods = ["AY12275","JLM0001","JLM0002","JLM0003","JLM0004","SLB0002","SYZM001
             "ZP60015","ZP60016","ZP60017","ZP60018","ZP60019","ZP60020","ZP60021","ZP60022","ZP60026", #usermods4.jcl
             "ZP60027","ZP60028","ZP60029","ZP60030","ZP60031","ZP60032","ZP60033","ZP60034","ZP60035", #usermods5.jcl
             "ZP60036","ZP60037","ZP60038","ZP60039","ZUM0007","ZUM0008",                               #usermods6.jcl
-            "SYZJ2001",#"DYNPROC"
+            "SYZJ2001", "TNIP800", "ZP60025" #"DYNPROC"
             ]
 
 
@@ -251,10 +251,14 @@ class sysgen:
             if step == 'step_09_mvp':
                 if not self.no_mvp:
                     self.step_09_mvp()
-                step = "step_10_cleanup"
+                step = "step_10_extras"
 
-            if step == 'step_10_cleanup':
-                self.step_10_cleanup()
+            if step == 'step_10_extras':
+                self.step_10_extras()
+                step = "step_11_cleanup"
+
+            if step == 'step_11_cleanup':
+                self.step_11_cleanup()
 
         finally:
             s, ss = self.get_step()
@@ -1420,6 +1424,7 @@ class sysgen:
                     "ZP60020" : "Removes the SYSLIN blksize limit of 3200 on the Linkage Editor.",
                     "ZP60021" : "Display keyboard characters in a printed dump.",
                     "ZP60022" : "Allow format 1 STAX parameter list to function correctly.",
+                    "ZP60025" : "Add BAS and BASR to IFOX00.",
                     "ZP60026" : "Adds REUSE operand to the TSO ALLOCATE command.",
                     "ZP60027" : "Adds timestamp support for Link Editor identification record.",
                     "ZP60028" : "Improves printing of the module header in printed dumps.",
@@ -1437,8 +1442,12 @@ class sysgen:
                     "ZUM0007" : "Y2K Compliance",
                     "ZUM0008" : "Y2K Compliance",
                     "SYZJ2001" : "Adds condition code to job message in TSO",
-                    "DYNPROC" : "Adds dynamic proclib support"
+                    "DYNPROC" : "Adds dynamic proclib support",
+                    "TNIP800" : "Add support for user-defined system parameter PRISUB= to define primary subsystem name",
+                    "ZP60041" : "Add support for indirect cataloging using VOLUME(******) (includes ZP60041, ZP60042, ZP60043)"
                     }
+
+        EBCDIC_mods = ['ZP60025']
 
         expected_cc = {"STEP20": "0004"}
 
@@ -1457,7 +1466,12 @@ class sysgen:
             self.set_step("step_05_usermods",umod)
             self.restore_dasd(restore)
             self.sysgenjobs_ipl("Applying usermod {}: {}".format(umod, umods_desc[umod]))
-            self.send_herc("devinit 12 usermods/{}.jcl".format(umod))
+            cmd = "devinit 12 usermods/{}.jcl eof trunc {}"
+            if umod in EBCDIC_mods:
+                self.send_herc(cmd.format(umod,'ebcdic'))
+            else:
+                self.send_herc(cmd.format(umod,'ascii'))
+            self.send_herc()
             self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
             self.check_maxcc(jobname=umod, steps_cc=expected_cc)
             self.shutdown_mvs()
@@ -1912,7 +1926,8 @@ class sysgen:
             return
         quit_herc_event.set()
         self.send_herc('quit')
-        self.wait_for_string('Hercules shutdown complete', stderr=True)
+        # self.wait_for_string('Hercules shutdown complete', stderr=True)
+        self.wait_for_string('Hercules terminated', stderr=True)
         if msg:
             self.print('Hercules has exited')
 
@@ -2007,8 +2022,22 @@ class sysgen:
         self.quit_hercules(msg=False)
         self.backup_dasd("33_MVP")
 
-    def step_10_cleanup(self):
-        self.print("Step 10. Finalizing and Cleaning Up", color=Fore.CYAN)
+    def step_10_extras(self):
+        self.print("Step 10. Installing Extra Components", color=Fore.CYAN)
+        # This is a catchall step for 'the rest' of the stuff that needs the full system
+        # up before it can be installed
+
+        self.restore_dasd("33_MVP")
+        self.custjobs_ipl("Adding support for indirect cataloging using VOLUME(******) (Usermods ZP60041, ZP60042, ZP60043)", clpa=True)
+        self.submit_file_binary('usermods/ZP60041.jcl')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("ZP60041")
+        self.shutdown_mvs(cust=True)
+        self.quit_hercules(msg=False)
+        self.backup_dasd("34_EXTRAS")
+
+    def step_11_cleanup(self):
+        self.print("Step 11. Finalizing and Cleaning Up", color=Fore.CYAN)
 
         self.finalize()
 
@@ -2070,11 +2099,11 @@ class sysgen:
         if self.no_brexx:
             self.restore_dasd("30_MVS02")
 
-        if not self.no_brexx:
+        if not self.no_brexx and self.no_rakf:
             self.restore_dasd("31_BREXX")
 
         if not self.no_rakf:
-            self.restore_dasd("33_MVP")
+            self.restore_dasd("34_EXTRAS")
 
         self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True)
         self.submit_file('jcl/finalize.jcl')
@@ -2174,6 +2203,21 @@ class sysgen:
             jcl = f.read()
             self.submit(jcl)
 
+
+    def submit_file_binary(self, jclfile, host='127.0.0.1',port=3505):
+        logging.debug("[SUBMIT BINARY] Submitting {}".format(jclfile))
+        with open(jclfile, 'rb') as f:
+            jcl = f.read()
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+            try:
+                # Connect to server and send data
+                sock.connect((host, port))
+                sock.send(jcl)
+            finally:
+                sock.close()
+
     def submit(self,jcl, host='127.0.0.1',port=3505):
         '''submits a job (in ASCII) to hercules listener'''
 
@@ -2229,7 +2273,8 @@ def main():
         'step_06_fdz1d02'           : False,
         'step_08_rakf'              : False,
         'step_09_mvp'               : False,
-        'step_10_cleanup'           : False
+        'step_10_extras'            : False,
+        'step_11_cleanup'           : False
     }
 
     main_steps = []
