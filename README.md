@@ -43,7 +43,7 @@ done
 echo "Building Hercules Hyperion SDL"
 git clone https://github.com/SDL-Hercules-390/hyperion.git
 cd hyperion
-./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-regina-rexx --enable-extpkgs=$(realpath ../hercpkgs) --enable-optimization="-O3 -march=native"
+./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-extpkgs=$(realpath ../hercpkgs) --enable-optimization="-O3 -march=native"
 
 echo "Compiling Hercules"
 # thanks Mike Grossman for the CPU/o3
