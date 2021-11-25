@@ -35,23 +35,23 @@
 //SYSPRINT DD  SYSOUT=*                                                 
 //SYSIN    DD  *                                                        
   INIT UNIT(149) -                                                      
-               VERIFY(111111) -                                         
+               VERIFY(AAAAAA) -                                         
                OWNER(HERCULES) -                                        
                VOLID(MVSRES) -                                          
                IPLDD(IPLTEXT) -                                         
                VTOC(0,1,29)                                             
   INIT UNIT(14A) -                                                      
-               VERIFY(222222) -                                         
+               VERIFY(BBBBBB) -                                         
                OWNER(HERCULES) -                                        
                VOLID(MVS000) -                                          
                VTOC(0,1,29)                                             
   INIT UNIT(14B) -                                                      
-               VERIFY(333333) -                                         
+               VERIFY(CCCCCC) -                                         
                OWNER(HERCULES) -                                        
                VOLID(SPOOL1) -                                          
                VTOC(0,1,1)                                              
   INIT UNIT(14C) -                                                      
-               VERIFY(444444) -                                         
+               VERIFY(DDDDDD) -                                         
                OWNER(HERCULES) -                                        
                VOLID(PAGE00) -                                          
                VTOC(0,1,1)                                              

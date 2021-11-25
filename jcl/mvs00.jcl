@@ -9,42 +9,42 @@
 //SYSPRINT DD  SYSOUT=*                                                 
 //SYSIN    DD  *                                                        
   INIT UNIT(180) -                                                      
-               VERIFY(111111) -                                         
+               VERIFY(AAAAAA) -                                         
                OWNER(HERCULES) -                                        
                VOLID(PUB000) -                                          
                VTOC(0,1,30)                                             
   INIT UNIT(190) -                                                      
-               VERIFY(222222) -                                         
+               VERIFY(BBBBBB) -                                         
                OWNER(HERCULES) -                                        
                VOLID(PUB001) -                                          
                VTOC(0,1,60)                                             
   INIT UNIT(220) -                                                      
-               VERIFY(333333) -                                         
+               VERIFY(CCCCCC) -                                         
                OWNER(HERCULES) -                                        
                VOLID(SORTW1) -                                          
                VTOC(0,1,5)                                              
   INIT UNIT(221) -                                                      
-               VERIFY(444444) -                                         
+               VERIFY(DDDDDD) -                                         
                OWNER(HERCULES) -                                        
                VOLID(SORTW2) -                                          
                VTOC(0,1,5)                                              
   INIT UNIT(222) -                                                      
-               VERIFY(555555) -                                         
+               VERIFY(EEEEEE) -                                         
                OWNER(HERCULES) -                                        
                VOLID(SORTW3) -                                          
                VTOC(0,1,5)                                              
   INIT UNIT(223) -                                                      
-               VERIFY(666666) -                                         
+               VERIFY(FFFFFF) -                                         
                OWNER(HERCULES) -                                        
                VOLID(SORTW4) -                                          
                VTOC(0,1,5)                                              
   INIT UNIT(224) -                                                      
-               VERIFY(777777) -                                         
+               VERIFY(GGGGGG) -                                         
                OWNER(HERCULES) -                                        
                VOLID(SORTW5) -                                          
                VTOC(0,1,5)                                              
   INIT UNIT(225) -                                                      
-               VERIFY(888888) -                                         
+               VERIFY(HHHHHH) -                                         
                OWNER(HERCULES) -                                        
                VOLID(SORTW6) -                                          
                VTOC(0,1,5)                                              
