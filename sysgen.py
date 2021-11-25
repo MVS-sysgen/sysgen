@@ -2345,21 +2345,24 @@ def main():
     substep = args.substep
 
     if args.CONTINUE:
+        if os.path.exists(".step"):
 
-        if args.step or args.substep:
-            print("WARNING - Continue mode, skipping --step and --substep")
+            if args.step or args.substep:
+                print("WARNING - Continue mode, skipping --step and --substep")
 
-        if not os.path.exists(".step"):
-            arg_parser.error("Attempted to continue but .step file missing.")
-
-        with open(".step", 'r') as s:
-            step_file = s.readline()
-            step_file = step_file.strip().split()
-            step = step_file[0]
-            if len(step_file) == 2:
-                substep = step_file[1]
+            with open(".step", 'r') as s:
+                step_file = s.readline()
+                step_file = step_file.strip().split()
+                step = step_file[0]
+                if len(step_file) == 2:
+                    substep = step_file[1]
+                else:
+                    substep = False
+        else:
+            if os.path.exists("MVSCE/README.md"):
+                arg_parser.error("ERROR: Attempted to continue but the build is complete!")
             else:
-                substep = False
+                print("NOTE: -C specified but no .step file present, ignoring and starting from beginning\n")
 
     mvsce = sysgen(
                  hercbin=args.hercules,
