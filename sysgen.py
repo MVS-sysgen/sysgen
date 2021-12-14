@@ -2128,33 +2128,33 @@ class sysgen:
 
         dasd_dict = {
             'starter' : {
-            "start1.3330" : "3330", #111111
-            "spool0.3330" : "3330", #222222
+            "start1.3330" : "3330", #AAAAAA
+            "spool0.3330" : "3330", #BBBBBB
             },
             'distribution_libs' : {
-            "work00.3350" : "3350", #111111
-            "work01.3350" : "3350", #222222
-            "smp000.3350" : "3350", #333333
+            "work00.3350" : "3350", #AAAAAA
+            "work01.3350" : "3350", #BBBBBB
+            "smp000.3350" : "3350", #CCCCCC
             },
             'sysgen' : {
-            "mvsres.3350" : "3350", #111111
-            "mvs000.3350" : "3350", #222222
-            "spool1.3350" : "3350", #333333
-            "page00.3350" : "3350", #444444
+            "mvsres.3350" : "3350", #AAAAAA
+            "mvs000.3350" : "3350", #BBBBBB
+            "spool1.3350" : "3350", #CCCCCC
+            "page00.3350" : "3350", #DDDDDD
             },
             'customizations' : {
-            "pub000.3380" : "3380", #111111
-            "pub001.3390" : "3390", #222222
-            "sortw1.2314" : "2314", #333333
-            "sortw2.2314" : "2314", #444444
-            "sortw3.2314" : "2314", #555555
-            "sortw4.2314" : "2314", #666666
-            "sortw5.2314" : "2314", #777777
-            "sortw6.2314" : "2314", #888888
+            "pub000.3380" : "3380", #AAAAAA
+            "pub001.3390" : "3390", #BBBBBB
+            "sortw1.2314" : "2314", #CCCCCC
+            "sortw2.2314" : "2314", #DDDDDD
+            "sortw3.2314" : "2314", #EEEEEE
+            "sortw4.2314" : "2314", #FFFFFF
+            "sortw5.2314" : "2314", #GGGGGG
+            "sortw6.2314" : "2314", #HHHHHH
             }
         }
 
-        VOLUME = 1
+        VOLUME = 'A'
 
         for disk in dasd_dict[dasd_to_create]:
 
@@ -2179,7 +2179,7 @@ class sysgen:
                 ]
 
             subprocess.check_call(args, stdout=subprocess.DEVNULL)
-            VOLUME += 1
+            VOLUME = chr(ord(VOLUME[0])+1)
 
     def git_clone(self, repo, out_folder="temp"):
         try:
@@ -2345,21 +2345,24 @@ def main():
     substep = args.substep
 
     if args.CONTINUE:
+        if os.path.exists(".step"):
 
-        if args.step or args.substep:
-            print("WARNING - Continue mode, skipping --step and --substep")
+            if args.step or args.substep:
+                print("WARNING - Continue mode, skipping --step and --substep")
 
-        if not os.path.exists(".step"):
-            arg_parser.error("Attempted to continue but .step file missing.")
-
-        with open(".step", 'r') as s:
-            step_file = s.readline()
-            step_file = step_file.strip().split()
-            step = step_file[0]
-            if len(step_file) == 2:
-                substep = step_file[1]
+            with open(".step", 'r') as s:
+                step_file = s.readline()
+                step_file = step_file.strip().split()
+                step = step_file[0]
+                if len(step_file) == 2:
+                    substep = step_file[1]
+                else:
+                    substep = False
+        else:
+            if os.path.exists("MVSCE/README.md"):
+                arg_parser.error("ERROR: Attempted to continue but the build is complete!")
             else:
-                substep = False
+                print("NOTE: -C specified but no .step file present, ignoring and starting from beginning\n")
 
     mvsce = sysgen(
                  hercbin=args.hercules,
