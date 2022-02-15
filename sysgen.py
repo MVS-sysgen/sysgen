@@ -1944,7 +1944,7 @@ class sysgen:
             timeout = 1800
 
         if self.timeout:
-            timeout=self.timeout
+            timeout=int(self.timeout)
 
         logging.debug("Waiting for string to appear in hercules log: {}".format(string_to_waitfor))
 
