@@ -347,7 +347,8 @@ class sysgen:
         print(Style.BRIGHT+ Fore.BLUE + logo, flush=True)
 
     def print(self, text='', color=Fore.WHITE):
-        print(Style.BRIGHT+ "[+] " + color + text, flush=True)
+        now = datetime.now()
+        print(Style.BRIGHT+ f"[+] [{now.strftime('%H:%M:%S')}] " + color + text, flush=True)
         logging.debug(text)
 
     def send_herc(self, command=''):
