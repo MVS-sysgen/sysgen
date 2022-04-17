@@ -103,7 +103,7 @@ INTRDR CLASS=A,NOHOLD,AUTH=0,PRIOINC=0,PRIOLIM=15
 &JCOPYLM=10                    MAX JOB OUTPUT COPIES                    
 &LINECT=61                     LINE PER PAGE LIMIT                      
 &MAXCLAS=5                     MAX JOB CLASSES PER INITIATOR            
-&MAXJOBS=128                   MAX JOBS IN JOB QUEUE                    
+&MAXJOBS=1024                  MAX JOBS IN JOB QUEUE                    
 &MAXPART=6                     MAX NUMBER OF BATCH INITIATORS           
 &MINJOES=100                   MIN NUMBER OF FREE JOB OUTPUT ELEMENTS   
 &MLBFSIZ=400                   MULTI-LEAVE BUFFER SIZE                  
@@ -116,7 +116,7 @@ INTRDR CLASS=A,NOHOLD,AUTH=0,PRIOINC=0,PRIOLIM=15
 &NUMCMBS=256                   NUMBER OF CONSOLE MESSAGE BUFFERS        
 &NUMDA=2                       MAX NUMBER OF SPOOL VOLUMES                  
 &NUMINRS=5                     NUMBER OF INTERNAL READERS               
-&NUMJOES=1024                  NUMBER OF JOB OUTPUT ELEMENTS            
+&NUMJOES=3000                  NUMBER OF JOB OUTPUT ELEMENTS            
 &NUMPRTS=3                     MAX NUMBER OF LOCAL PRINTERS             
 &NUMPUNS=1                     MAX NUMBER OF LOCAL PUNCHES              
 &NUMRDRS=2                     MAX NUMBER OF LOCAL READERS              
