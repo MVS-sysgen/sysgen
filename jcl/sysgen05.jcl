@@ -217,10 +217,9 @@ CUU407   LOCAL TERM=3277,CUADDR=407,ISTATUS=INACTIVE,                  +
 *  VTAM LOGON INTERPRET TABLE                                         *
 ***********************************************************************
 LOGTAB01 INTAB
-         LOGCHAR APPLID=(APPLICID,TSO),SEQNCE='LOGON'
-         LOGCHAR APPLID=(APPLICID,TSO),SEQNCE='logon'
-         LOGCHAR APPLID=(APPLICID,TSO),SEQNCE='TSO'
-         LOGCHAR APPLID=(APPLICID,TSO),SEQNCE='tso'
+         LOGCHAR APPLID=(APPLICID,INTERCOM),SEQNCE='INTERCOM'
+         LOGCHAR APPLID=(APPLICID,INTERCOM),SEQNCE='intercom'
+         LOGCHAR APPLID=(APPLICID,TSO)
          ENDINTAB
          END
 ./ ADD NAME=LOGMOD01,LIST=ALL
