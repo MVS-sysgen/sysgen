@@ -15,7 +15,7 @@ jobs:
     name: MVS 3.8j System Generation
     runs-on: [ubuntu-latest]
     timeout-minutes: 70
-    container: mainframed767/hyperion:latest
+    container: mainframed767/hercules:latest
 
     steps:
 
