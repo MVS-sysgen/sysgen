@@ -33,7 +33,7 @@ jobs:
       #  with:
       #    python-version: 3.8
         run: |
-          apt-get -y install python
+          apt-get -y install python3
           
       - name: Install pip/colorama
         run: |
