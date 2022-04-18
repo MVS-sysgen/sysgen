@@ -33,6 +33,7 @@ jobs:
       #  with:
       #    python-version: 3.8
         run: |
+          apt-get -y update
           apt-cache search python
           apt-get -y install python3
           
