@@ -114,7 +114,8 @@ class sysgen:
                  release=False,
                  install_path = "MVSCE/DASD",
                  no_brexx = False,
-                 no_rakf = False
+                 no_rakf = False,
+                 no_ispf = False,
                 ):
 
         self.print_logo()
@@ -141,6 +142,7 @@ class sysgen:
 
         self.no_rakf = no_rakf
         self.no_brexx = no_brexx
+        self.no_ispf = no_ispf
         self.no_mvp = False
 
         if no_brexx:
@@ -188,6 +190,10 @@ class sysgen:
 
             logging.debug("RAKF install disabled, disabling MVP install")
             self.no_mvp = True
+
+        if self.no_ispf:
+            self.print("Wally ISPF Install disabled")
+            logging.debug("Wally ISPF install disabled")
 
         #self.print("Creating MVSCE folder if it does not exist")
         Path(running_folder+"MVSCE").mkdir(parents=True, exist_ok=True)
@@ -255,10 +261,14 @@ class sysgen:
 
             if step == 'step_10_extras':
                 self.step_10_extras()
-                step = "step_11_cleanup"
+                step = "step_11_ispf"
 
-            if step == 'step_11_cleanup':
-                self.step_11_cleanup()
+            if step == 'step_11_ispf':
+                self.step_11_ispf()
+                step = "step_12_cleanup"
+
+            if step == 'step_12_cleanup':
+                self.step_12_cleanup()
 
         finally:
             s, ss = self.get_step()
@@ -2012,6 +2022,7 @@ class sysgen:
                 continue
 
     def step_09_mvp(self):
+        self.set_step("step_09_mvp")
         self.print("Step 9. Installing MVS/CE Package Manager MVP", color=Fore.CYAN)
         self.restore_dasd("32_RAKF")
         self.custjobs_ipl("Installing MVP", clpa=True)
@@ -2019,11 +2030,14 @@ class sysgen:
         x= subprocess.check_output(['MVSCE/MVP/MVP','INSTALL_MVP'])
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("MVPINSTL")
+        if not os.path.exists("MVP"):
+            os.symlink("MVSCE/MVP", "MVP")
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("33_MVP")
 
     def step_10_extras(self):
+        self.set_step("step_10_extras")
         self.print("Step 10. Installing Extra Components", color=Fore.CYAN)
         # This is a catchall step for 'the rest' of the stuff that needs the full system
         # up before it can be installed
@@ -2037,8 +2051,23 @@ class sysgen:
         self.quit_hercules(msg=False)
         self.backup_dasd("34_EXTRAS")
 
-    def step_11_cleanup(self):
-        self.print("Step 11. Finalizing and Cleaning Up", color=Fore.CYAN)
+    def step_11_ispf(self):
+        self.set_step("step_11_ispf")
+
+        self.print("Step 11. Installing Wally ISPF", color=Fore.CYAN)
+        # This (optional but default) step installs Wally ISPF and Review Front End
+
+        self.restore_dasd("34_EXTRAS")
+        self.custjobs_ipl("Installing Wally ISPF and Review Front End", clpa=True)
+        self.submit_file('jcl/ispf.jcl')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("MVPISPF")
+        self.shutdown_mvs(cust=True)
+        self.quit_hercules(msg=False)
+        self.backup_dasd("35_ISPF")
+
+    def step_12_cleanup(self):
+        self.print("Step 12. Finalizing and Cleaning Up", color=Fore.CYAN)
 
         self.finalize()
 
@@ -2104,7 +2133,7 @@ class sysgen:
             self.restore_dasd("31_BREXX")
 
         if not self.no_rakf:
-            self.restore_dasd("34_EXTRAS")
+            self.restore_dasd("35_ISPF")
 
         self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True)
         self.submit_file('jcl/finalize.jcl')
@@ -2112,7 +2141,7 @@ class sysgen:
         self.check_maxcc("FINALIZE")
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
-        self.backup_dasd("34_FINAL")
+        self.backup_dasd("36_FINAL")
 
 
     def dasdinit(self, dasd_to_create):
@@ -2275,7 +2304,8 @@ def main():
         'step_08_rakf'              : False,
         'step_09_mvp'               : False,
         'step_10_extras'            : False,
-        'step_11_cleanup'           : False
+        'step_11_ispf'              : False,
+        'step_12_cleanup'           : False
     }
 
     main_steps = []
@@ -2295,6 +2325,7 @@ def main():
 
     arg_parser.add_argument("--no-brexx", help="Do not install brexx (this will also prevent RAKF from installing)", action="store_true")
     arg_parser.add_argument("--no-rakf", help="Do not install RAKF", action="store_true")
+    arg_parser.add_argument("--no-ispf", help="Do not install Wally ISPF", action="store_true")
     arg_parser.add_argument("--release", help="This makes a release of MVS/CE", action="store_true")
     arg_parser.add_argument('-l', "--list", help="List all the steps and substeps", action="store_true")
     arg_parser.add_argument('--step', help="Restart sysgen from this step. The install will continue from here. Use --list to get a list of all steps/substeps.", choices=main_steps, default=False)
@@ -2306,7 +2337,7 @@ def main():
     arg_parser.add_argument("--username", help="Add an admin user (edit users.conf to customize all users)", default=False)
     arg_parser.add_argument("--password", help="Set the password for the added user", default="CUL8TR")
     arg_parser.add_argument("--users", help="Use a custom users file instead of users.conf", default="users.conf")
-    arg_parser.add_argument("--profiles", help="User a custom RAKF profile file instead of profiles.conf", default="profiles.conf")
+    arg_parser.add_argument("--profiles", help="Use a custom RAKF profile file instead of profiles.conf", default="profiles.conf")
     arg_parser.add_argument("--keep-backup", help="Keep backup folder when sysgen completes", action="store_true")
     arg_parser.add_argument("--keep-temp", help="Keep temp folder when sysgen completes", action="store_true")
     arg_parser.add_argument('-C',"--CONTINUE", help="Restart sysgen from where it failed previously. You must pass previous arguments and append -C to continue", action="store_true")
@@ -2378,7 +2409,8 @@ def main():
                  no_compress=args.no_compress,
                  release=args.release,
                  no_rakf=args.no_rakf,
-                 no_brexx=args.no_brexx
+                 no_brexx=args.no_brexx,
+                 no_ispf=args.no_ispf,
                  )
 
     mvsce.install(step, substep)
