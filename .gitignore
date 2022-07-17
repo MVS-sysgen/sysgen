@@ -9,4 +9,5 @@ sysgen.log
 build/
 .step
 MVP/
+MVP
 p*.txt
