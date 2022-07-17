@@ -24,8 +24,8 @@ CODEPAGE  819/1047 # Uses the 1047 ASCII/EBCDIC codepage
 # SYSGEN AUTOMATION
 ##
 REXX MSGP ON
-SHCMDOPT ENABLE
-DIAG8CMD ENABLE
+SHCMDOPT ENABLE DIAG8
+DIAG8CMD ENABLE ECHO
 PANOPT MSGCOLOR=DARK RATE=250
 # .-----------------------------Device number
 # |     .-----------------------Device type
