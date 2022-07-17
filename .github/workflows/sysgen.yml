@@ -46,7 +46,7 @@ jobs:
       - name: Running sysgen.py
         id: sysgen
         working-directory: /mvsce
-        run: until ./sysgen.py --release --timeout 500 --version ${GITHUB_SHA}; do echo "Failed, rerunning"; done
+        run: until ./sysgen.py --release --timeout 500 --version ${GITHUB_SHA} --CONTINUE; do echo "Failed, rerunning"; done
 
       - name: Printing Debug Log
         if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
