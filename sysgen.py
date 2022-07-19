@@ -2079,8 +2079,9 @@ class sysgen:
                 for i in infile.readlines():
                     outfile.write(i.replace("@@@@@VERSION@@@@@",v))
 
-        Path(running_folder+"MVSCE/conf").mkdir(parents=True, exist_ok=True)
+        Path(running_folder+"MVSCE/conf/local").mkdir(parents=True, exist_ok=True)
         shutil.copy(Path('conf/local.cnf').resolve(),Path(running_folder+"MVSCE/conf").resolve())
+        shutil.copy(Path('conf/local/custom.cnf').resolve(),Path(running_folder+"MVSCE/conf/local/custom.cnf").resolve())
         shutil.copy(Path('conf/mvsce.rc').resolve(),Path(running_folder+"MVSCE/conf").resolve())
         Path(running_folder+"MVSCE/printers").mkdir(parents=True, exist_ok=True)
         Path(running_folder+"MVSCE/punchcards").mkdir(parents=True, exist_ok=True)
