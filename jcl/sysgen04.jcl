@@ -621,202 +621,210 @@ W,05                   UNITED STATES, CENTRAL TIME ZONE
 //SYSPRINT DD  SYSOUT=*
 //SYSIN DD DATA,DLM=')('
 ./ ADD NAME=IHADVCT
-*%IF DVCIBASE = ''                      /* IF NO DVCTI BASE SPECIFIED*/
-*%THEN %DVCIBASE = 'BASED(CVTZDTAB)';   /* USE CVTZDTAB              */
-*%IF DVCTBASE = ''                      /* IF NO DVCT BASE SPECIFIED */
-*                                       /* USE UCBTYP TO INDEX DVCTI */
-*                                       /* AND USE CVTZDTAB + OFFSET */
-*%THEN %DVCTBASE = 'BASED(CVTZDTAB+DVCTIOFF(UCBTYP & DVCTYPMK))';
-*%;/*
-         MACRO
-         IHADVCT   &DSECT=YES
-.* /* START OF SPECIFICATIONS ****
-.*
-.*01  MODULE-NAME = IHADVCT
-.*
-.*01  COPYRIGHT = NONE
-.*
-.*01  STATUS = OS/VS2 RELEASE 2, LEVEL 0
-.*
-.*01  CHANGE-ACTIVITY = NONE
-.*
-.*01  DESCRIPTIVE-NAME = DEVICE CHARACTERISTICS TABLE MAPPING
-.*
-.*01  FUNCTION = THIS TABLE DESCRIBES PHYSICAL ATTRIBUTES OF EACH DASD
-.*    DEVICE WHICH HAS BEEN SYSGENED
-.*
-.*01  NOTES = THE TABLE IS POINTED TO BY CVTZDTAB.
-.*
-.*01  MODULE-TYPE = MACRO
-.*02    PROCESSOR = ASSEMBLER-370R
-.*
-.*02    MACRO-SIZE = 200 STATEMENTS
-.*
-.**** END OF SPECIFICATIONS ***/
-* /* MACCOMP Y-2 SC1D0/SJD48                                         */
-* /* MACSTAT Y-2 73226/021160                                        */
-*/********************************************************************/
-*/*                 DEVICE CHARACTERISTICS TABLE                     */
-*/********************************************************************/
-*/*                                                                  */
-*/*         THIS TABLE MAY BE USED TO FIND THE CHARACTERISTICS       */
-*/*         OF DIRECT ACCESS DEVICES.  THE APPLICABLE DEVICES ARE    */
-*/*         THOSE CONTAINING UCBDACC IN UCBTBYT3 (SEE IEFUCBOB).     */
-*/*                                                                  */
-*/*         NOTE: DEVTYPE MAY BE USED TO EXTRACT INFORMATION         */
-*/*         FROM THIS TABLE.  ITS OUTPUT AREA IS IN A SLIGHTLY       */
-*/*         DIFFERENT FORMAT, AND IS MAPPED BY IHADVA.               */
-*/*                                                                  */
-*/*         THE TABLE IS COMPOSED OF AN INDEX FOLLOWED BY ONE        */
-*/*         ENTRY FOR EACH DASD DEVICE WHICH HAS BEEN SYSGENED       */
-*/*                                                                  */
-*/*         FOR ASSEMBLER USE, TWO SEPARATE DSECTS ARE PROVIDED.     */
-*/*         A USING ON DVCTI GIVES ADDRESSIBILITY TO THE INDEX,      */
-*/*         AND A USING ON DVCT GIVES ADDRESSIBILITY TO AN ENTRY.    */
-*/*         SPECIFYING DSECT=NO SUPPRESSES THE INDEX AND PROVIDES    */
-*/*         AN ENTRY DESCRIPTION WITHOUT A DSECT STATEMENT           */
-*/*                                                                  */
-*/*         FOR PLS USE, TWO STRUCTURES ARE PROVIDED. THEIR STORAGE  */
-*/*         ATTRIBUTES ARE CONTROLLED BY SETTING STRING MACRO        */
-*/*         VARIABLES AS FOLLOWS:                                    */
-*/*         STRUCTURE  MACRO-VAR       DEFAULT SETTING               */
-*/*         DVCTI      %DVCIBASE  'BASED(CVTZDTAB)'                  */
-*/*         DVCT       %DVCTBASE  'BASED(CVTZDTAB                    */
-*/*                                +DVCTIOFF(UCBTYP&DVCTYPMK))'      */
-*/*                                                                  */
-*/*         THE DEFAULT SETTINGS WILL PROVIDE ADDRESSIBILITY TO      */
-*/*         ALL FIELDS, BUT DEPEND ON CVT AND UCB ADDRESSIBILITY.    */
-*/*                                                                  */
-*/*               FORMAT OF EACH ENTRY                               */
-*/*         _____________________________________________            */
-*/*   0(00) |                     |                     |            */
-*/*         |       DVCCYL        |       DVCTRK        |            */
-*/*         |_____________________|_____________________|            */
-*/*   4(04) |                     |       DVCOVHD       |            */
-*/*         |       DVCTRKLN      | DVCOVNLB | DVCOVLB  |            */
-*/*         |_____________________|__________|__________|            */
-*/*   8(08) |          |          |                     |            */
-*/*         | DVCOVNK  | DVCFLAGS |       DVCTOL        |            */
-*/*         |__________|__________|_____________________|            */
-*/*  12(0C) |                     |______________________            */
-*/*         |       DVCALT        |                     |            */
-*/*         |_____________________|       DVCOVR0       |  RPS       */
-*/*         ______________________|_____________________|  ONLY      */
-*/*  16(10) |          |          |                        SECTION   */
-*/*         | DVCSECT  | DVCSECTD |                                  */
-*/*         |__________|__________|                                  */
-*/********************************************************************/
-*%/*
-         AIF   ('&DSECT' EQ 'NO').NODSECT
-DVCTI    DSECT ,              INDEX TO DVCT
-*              THIS INDEX IS LOCATED FROM CVTZDTAB.
-*              THE PROPER ENTRY IS FOUND BY ADDING THE LOW ORDER
-*              4 BITS OF UCBTYP TO THE ADDRESS IN CVTZDTAB.
-DVCTYPMK EQU   X'0000000F'              TYPICAL USAGE:
-*              LA    RWRK,DVCTYPMK      MASK FOR UNIT TYPE NUMBER
-*              N     RWRK,UCBTYP        PICK UP UNIT TYPE NUMBER
-*              IC    RWRK,DVCTIOFF(RWRK)  PICK UP OFFSET
-DVCTIOFF DS    AL1                      OFFSET TO DVCT ENTRY
-***********************************************************************
-         SPACE 3
-DVCT     DSECT ,                        FORMAT OF DVCT ENTRY
-*              THE ENTRY IS LOCATED BY ADDING DVCTIOFF TO CVTZDTAB
-         AGO   .ENTRY
-.NODSECT ANOP
-DVCT     DS    0H                       FORMAT OF DVCT ENTRY
-.ENTRY   ANOP
-*
-DVCCYL   DS    H                        PHYS NO. CYL PER VOLUME
-DVCTRK   DS    H                        NO. TRACKS PER CYLINDER
-DVCTRKLN DS    H                        NO. OF BYTES PER TRACK
-*
-DVCOVHD  DS    0H                       BLOCK OVERHEAD IF DVC2BOV=1
-*              USE FOLLOWING TWO CONSTANTS IF DVC2BOV=0
-DVCOVNLB DS    XL1                      OVERHEAD NOT LAST BLOCK
-DVCOVLB  DS    XL1                      OVERHEAD LAST BLOCK
-*
-DVCOVNK  DS    XL1                      OVERHEAD DECREMENT NOT KEYED
-*
-DVCFLAGS DS    BL1
-DVC2BOV  EQU   X'08'                    IF 1, USE DVCOVHD
-*                                       IF 0, USE DVCOVNLB,DVCOVLB
-DVCFTOL  EQU   X'01'                    IF 1, APPLY TOLERANCE FACTOR
-*
-DVCTOL   DS    H                        TOLERANCE FACTOR
-*              APPLY TOLERANCE FACTOR AS FOLLOWS:
-*              1. ADD BLOCKSIZE AND KEYLENGTH
-*              2. MULTIPLY BY DVCTOL
-*              3. SHIFT RIGHT DVCTSHFT BITS
-*              4. ADD APPROPRIATE OVERHEADS
-DVCTSHFT EQU   9                        SHIFT AMT TO DIVIDE BY 512
-*
-DVCALT   DS    H                        NUMBER ALTERNATE TRKS/VOLUME
-*
-DVCENTLG EQU   *-DVCT                   BASIC SIZE OF DEVICE TABLE
-*                                       ENTRY, NOT INCLUDING ADD'L
-*                                       CHARACTERISTICS FOR RPS
-**********************************************************************
-*              THE FOLLOWING SECTION OF THE TABLE IS PRESENT         *
-*              ONLY FOR RPS DEVICES--TEST UCBTBYT2 FOR UCB2OPT3      *
-**********************************************************************
-DVCRPS   DS    0CL4                     RPS SECTION
-DVCOVR0  DS    H                        OVERHEAD BYTES FOR RECORD 0
-DVCSECT  DS    XL1                      NUMBER SECTORS IN FULL TRACK
-DVCSECTD DS    XL1                      NUMBER DATA SECTORS
-*
-*              END OF DVCT
-         MEND
-**/;
-*
-* DCL  1 DVCTI DVCIBASE,                /* INDEX TO DVCT             */
-*        2 *   PTR(8),                  /* OFFSET TO ENTRY 0         */
-*        2 DVCTIOFF (*) PTR(8);         /* OFFSETS TO ENTRIES 1 TO N */
-*/*                                                                  */
-*/*         USE THE LAST 4 BITS OF UCBTYP TO INDEX DVCTIOFF.         */
-*/*         DVCTYPMK MAY BE USED AS A MASK TO 'AND' WITH UCBTYP.     */
-*/*         THE INDEX ENTRIES ARE OFFSETS RELATIVE TO CVTZDTAB.      */
-*/********************************************************************/
-*
-* DCL  1 DVCT DVCTBASE,                 /* FORMAT OF DVCT ENTRY      */
-*        2 DVCCYL FIXED(15) UNSIGNED,   /* PHYS NO. CYL PER VOLUME   */
-*        2 DVCTRK FIXED(15) UNSIGNED,   /* NO. TRACKS PER CYLINDER   */
-*        2 DVCTRKLN FIXED(15) UNSIGNED, /* NO. BYTES PER TRACK       */
-*
-*        2 DVCOVHD FIXED(15),           /* BLOCK OVERHD IF DVC2BOV=1 */
-*          /* USE THE FOLLOWING TWO CONSTANTS IF DVC2BOV=0           */
-*          3 DVCOVNLB FIXED(8),         /* OVERHEAD NOT LAST BLOCK   */
-*          3 DVCOVLB FIXED(8),          /* OVERHEAD FOR LAST BLOCK   */
-*
-*        2 DVCOVNK FIXED(8),            /* OVERHD DECREMENT NOT KEYED*/
-*
-*        2 DVCFLAGS BIT(8),
-*          3 * BIT(4),                  /* RESERVED                  */
-*          3 DVC2BOV BIT(1),            /* IF 1, USE DVCOVHD         */
-*                                       /* IF 0, USE DVCOVNLB,OVLB   */
-*          3 * BIT(2),                  /* RESERVED                  */
-*          3 DVCFTOL BIT(1),            /* IF 1, APPLY TOLER FACTOR  */
-*
-*        2 DVCTOL FIXED(15) UNSIGNED,   /* TOLERANCE FACTOR          */
-*/*         APPLY TOLERANCE AS FOLLOWS:                              */
-*/*         (BLOCKSIZE+KEYLENGTH) * DVCTOL / DVCTSHFT + OVERHEADS    */
-*
-*        2 DVCALT FIXED(15),            /* NO. OF ALTERNATE TRACKS   */
-*/********************************************************************/
-*/*         THE FOLLOWING SETION OF THE TABLE IS PRESENT             */
-*/*         ONLY FOR RPS DEVICES (UCB2OPT3=1)                        */
-*/********************************************************************/
-*        2 DVCRPS,                      /*RPS SECTION                */
-*          3 DVCOVR0 FIXED(15),         /* OVERHD BYTES FOR RECORD 0 */
-*          3 DVCSECT FIXED(8),          /* NO. SECTORS IN FULL TRACK */
-*          3 DVCSECTD FIXED(8);         /* NO. OF DATA SECTORS       */
-*/********************************************************************/
-*
-* DCL    DVCTSHFT FIXED(15) CONSTANT(512); /* DENOMINATOR FOR DVCTOL */
-*/*         THE FOLLOWING CONSTANT CAN BE USED TO MASK OUT ALL BUT   */
-*/*         THE DVCTIOFF SUBSCRIPT FROM THE UCB WORD UCBTYP          */
-* DCL    DVCTYPMK BIT(32) CONSTANT('0000000F'X); /* UCBTYP MASK      */
-*
-*/*               END OF DVCT                                        */
+*%IF DVCIBASE = ''                      /* IF NO DVCTI BASE SPECIFIED*/ 00149900
+*%THEN %DVCIBASE = 'BASED(CVTZDTAB)';   /* USE CVTZDTAB              */ 00249900
+*%IF DVCTBASE = ''                      /* IF NO DVCT BASE SPECIFIED */ 00299900
+*                                       /* USE UCBTYP TO INDEX DVCTI */ 00309900
+*                                       /* AND USE CVTZDTAB + OFFSET */ 00319900
+*%THEN %DVCTBASE = 'BASED(CVTZDTAB+DVCTIOFF(UCBTYP & DVCTYPMK))';       00349900
+*%;/*                                                                   00399900
+         MACRO                                                          00500000
+         IHADVCT   &DSECT=YES                                           01000000
+.* /* START OF SPECIFICATIONS ****                                      01050000
+.*                                                                      01100000
+.*01  MODULE-NAME = IHADVCT                                             01150000
+.*                                                                      01250000
+.*01  COPYRIGHT = NONE                                                  01300000
+.*                                                                      01350000
+.*01  STATUS = OS/VS2 RELEASE 2, LEVEL 0                                01400000
+.*                                                                      01450000
+.*01  CHANGE-ACTIVITY = NONE                                            01460000
+.*                                                                      01470000
+.*01  DESCRIPTIVE-NAME = DEVICE CHARACTERISTICS TABLE MAPPING           01480000
+.*                                                                      01490000
+.*01  FUNCTION = THIS TABLE DESCRIBES PHYSICAL ATTRIBUTES OF EACH DASD  01492000
+.*    DEVICE WHICH HAS BEEN SYSGENED                                    01492400
+.*                                                                      01494000
+.*01  NOTES = THE TABLE IS POINTED TO BY CVTZDTAB.                      01496000
+.*                                                                      01498000
+.*01  MODULE-TYPE = MACRO                                               01579900
+.*02    PROCESSOR = ASSEMBLER-370R                                      01581900
+.*                                                                      01587900
+.*02    MACRO-SIZE = 200 STATEMENTS                                     01588300
+.*                                                                      01723100
+.**** END OF SPECIFICATIONS ***/                                        01739800
+* /* MACCOMP Y-2 SC1D0/SJD48                                         */ 01789800
+* /* MACSTAT Y-2 73226/021160                                        */ 01839800
+*/********************************************************************/ 01889800
+*/*                 DEVICE CHARACTERISTICS TABLE                     */ 02000000
+*/********************************************************************/ 02500000
+*/*                                                                  */ 03510000
+*/*         THIS TABLE MAY BE USED TO FIND THE CHARACTERISTICS       */ 05000000
+*/*         OF DIRECT ACCESS DEVICES.  THE APPLICABLE DEVICES ARE    */ 05500000
+*/*         THOSE CONTAINING UCBDACC IN UCBTBYT3 (SEE IEFUCBOB).     */ 06000000
+*/*                                                                  */ 06010000
+*/*         NOTE: DEVTYPE MAY BE USED TO EXTRACT INFORMATION         */ 06020000
+*/*         FROM THIS TABLE.  ITS OUTPUT AREA IS IN A SLIGHTLY       */ 06030000
+*/*         DIFFERENT FORMAT, AND IS MAPPED BY IHADVA.               */ 06040000
+*/*                                                                  */ 06050000
+*/*         THE TABLE IS COMPOSED OF AN INDEX FOLLOWED BY ONE        */ 06100000
+*/*         ENTRY FOR EACH DASD DEVICE WHICH HAS BEEN SYSGENED       */ 06150000
+*/*                                                                  */ 06160000
+*/*         FOR ASSEMBLER USE, TWO SEPARATE DSECTS ARE PROVIDED.     */ 06170000
+*/*         A USING ON DVCTI GIVES ADDRESSIBILITY TO THE INDEX,      */ 06180000
+*/*         AND A USING ON DVCT GIVES ADDRESSIBILITY TO AN ENTRY.    */ 06190000
+*/*         SPECIFYING DSECT=NO SUPPRESSES THE INDEX AND PROVIDES    */ 06192000
+*/*         AN ENTRY DESCRIPTION WITHOUT A DSECT STATEMENT           */ 06194000
+*/*                                                                  */ 06196000
+*/*         FOR PLS USE, TWO STRUCTURES ARE PROVIDED. THEIR STORAGE  */ 06198000
+*/*         ATTRIBUTES ARE CONTROLLED BY SETTING STRING MACRO        */ 06198100
+*/*         VARIABLES AS FOLLOWS:                                    */ 06198200
+*/*         STRUCTURE  MACRO-VAR       DEFAULT SETTING               */ 06198300
+*/*         DVCTI      %DVCIBASE  'BASED(CVTZDTAB)'                  */ 06198800
+*/*         DVCT       %DVCTBASE  'BASED(CVTZDTAB                    */ 06199200
+*/*                                +DVCTIOFF(UCBTYP&DVCTYPMK))'      */ 06199600
+*/*                                                                  */ 06199700
+*/*         THE DEFAULT SETTINGS WILL PROVIDE ADDRESSIBILITY TO      */ 06199800
+*/*         ALL FIELDS, BUT DEPEND ON CVT AND UCB ADDRESSIBILITY.    */ 06199900
+*/*                                                                  */ 06200000
+*/*               FORMAT OF EACH ENTRY                               */ 06250000
+*/*         _____________________________________________            */ 06300000
+*/*   0(00) |                     |                     |            */ 06350000
+*/*         |       DVCCYL        |       DVCTRK        |            */ 06400000
+*/*         |_____________________|_____________________|            */ 06450000
+*/*   4(04) |                     |       DVCOVHD       |            */ 06460000
+*/*         |       DVCTRKLN      | DVCOVNLB | DVCOVLB  |            */ 06470000
+*/*         |_____________________|__________|__________|            */ 06480000
+*/*   8(08) |          |          |                     |            */ 06490000
+*/*         | DVCOVNK  | DVCFLAGS |       DVCTOL        |            */ 06492000
+*/*         |__________|__________|_____________________|            */ 06494000
+*/*  12(0C) |                     |______________________            */ 06496000
+*/*         |       DVCALT        |                     |            */ 06498000
+*/*         |_____________________|       DVCOVR0       |  RPS       */ 06498400
+*/*         ______________________|_____________________|  ONLY      */ 06498800
+*/*  16(10) |          |          |                     |  SECTION   */ 06499200
+*/*         | DVCSECT  | DVCSECTD |       DVCBPSEC      |    @ZA40405*/ 06499400
+*/*         |__________|__________|_____________________|    @ZA40405*/ 06499600
+*/********************************************************************/ 06500000
+*%/*                                                                    06550000
+         AIF   ('&DSECT' EQ 'NO').NODSECT                               06600000
+DVCTI    DSECT ,              INDEX TO DVCT                             07000000
+*              THIS INDEX IS LOCATED FROM CVTZDTAB.                     07500000
+*              THE PROPER ENTRY IS FOUND BY ADDING THE LOW ORDER        08000000
+*              4 BITS OF UCBTYP TO THE ADDRESS IN CVTZDTAB.             08500000
+DVCTYPMK EQU   X'0000000F'              TYPICAL USAGE:                  09000000
+*              LA    RWRK,DVCTYPMK      MASK FOR UNIT TYPE NUMBER       09500000
+*              N     RWRK,UCBTYP        PICK UP UNIT TYPE NUMBER        10000000
+*              IC    RWRK,DVCTIOFF(RWRK)  PICK UP OFFSET                10500000
+DVCTIOFF DS    AL1                      OFFSET TO DVCT ENTRY            11000000
+*********************************************************************** 11500000
+         SPACE 3                                                        12000000
+DVCT     DSECT ,                        FORMAT OF DVCT ENTRY            12010000
+*              THE ENTRY IS LOCATED BY ADDING DVCTIOFF TO CVTZDTAB      12020000
+         AGO   .ENTRY                                                   12050000
+.NODSECT ANOP                                                           12100000
+DVCT     DS    0H                       FORMAT OF DVCT ENTRY            21500000
+.ENTRY   ANOP                                                           21550000
+*                                                                       22500000
+DVCCYL   DS    H                        PHYS NO. CYL PER VOLUME         23000000
+DVCTRK   DS    H                        NO. TRACKS PER CYLINDER         23500000
+DVCTRKLN DS    H                        NO. OF BYTES PER TRACK          24000000
+*                                                                       24500000
+DVCOVHD  DS    0H                       BLOCK OVERHEAD IF DVC2BOV=1     25000000
+*              USE FOLLOWING TWO CONSTANTS IF DVC2BOV=0                 25500000
+DVCOVNLB DS    XL1                      OVERHEAD NOT LAST BLOCK         26000000
+DVCOVLB  DS    XL1                      OVERHEAD LAST BLOCK             26500000
+*                                                                       27000000
+DVCOVNK  DS    XL1                      OVERHEAD DECREMENT NOT KEYED    27500000
+*                                                                       28000000
+DVCFLAGS DS    BL1                                                      28500000
+DVC2BOV  EQU   X'08'                    IF 1, USE DVCOVHD               29000000
+*                                       IF 0, USE DVCOVNLB,DVCOVLB      29500000
+DVCFTOL  EQU   X'01'                    IF 1, APPLY TOLERANCE FACTOR    30000000
+*                                                                       30500000
+DVCTOL   DS    H                        TOLERANCE FACTOR                31000000
+*              APPLY TOLERANCE FACTOR AS FOLLOWS:                       33500000
+*              1. ADD BLOCKSIZE AND KEYLENGTH                           34000000
+*              2. MULTIPLY BY DVCTOL                                    34500000
+*              3. SHIFT RIGHT DVCTSHFT BITS                             35000000
+*              4. ADD APPROPRIATE OVERHEADS                             35500000
+DVCTSHFT EQU   9                        SHIFT AMT TO DIVIDE BY 512      36500000
+*                                                                       37000000
+DVCALT   DS    H                        NUMBER ALTERNATE TRKS/VOLUME    37500000
+*                                                                       38000000
+DVCENTLG EQU   *-DVCT                   BASIC SIZE OF DEVICE TABLE      38050000
+*                                       ENTRY, NOT INCLUDING ADD'L      38100000
+*                                       CHARACTERISTICS FOR RPS         38150000
+**********************************************************************  38500000
+*              THE FOLLOWING SECTION OF THE TABLE IS PRESENT         *  39000000
+*              ONLY FOR RPS DEVICES--TEST UCBTBYT2 FOR UCB2OPT3      *  39500000
+**********************************************************************  40000000
+DVCRPS   DS    0CL4                     RPS SECTION                     40500000
+DVCOVR0  DS    H                        OVERHEAD BYTES FOR RECORD 0     41000000
+DVCSECT  DS    XL1                      NUMBER SECTORS IN FULL TRACK    41500000
+DVCSECTD DS    XL1                      NUMBER DATA SECTORS             42000000
+* NOTE: THE FOLLOWING FIELD REPLACES DVCSECTD WHICH CAN BE     @ZA40405 42000100
+*       CALCULATE IN THE FOLLOWING MANNER. THE FIELD WAS       @ZA40405 42007000
+*       REPLACED TO BE COMPATABLE WITH THE HARDWARE SUPPLIED   @ZA40405 42014000
+*       SECTOR CALCULATION ALGORITHM.                          @ZA40405 42021000
+*  DVCSECTD = DVCTRKLN / DVCBPSEC                              @ZA40405 42028000
+DVCBPSEC DS    AL2                      BYTES PER SECTOR       @ZA40405 42035000
+*                                                                       43000000
+*              END OF DVCT                                              43500000
+         MEND                                                           44000000
+**/;                                                                    44050000
+*                                                                       44100000
+* DCL  1 DVCTI DVCIBASE,                /* INDEX TO DVCT             */ 44150000
+*        2 *   PTR(8),                  /* OFFSET TO ENTRY 0         */ 44160000
+*        2 DVCTIOFF (*) PTR(8);         /* OFFSETS TO ENTRIES 1 TO N */ 44200000
+*/*                                                                  */ 44250000
+*/*         USE THE LAST 4 BITS OF UCBTYP TO INDEX DVCTIOFF.         */ 44300000
+*/*         DVCTYPMK MAY BE USED AS A MASK TO 'AND' WITH UCBTYP.     */ 44320000
+*/*         THE INDEX ENTRIES ARE OFFSETS RELATIVE TO CVTZDTAB.      */ 44350000
+*/********************************************************************/ 44450000
+*                                                                       44460000
+* DCL  1 DVCT DVCTBASE,                 /* FORMAT OF DVCT ENTRY      */ 44500000
+*        2 DVCCYL FIXED(15) UNSIGNED,   /* PHYS NO. CYL PER VOLUME   */ 44550000
+*        2 DVCTRK FIXED(15) UNSIGNED,   /* NO. TRACKS PER CYLINDER   */ 44600000
+*        2 DVCTRKLN FIXED(15) UNSIGNED, /* NO. BYTES PER TRACK       */ 44650000
+*                                                                       44700000
+*        2 DVCOVHD FIXED(15),           /* BLOCK OVERHD IF DVC2BOV=1 */ 44750000
+*          /* USE THE FOLLOWING TWO CONSTANTS IF DVC2BOV=0           */ 44850000
+*          3 DVCOVNLB FIXED(8),         /* OVERHEAD NOT LAST BLOCK   */ 44900000
+*          3 DVCOVLB FIXED(8),          /* OVERHEAD FOR LAST BLOCK   */ 44950000
+*                                                                       45000000
+*        2 DVCOVNK FIXED(8),            /* OVERHD DECREMENT NOT KEYED*/ 45050000
+*                                                                       45100000
+*        2 DVCFLAGS BIT(8),                                             45150000
+*          3 * BIT(4),                  /* RESERVED                  */ 45160000
+*          3 DVC2BOV BIT(1),            /* IF 1, USE DVCOVHD         */ 45200000
+*                                       /* IF 0, USE DVCOVNLB,OVLB   */ 45250000
+*          3 * BIT(2),                  /* RESERVED                  */ 45260000
+*          3 DVCFTOL BIT(1),            /* IF 1, APPLY TOLER FACTOR  */ 45300000
+*                                                                       45350000
+*        2 DVCTOL FIXED(15) UNSIGNED,   /* TOLERANCE FACTOR          */ 45400000
+*/*         APPLY TOLERANCE AS FOLLOWS:                              */ 45450000
+*/*         (BLOCKSIZE+KEYLENGTH) * DVCTOL / DVCTSHFT + OVERHEADS    */ 45500000
+*                                                                       45510000
+*        2 DVCALT FIXED(15),            /* NO. OF ALTERNATE TRACKS   */ 45550000
+*/********************************************************************/ 45552000
+*/*         THE FOLLOWING SETION OF THE TABLE IS PRESENT             */ 45560000
+*/*         ONLY FOR RPS DEVICES (UCB2OPT3=1)                        */ 45570000
+*/********************************************************************/ 45580000
+*        2 DVCRPS,                      /*RPS SECTION                */ 45600000
+*          3 DVCOVR0 FIXED(15),         /* OVERHD BYTES FOR RECORD 0 */ 45650000
+*          3 DVCSECT FIXED(8),          /* NO. SECTORS IN FULL TRACK */ 45700000
+*          3 DVCDSECT FIXED(8),         /* NUMBER OF DATA SECTORS    */ 45750000
+*          3 DVCBPSEC FIXED(16);        /* BYTES PER SECTOR  @ZA40405*/ 45750200
+*/********************************************************************/ 45760000
+*                                                                       45800000
+* DCL    DVCTSHFT FIXED(15) CONSTANT(512); /* DENOMINATOR FOR DVCTOL */ 45850000
+*/*         THE FOLLOWING CONSTANT CAN BE USED TO MASK OUT ALL BUT   */ 45900000
+*/*         THE DVCTIOFF SUBSCRIPT FROM THE UCB WORD UCBTYP          */ 45910000
+* DCL    DVCTYPMK BIT(32) CONSTANT('0000000F'X); /* UCBTYP MASK      */ 46000000
+*                                                                       46050000
+*/*               END OF DVCT                                        */ 46100000
+
 ./ ENDUP
 )(
 //*
