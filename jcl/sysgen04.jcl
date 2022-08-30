@@ -824,7 +824,6 @@ DVCBPSEC DS    AL2                      BYTES PER SECTOR       @ZA40405 42035000
 * DCL    DVCTYPMK BIT(32) CONSTANT('0000000F'X); /* UCBTYP MASK      */ 46000000
 *                                                                       46050000
 */*               END OF DVCT                                        */ 46100000
-
 ./ ENDUP
 )(
 //*
