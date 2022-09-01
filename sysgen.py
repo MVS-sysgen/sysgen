@@ -36,7 +36,7 @@ usermods = ["AY12275","JLM0001","JLM0002","JLM0003","JLM0004","SLB0002","SYZM001
             "ZP60015","ZP60016","ZP60017","ZP60018","ZP60019","ZP60020","ZP60021","ZP60022","ZP60026", #usermods4.jcl
             "ZP60027","ZP60028","ZP60029","ZP60030","ZP60031","ZP60032","ZP60033","ZP60034","ZP60035", #usermods5.jcl
             "ZP60036","ZP60037","ZP60038","ZP60039","ZUM0007","ZUM0008",                               #usermods6.jcl
-            "SYZJ2001", "TNIP800", "ZP60025" #"DYNPROC"
+            "SYZJ2001", "TNIP800", "ZP60025", "UZ61025" #"DYNPROC"
             ]
 
 
@@ -1455,7 +1455,8 @@ class sysgen:
                     "SYZJ2001" : "Adds condition code to job message in TSO",
                     "DYNPROC" : "Adds dynamic proclib support",
                     "TNIP800" : "Add support for user-defined system parameter PRISUB= to define primary subsystem name",
-                    "ZP60041" : "Add support for indirect cataloging using VOLUME(******) (includes ZP60041, ZP60042, ZP60043)"
+                    "ZP60041" : "Add support for indirect cataloging using VOLUME(******) (includes ZP60041, ZP60042, ZP60043)",
+                    "UZ61025" : "Fixes RESETPL typo in SYS1.AMACLIB"
                     }
 
         EBCDIC_mods = ['ZP60025']
