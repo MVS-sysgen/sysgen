@@ -1708,7 +1708,7 @@ class sysgen:
         user = "MVS-sysgen"
         repo = "RAKF"
         self.custjobs_ipl("Getting current RAKF release from github", clpa=True)
-        self.git_clone("https://github.com/mainframed/RAKF")
+        self.git_clone("https://github.com/MVS-sysgen/RAKF")
         self.print("Generating temp/RAKF/rakf_install.jcl")
         with open("temp/rakf_users.txt", 'w') as out_rakf:
             rakf_line = "{user:7.7}  {group:8.8}{groups:1}{password:8.8} {oper:1}\n"
