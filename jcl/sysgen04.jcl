@@ -203,6 +203,14 @@ W,05                   UNITED STATES, CENTRAL TIME ZONE
 //             UNIT=3350,VOL=SER=MVS000,
 //             SPACE=(CYL,(10,5,50)),
 //             DCB=(SYS1.PROCLIB)
+//JCLLIB  DD  DSN=SYS2.JCLLIB,DISP=(,CATLG,),
+//             UNIT=3350,VOL=SER=MVS000,
+//             SPACE=(CYL,(10,5,50)),
+//             DCB=(SYS1.PROCLIB)
+//CMDPROC  DD  DSN=SYS2.CMDPROC,DISP=(,CATLG,),
+//             UNIT=3350,VOL=SER=MVS000,
+//             SPACE=(CYL,(10,5,50)),
+//             DCB=(SYS1.PROCLIB)
 //PARMLIB  DD  DSN=SYS2.PARMLIB,DISP=(,CATLG,),
 //             UNIT=3350,VOL=SER=MVS000,
 //             SPACE=(CYL,(10,5,50)),
