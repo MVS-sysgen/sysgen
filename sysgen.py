@@ -2081,12 +2081,18 @@ class sysgen:
                     outfile.write(i.replace("@@@@@VERSION@@@@@",v))
 
         Path(running_folder+"MVSCE/conf/local").mkdir(parents=True, exist_ok=True)
+        #Path(running_folder+"MVSCE/scripts").mkdir(parents=True, exist_ok=True)
+
+        self.print("Copying hercules config files to {}".format(Path(running_folder+"MVSCE/conf").resolve()))
         shutil.copy(Path('conf/local.cnf').resolve(),Path(running_folder+"MVSCE/conf").resolve())
         shutil.copy(Path('conf/local/custom.cnf').resolve(),Path(running_folder+"MVSCE/conf/local/custom.cnf").resolve())
         shutil.copy(Path('conf/mvsce.rc').resolve(),Path(running_folder+"MVSCE/conf").resolve())
+        
         Path(running_folder+"MVSCE/printers").mkdir(parents=True, exist_ok=True)
         Path(running_folder+"MVSCE/punchcards").mkdir(parents=True, exist_ok=True)
 
+        self.print("Copying scripts to {}".format(Path(running_folder+"MVSCE/scripts").resolve()))
+        shutil.copytree(Path('scripts').resolve(), Path(running_folder+"MVSCE/scripts").resolve())
 
         up = "| {:9} | {:8}|\n"
 

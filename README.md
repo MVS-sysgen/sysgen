@@ -1,5 +1,7 @@
 # MVS Community Edition Sysgen
 
+![NETSOL](/screenshots/01_netsol.png)
+
 To use this version of MVS you can download the current release and run `bash start_mvs.sh`.
 
 Requirements:
@@ -14,7 +16,69 @@ The following is also recommended:
 - c3270/x3270
 - ncat
 
-## Building and Installing Hercules
+## Running
+
+Go to https://github.com/MVS-sysgen/sysgen/releases and download the latest release.
+Tagged versions are official releases, latest is automatically built after every
+commit. The latest version has all the recent changes and might be unstable. 
+
+## Docker
+
+If you have docker you can run MVS/CE in a docker container. 
+
+From the command line run:
+
+```
+docker run -d \
+  --name=mvsce \
+  -e HUSER=docker \
+  -e HPASS=docker \
+  -p 2121:21 \
+  -p 2323:23 \
+  -p 3270:3270 \
+  -p 3505:3505 \
+  -p 3506:3506 \
+  -p 8888:8888 \
+  -v /opt/docker/mvsce:/config \
+  -v /opt/docker/mvsce/printers:/printers \
+  -v /opt/docker/mvsce/punchcards:/punchcards \
+  -v /opt/docker/mvsce/logs:/logs \
+  -v /opt/docker/mvsce/dasd:/dasd \
+  -v /opt/docker/mvsce/certs:/certs \
+  --restart unless-stopped \
+  mainframed767/mvsce:latest
+```
+
+Make sure the directories are correct for your docker volumes and hit enter,
+this will download the latest MVS/CE release and deploy it. You can then
+connect with you 3270 client on port 3270 (or port 2323 for encrypted 
+communication).
+
+
+More details are available here: https://hub.docker.com/r/mainframed767/mvsce 
+
+If you wish to build this docker container yourself you can see the Dockerfile here: https://github.com/MVS-sysgen/docker-mvsce
+
+## Screenshots
+
+**Wally ISPF with MVS/CE theme**
+
+
+![ISPF](/screenshots/02_wISPF.png?raw=true "Wally ISPF MVS/CE Theme")
+
+![ISPOPT5](/screenshots/05_UTILITIES.png "Wally ISPF MVS/CE Theme")
+
+![ISPOPT5](/screenshots/03_batch.png "Larry Belmontes Jr ISPOPT5")
+
+![ISPOPT5](/screenshots/06_ISRDDN_DALCDS.png "Larry Belmontes Jr DALCDS")
+
+
+**MVP**
+
+![MVP](/screenshots/04_MVP.png "MVS Package Manager") 
+
+
+# Building and Installing Hercules
 
 **Ubuntu**: Install m4, make, autoconf, automake, cmake, flex, build-essential, libbz2-dev, libregina3-dev, zlib1g-dev, libtool and, libltdl-dev with:
 `sudo apt install m4 make autoconf automake cmake flex build-essential libbz2-dev zlib1g-dev libtool libltdl-dev`

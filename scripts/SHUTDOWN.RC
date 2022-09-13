@@ -1,0 +1,46 @@
+* _____ _____ _____ _____ ____  _____ _ _ _ _____ 
+* |   __|  |  |  |  |_   _|    \|     | | | |   | |
+* |__   |     |  |  | | | |  |  |  |  | | | | | | |
+* |_____|__|__|_____| |_| |____/|_____|_____|_|___|
+*
+* setting up automated responses
+hao clear
+hao tgt HASP099
+hao cmd script scripts/pjes2
+hao tgt HASP085
+hao cmd script scripts/zeod
+hao tgt IEE334I
+hao cmd script scripts/quiesce
+hao tgt HHC00814I Processor CP00: SIGP Stop
+hao cmd script scripts/poweroff
+hao tgt HHC00814I Processor CP01: SIGP Stop
+hao cmd script scripts/poweroff
+hao tgt ([0-9]{2}) IKT010D 
+hao cmd /R $1,FSTOP
+# For information see https://www.ibm.com/docs/en/zos/2.3.0?topic=commands-mvs-system-reference
+* Cancel the processing of all automatic commands.
+/$CA,ALL 
+pause 2
+* Switching SMF
+/SWITCH SMF
+pause 2
+* Preventing users from logging on
+/MODIFY TSO,USERMAX=0
+pause 2
+* Stop JES2 Initiators
+/$PI
+pause 2
+* Stopping JES2
+/$P PRT1  
+/$P PRT2  
+/$P PRT3  
+/$P PUNCH1
+/$P RDR1
+/$P RDR2  
+pause 3
+* Shutting down TSO
+/STOP TSO
+pause 2
+* Shutting down VTAM
+/HALT net,quick
+pause 2
