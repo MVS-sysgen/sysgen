@@ -1,0 +1,6 @@
+pause 5
+stopall
+pause 5
+sysclear
+pause 5
+quit

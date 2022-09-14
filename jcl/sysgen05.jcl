@@ -456,6 +456,7 @@ EXIT
 //* ***************************************************************** *
 //* SYS2.PROCLIB: CREATE TSONUSER (USED TO ADD NEW TSO USERS)         *
 //*               CREATE TSODUSER (USED TO DELETE TSO USERS)          *
+//*               CREATE SHUTDOWN (USED TO SHUTDOWN MVSCE)            *
 //* ***************************************************************** *
 //*
 //SYSPRINT DD  SYSOUT=*
@@ -663,6 +664,33 @@ EXIT
 //IDC05    EXEC PGM=IDCAMS,COND=(0,NE,EVAL01),REGION=1024K              00004900
 //SYSPRINT DD  SYSOUT=*                                                 00005000
 //SYSIN    DD  DSN=&&IDCAMS,DISP=(OLD,DELETE)                           00005100
+./ ADD NAME=SHUTDOWN,LIST=ALL
+//*                                                                    
+//* ------------------------------------------------------------------*
+//* SHUTDOWN JCL Procedure                                                  
+//* Usage:                                                             
+//*    S SHUTDOWN
+//*    S SHUTDOWN,TYPE='SHUTFAST'
+//*    //SHUTDOWN EXEC SHUTDOWN
+//*    //SHUTDOWN EXEC SHUTDOWN,TYPE='SHUTFAST'        
+//* ------------------------------------------------------------------*
+//*                                                                    
+//MVP      PROC TYPE='SHUTDOWN',                                        
+//         LIB='BREXX.CURRENT.RXLIB',                                  
+//         EXECLIB='SYS2.EXEC'                                         
+//EXEC     EXEC PGM=IKJEFT01,                                          
+//       PARM='BREXX &TYPE',                            
+//       REGION=8192K                                                  
+//TSOLIB   DD   DSN=&LIB,DISP=SHR                                      
+//RXLIB    DD   DSN=&LIB,DISP=SHR                                      
+//SYSEXEC  DD   DSN=&EXECLIB,DISP=SHR                                  
+//SYSPRINT DD   SYSOUT=*                                               
+//SYSTSPRT DD   SYSOUT=*                                               
+//SYSTSIN  DD   DUMMY                                                  
+//STDOUT   DD   SYSOUT=*,DCB=(RECFM=FB,LRECL=140,BLKSIZE=5600)         
+//STDERR   DD   SYSOUT=*,DCB=(RECFM=FB,LRECL=140,BLKSIZE=5600)         
+//STDIN    DD   DUMMY                                                  
+//*    PEND
 ./ ENDUP
 ><
 //* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -UPDATE06
