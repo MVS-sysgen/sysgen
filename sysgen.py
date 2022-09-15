@@ -14,7 +14,14 @@ from pathlib import Path
 import shutil
 from pprint import pprint
 from datetime import datetime
-from colorama import init, Fore, Back, Style
+
+try:
+    from colorama import init, Fore, Style
+    has_colorama = True
+except ModuleNotFoundError:
+    has_colorama = False
+    pass
+
 
 VERSION = "V1R0M0"
 CODENAME = 'UNEXPECTED SLOTH'
@@ -71,7 +78,21 @@ For more information see: https://github.com/MVS-sysgen/sysgen
 
 reply_num = 0
 
-init(autoreset=True)
+if has_colorama:
+    init(autoreset=True)
+    colors = {
+        "BLACK" : Fore.BLACK, 
+        "RED": Fore.RED, 
+        "GREEN": Fore.GREEN, 
+        "YELLOW": Fore.YELLOW, 
+        "BLUE": Fore.BLUE, 
+        "MAGENTA": Fore.MAGENTA, 
+        "CYAN": Fore.CYAN, 
+        "WHITE": Fore.WHITE, 
+        "RESET": Fore.RESET
+    }
+    
+
 quit_herc_event = threading.Event()
 kill_hercules = threading.Event()
 reset_herc_event = threading.Event()
@@ -84,7 +105,6 @@ logging.basicConfig(filename=running_folder+logname,
                             format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                             datefmt='%H:%M:%S',
                             level=logging.DEBUG)
-
 
 USERJOB = ('''//{usern}    JOB (1),'ADD TSO USERS',CLASS=S,MSGLEVEL=(1,1),
 //             MSGCLASS=A
@@ -273,9 +293,9 @@ class sysgen:
         finally:
             s, ss = self.get_step()
             if s and not ss:
-                self.print("Install terminated at step {}. Use '-C' to restart at this step.".format(s),color=Fore.RED)
+                self.print("Install terminated at step {}. Use '-C' to restart at this step.".format(s),color="RED")
             elif s and ss:
-                self.print("Install terminated at step/substep {}/{}. Use '-C' to restart at this step.".format(s,ss),color=Fore.RED)
+                self.print("Install terminated at step/substep {}/{}. Use '-C' to restart at this step.".format(s,ss),color="RED")
             self.quit_hercules()
 
     def kill(self):
@@ -350,15 +370,25 @@ class sysgen:
                 break
             continue
 
-        self.print("ERROR - Hercules Exited Unexpectedly", color=Fore.RED)
+        self.print("ERROR - Hercules Exited Unexpectedly", color="RED")
         os._exit(1)
 
     def print_logo(self):
-        print(Style.BRIGHT+ Fore.BLUE + logo, flush=True)
+        if has_colorama:
+            print(Style.BRIGHT+ Fore.BLUE + logo, flush=True)
+        else:
+            print(logo, flush=True)
 
-    def print(self, text='', color=Fore.WHITE):
+    def print(self, text='', color="WHITE"):
+        
         now = datetime.now()
-        print(Style.BRIGHT+ f"[+] [{now.strftime('%H:%M:%S')}] " + color + text, flush=True)
+        
+        if has_colorama:
+            
+            print(Style.BRIGHT+ f"[+] [{now.strftime('%H:%M:%S')}] " + colors[color] + text, flush=True)
+        else:
+            print(f"[+] [{now.strftime('%H:%M:%S')}] " + text, flush=True)
+
         logging.debug(text)
 
     def send_herc(self, command=''):
@@ -426,7 +456,7 @@ class sysgen:
         self.send_herc("devinit {} {}{}".format(dev, running_folder,upfile))
 
     def step_01_build_starter(self):
-        self.print("Step 1. Building Starter System",color=Fore.CYAN)
+        self.print("Step 1. Building Starter System",color="CYAN")
         self.set_step("step_01_build_starter")
         if os.path.exists(self.path):
             shutil.rmtree(self.path)
@@ -486,14 +516,14 @@ class sysgen:
         #self.wait_for_string("HHC01603I detach {}".format(self.configs['build_starter'][-1].split()[0]))
         self.backup_dasd("01_build_starter")
 
-        self.print("Build Starter System Complete",color=Fore.GREEN)
+        self.print("Build Starter System Complete",color="GREEN")
         STDERR_to_logs.clear()
 
 
 
     def step_02_install_smp4(self):
 
-        self.print("Step 2. Using SMP4 to Build the Distribution Libraries",color=Fore.CYAN)
+        self.print("Step 2. Using SMP4 to Build the Distribution Libraries",color="CYAN")
 
         self.set_step("step_02_install_smp4")
 
@@ -541,7 +571,7 @@ class sysgen:
         self.wait_for_string('IEH841D 14A    CONFIRM REQUEST TO INITIALIZE')
         self.send_reply('u')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
-        self.print("SMP 4.44 Install Complete",color=Fore.GREEN)
+        self.print("SMP 4.44 Install Complete",color="GREEN")
 
         self.check_maxcc(jobname='SMP4P44')
         self.shutdown_mvs()
@@ -558,7 +588,7 @@ class sysgen:
         self.skip_steps = False
         self.set_step("step_03_build_dlibs")
 
-        self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+        self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
         if not start or start == "smpmount":
             self.smpmount()
             start = "smpjob00"
@@ -590,7 +620,7 @@ class sysgen:
         if start == 'smpjob07':
             self.smpjob07()
 
-        self.print("Building the MVS 3.8j Distribution Libraries Complete",color=Fore.GREEN)
+        self.print("Building the MVS 3.8j Distribution Libraries Complete",color="GREEN")
 
     def smpmount(self, quit=False):
         self.set_step("step_03_build_dlibs","smpmount")
@@ -618,7 +648,7 @@ class sysgen:
         self.set_step("step_03_build_dlibs","smpjob00")
         self.restore_dasd("03_SMPMOUNT")
         if self.skip_steps:
-            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
         self.reset_hercules()
         self.set_configs('smp2')
         self.smpjobs_ipl('Allocating and initializing required datasets')
@@ -639,7 +669,7 @@ class sysgen:
         self.set_step("step_03_build_dlibs","smpjob01")
         self.restore_dasd("04_SMPJOB00")
         if self.skip_steps:
-            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
         self.reset_hercules()
         self.set_configs('smp2')
         self.smpjobs_ipl('Loading MVS 3.8j product elements into SMP from tape')
@@ -657,7 +687,7 @@ class sysgen:
         self.set_step("step_03_build_dlibs","smpjob02")
         self.restore_dasd("05_SMPJOB01")
         if self.skip_steps:
-            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
 
         self.reset_hercules()
         self.set_configs('smp2')
@@ -676,7 +706,7 @@ class sysgen:
         self.set_step("step_03_build_dlibs","smpjob03")
         self.restore_dasd("06_SMPJOB02")
         if self.skip_steps:
-            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
 
         self.reset_hercules()
         self.set_configs('smp2')
@@ -694,7 +724,7 @@ class sysgen:
         self.set_step("step_03_build_dlibs","smpjob04")
         self.restore_dasd("07_SMPJOB03")
         if self.skip_steps:
-            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
 
         self.reset_hercules()
         self.set_configs('smp2')
@@ -716,7 +746,7 @@ class sysgen:
         self.set_step("step_03_build_dlibs","smpjob06")
         self.restore_dasd("08_SMPJOB04-05")
         if self.skip_steps:
-            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
 
         self.reset_hercules()
         self.set_configs('smp2')
@@ -732,7 +762,7 @@ class sysgen:
         self.set_step("step_03_build_dlibs","smpjob07")
         self.restore_dasd("09_SMPJOB06")
         if self.skip_steps:
-            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color=Fore.CYAN)
+            self.print("Step 3. Building the MVS 3.8j Distribution Libraries",color="CYAN")
 
         self.reset_hercules()
         self.set_configs('smp2')
@@ -770,7 +800,7 @@ class sysgen:
 
         self.set_step("step_04_system_generation")
         self.skip_steps = False
-        self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+        self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         if not start or start == 'sysgen00':
             self.sysgen00()
@@ -827,7 +857,7 @@ class sysgen:
         if start == 'sysgen06':
             self.sysgen06()
 
-        self.print("System Generation - Building MVS 3.8j Complete",color=Fore.GREEN)
+        self.print("System Generation - Building MVS 3.8j Complete",color="GREEN")
 
     def sysgenjobs_ipl(self, step_text=''):
         self.print(step_text)
@@ -850,7 +880,7 @@ class sysgen:
 
         self.restore_dasd("10_SMPJOB07")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.reset_hercules()
         self.dasdinit('sysgen')
@@ -902,7 +932,7 @@ class sysgen:
 
         self.restore_dasd("11_SYSGEN00")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Building the hardware configuration for MVS 3.8j")
         self.send_herc("devinit 12 jcl/sysgen01.jcl")
@@ -919,7 +949,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen01a")
         if self.skip_steps:
             self.restore_dasd("12_SYSGEN01")
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Building SYSGEN01A")
         self.send_herc("devinit 12 temp/sysgen01a.jcl")
@@ -941,7 +971,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen01b")
         self.restore_dasd("13_SYSGEN01A")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Building SYSGEN01B")
         self.send_herc("devinit 12 temp/sysgen01b.jcl")
@@ -960,7 +990,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen01c")
         self.restore_dasd("14_SYSGEN01B")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Building SYSGEN01C")
         self.send_herc("devinit 12 temp/sysgen01c.jcl")
@@ -974,7 +1004,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen01d")
         self.restore_dasd("15_SYSGEN01C")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Building SYSGEN01D")
         self.send_herc("devinit 12 temp/sysgen01d.jcl")
@@ -988,7 +1018,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen01e")
         self.restore_dasd("16_SYSGEN01D")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Building SYSGEN01E")
         self.send_herc("devinit 12 temp/sysgen01e.jcl")
@@ -1002,7 +1032,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen01f")
         self.restore_dasd("17_SYSGEN01E")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Building SYSGEN01F")
         self.send_herc("devinit 12 temp/sysgen01f.jcl")
@@ -1019,7 +1049,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen02")
         self.restore_dasd("18_SYSGEN01F")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Generating JES2")
         self.send_herc("devinit 12 jcl/sysgen02.jcl")
@@ -1033,7 +1063,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen03")
         self.restore_dasd("19_SYSGEN02")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Creating SYS1.APVTMACS")
         self.send_herc("devinit 170 tape/apvtmacs.het")
@@ -1195,7 +1225,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen04")
         self.restore_dasd("20_SYSGEN03")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Creating system datasets")
         self.send_herc("devinit 12 jcl/sysgen04.jcl")
@@ -1265,7 +1295,7 @@ class sysgen:
         self.set_step("step_04_system_generation","sysgen05")
         self.restore_dasd("21_SYSGEN04")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Creating system dataset members")
         self.send_herc("devinit 12 jcl/sysgen05.jcl")
@@ -1281,7 +1311,7 @@ class sysgen:
 
         self.restore_dasd("22_SYSGEN05")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         netsol_version = "{:7.7}".format(self.version)
 
@@ -1325,7 +1355,7 @@ class sysgen:
 
         self.restore_dasd("23_SYSGEN5A")
         if self.skip_steps:
-            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
 
         self.sysgenjobs_ipl("Applying required PTFs for usermods")
         self.send_herc("devinit 12 jcl/sysgen06.jcl")
@@ -1473,7 +1503,7 @@ class sysgen:
         else:
             restore = "usermod_{:02}_{}".format(backup_num-1,usermods[s-1])
 
-        self.print("Step 5. Applying Usermods",color=Fore.CYAN)
+        self.print("Step 5. Applying Usermods",color="CYAN")
         for umod in umods:
             self.set_step("step_05_usermods",umod)
             self.restore_dasd(restore)
@@ -1494,13 +1524,13 @@ class sysgen:
 
         self.backup_dasd("25_USERMODS")
 
-        self.print("Applying Usermods Complete",color=Fore.GREEN)
+        self.print("Applying Usermods Complete",color="GREEN")
 
 
     def step_06_fdz1d02(self):
         self.set_step("step_06_fdz1d02")
         self.restore_dasd("25_USERMODS")
-        self.print("Step 6. Installing Release 13.0 of the Device Support Facilities (ICKDSF)",color=Fore.CYAN)
+        self.print("Step 6. Installing Release 13.0 of the Device Support Facilities (ICKDSF)",color="CYAN")
         self.sysgenjobs_ipl("Submitting fdz1d02")
         self.send_herc("devinit 170 tape/dz1d02.het")
         self.send_herc("devinit 12 jcl/fdz1d02.jcl")
@@ -1509,7 +1539,7 @@ class sysgen:
         self.shutdown_mvs()
         self.quit_hercules(msg=False)
         self.backup_dasd("26_FDZ1D02")
-        self.print("Installing ICKDSF 13.0 Complete",color=Fore.GREEN)
+        self.print("Installing ICKDSF 13.0 Complete",color="GREEN")
 
     def step_07_customization(self, start=False):
         self.set_step("step_07_customization")
@@ -1518,7 +1548,7 @@ class sysgen:
         logging.debug("step_07_customization: starting at step {}".format(start))
 
         self.skip_steps = False
-        self.print("Step 7. Customizing MVS 3.8j",color=Fore.CYAN)
+        self.print("Step 7. Customizing MVS 3.8j",color="CYAN")
 
         if not start or start == 'mvs000':
             self.mvs000()
@@ -1539,14 +1569,14 @@ class sysgen:
         if start == 'brexx' and not self.no_brexx:
             self.brexx()
 
-        self.print("Customization Complete",color=Fore.GREEN)
+        self.print("Customization Complete",color="GREEN")
 
 
     def mvs000(self):
         self.set_step("step_07_customization","mvs000")
         self.restore_dasd("26_FDZ1D02")
         if self.skip_steps:
-            self.print("Step 7. Customizing MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 7. Customizing MVS 3.8j",color="CYAN")
 
         try:
             os.remove('MVSCE/DASD/start1.3330')
@@ -1616,7 +1646,7 @@ class sysgen:
         self.set_step("step_07_customization","dynproc")
         self.restore_dasd("27_MVS00")
         if self.skip_steps:
-            self.print("Step 7. Customizing MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 7. Customizing MVS 3.8j",color="CYAN")
 
         self.custjobs_ipl("Installing Dynamic Proclib usermod")
         self.submit_file('usermods/DYNPROC.jcl')
@@ -1630,7 +1660,7 @@ class sysgen:
         self.set_step("step_07_customization","date")
         self.restore_dasd("28_DYNPROC")
         if self.skip_steps:
-            self.print("Step 7. Customizing MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 7. Customizing MVS 3.8j",color="CYAN")
 
         self.custjobs_ipl("Installing DATE tso command")
         self.submit_file('jcl/date.jcl')
@@ -1644,7 +1674,7 @@ class sysgen:
         self.set_step("step_07_customization","add_users")
         self.restore_dasd("29_DATE")
         if self.skip_steps:
-            self.print("Step 7. Customizing MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 7. Customizing MVS 3.8j",color="CYAN")
 
         self.custjobs_ipl("Adding users from users.conf")
         #IBMUSER SYS1   IKJACCNT OPER   ACCT   JCL MOUNT
@@ -1688,7 +1718,7 @@ class sysgen:
         self.set_step("step_07_customization","brexx")
         self.restore_dasd("30_MVS02")
         if self.skip_steps:
-            self.print("Step 7. Customizing MVS 3.8j",color=Fore.CYAN)
+            self.print("Step 7. Customizing MVS 3.8j",color="CYAN")
 
         self.custjobs_ipl("Installing BREXX/370", clpa=True)
         self.send_herc("devinit 01c xmi/brexx.xmi")
@@ -1704,7 +1734,7 @@ class sysgen:
         self.restore_dasd("31_BREXX")
 
         self.skip_steps = False
-        self.print("Step 8. Installing RAKF",color=Fore.CYAN)
+        self.print("Step 8. Installing RAKF",color="CYAN")
         user = "MVS-sysgen"
         repo = "RAKF"
         self.custjobs_ipl("Getting current RAKF release from github", clpa=True)
@@ -2024,7 +2054,7 @@ class sysgen:
 
     def step_09_mvp(self):
         self.set_step("step_09_mvp")
-        self.print("Step 9. Installing MVS/CE Package Manager MVP", color=Fore.CYAN)
+        self.print("Step 9. Installing MVS/CE Package Manager MVP", color="CYAN")
         self.restore_dasd("32_RAKF")
         self.custjobs_ipl("Installing MVP", clpa=True)
         self.git_clone("https://github.com/MVS-sysgen/MVP", out_folder="MVSCE")
@@ -2039,7 +2069,7 @@ class sysgen:
 
     def step_10_extras(self):
         self.set_step("step_10_extras")
-        self.print("Step 10. Installing Extra Components", color=Fore.CYAN)
+        self.print("Step 10. Installing Extra Components", color="CYAN")
         # This is a catchall step for 'the rest' of the stuff that needs the full system
         # up before it can be installed
 
@@ -2055,7 +2085,7 @@ class sysgen:
     def step_11_ispf(self):
         self.set_step("step_11_ispf")
 
-        self.print("Step 11. Installing Wally ISPF", color=Fore.CYAN)
+        self.print("Step 11. Installing Wally ISPF", color="CYAN")
         # This (optional but default) step installs Wally ISPF and Review Front End
 
         self.restore_dasd("34_EXTRAS")
@@ -2068,7 +2098,7 @@ class sysgen:
         self.backup_dasd("35_ISPF")
 
     def step_12_cleanup(self):
-        self.print("Step 12. Finalizing and Cleaning Up", color=Fore.CYAN)
+        self.print("Step 12. Finalizing and Cleaning Up", color="CYAN")
 
         self.finalize()
 
@@ -2128,7 +2158,7 @@ class sysgen:
         with open(running_folder+"MVSCE/start_mvs.sh", 'w') as script:
             script.write("#!/bin/bash\nhercules -f conf/local.cnf -r conf/mvsce.rc")
 
-        self.print("Cleanup Complete",color=Fore.GREEN)
+        self.print("Cleanup Complete",color="GREEN")
 
         if self.release:
             self.backup_dasd("MVSCE.release.{}".format(self.version),path="",folder="MVSCE")
