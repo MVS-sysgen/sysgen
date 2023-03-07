@@ -428,8 +428,6 @@ class sysgen:
                 self.send_herc('attach {}'.format(config_item))
             else:
                 self.send_herc(config_item)
-                if 'ARCHMODE' in config_item:
-                    self.send_herc("STOPALL")  # Needed for Hercules 4.5?
 
         self.wait_for_string(config_item)
 
