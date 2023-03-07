@@ -76,7 +76,7 @@ U370WTO  0
 //             DISP=(NEW,CATLG,DELETE)
 //* -------------------------------------------------------------------
 //XMITLOAD PROC XMITLIB='SYSGEN.BREXX.INSTALL',
-//         HLQ='BREXX.V2R5M0',     <-- DO NOT CHANGE HLQ ----
+//         HLQ='BREXX.V2R5M2',     <-- DO NOT CHANGE HLQ ----
 //         MEMBER=
 //* RECEIVE XMIT FILE AND CREATE TARGET FILE
 //XMILOADP EXEC PGM=RECV370,REGION=4096K
@@ -110,7 +110,7 @@ U370WTO  0
 //* ------------------------------------------------------------------
 //STEP10  EXEC  PGM=IEBCOPY
 //SYSPRINT  DD  SYSOUT=*
-//DDIN      DD  DSN=BREXX.V2R5M0.APFLLIB,DISP=SHR
+//DDIN      DD  DSN=BREXX.V2R5M2.APFLLIB,DISP=SHR
 //DDOUT     DD  DSN=SYS2.LINKLIB,DISP=SHR
 //SYSIN     DD  *
   COPY INDD=((DDIN,R)),OUTDD=DDOUT
@@ -120,7 +120,7 @@ U370WTO  0
 //* ------------------------------------------------------------------
 //STEP20  EXEC  PGM=IEBCOPY
 //SYSPRINT  DD  SYSOUT=*
-//DDIN      DD  DSN=BREXX.V2R5M0.PROCLIB,DISP=SHR
+//DDIN      DD  DSN=BREXX.V2R5M2.PROCLIB,DISP=SHR
 //DDOUT     DD  DSN=SYS2.PROCLIB,DISP=SHR
 //SYSIN     DD  *
   COPY INDD=((DDIN,R)),OUTDD=DDOUT
@@ -160,6 +160,6 @@ U370WTO  0
 //SYSIN    DD *
   DEFINE ALIAS -
           (NAME(BREXX.CURRENT.RXLIB) -
-          RELATE(BREXX.V2R5M0.RXLIB))-
+          RELATE(BREXX.V2R5M2.RXLIB))-
           CATALOG(UCPUB001)
 //SYSPRINT DD  SYSOUT=*
