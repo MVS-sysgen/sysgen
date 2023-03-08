@@ -1769,7 +1769,11 @@ class sysgen:
             if self.username:
                 out_rakf.write(rakf_line.format(user=self.username.upper(),password=self.password.upper(),group="ADMIN",groups="*",oper="Y"))
                 out_rakf.write(rakf_line.format(user=self.username.upper(),password=self.password.upper(),group="RAKFADM",groups="*",oper="Y"))
-
+        if not Path('temp/RAKF/generate_release.py').is_file():
+            d = Path('temp')
+            for entry in d.iterdir():
+                if entry.is_file():
+                    print(entry)
         self.submit(subprocess.check_output(['temp/RAKF/generate_release.py','-u',Path('temp/rakf_users.txt').resolve(),'-p',self.profiles]).decode())
         self.print("Installing RAKF Release")
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
