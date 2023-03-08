@@ -3,11 +3,12 @@
 //             CLASS=A,
 //             MSGCLASS=A,
 //             MSGLEVEL=(1,1),
-//             REGION=8192K
+//             REGION=8192K,USER=IBMUSER,PASSWORD=SYS1
 //* First step is to make an alias for BREXX
 //CLEANUP EXEC PGM=IDCAMS
 //SYSIN    DD *
   DEFINE ALIAS(NAME(BREXX) RELATE(UCPUB001))
+  SET MAXCC=00
 //SYSPRINT DD  SYSOUT=*
 //* RECV370 DDNAMEs:
 //* ----------------
@@ -70,12 +71,12 @@ U370WTO  0
 //             SPACE=(CYL,(10,10)),
 //             DISP=(NEW,DELETE,DELETE)
 //* Output dataset
-//SYSUT2   DD  DSN=SYSGEN.BREXX.INSTALL,
+//SYSUT2   DD  DSN=BREXX.V2R5M2.INSTALL,
 //             UNIT=3390,VOL=SER=PUB001,
 //             SPACE=(CYL,(10,10,20),RLSE),
 //             DISP=(NEW,CATLG,DELETE)
 //* -------------------------------------------------------------------
-//XMITLOAD PROC XMITLIB='SYSGEN.BREXX.INSTALL',
+//XMITLOAD PROC XMITLIB='BREXX.V2R5M2.INSTALL',
 //         HLQ='BREXX.V2R5M2',     <-- DO NOT CHANGE HLQ ----
 //         MEMBER=
 //* RECEIVE XMIT FILE AND CREATE TARGET FILE
