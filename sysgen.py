@@ -2123,7 +2123,7 @@ class sysgen:
         Path(running_folder+"MVSCE/punchcards").mkdir(parents=True, exist_ok=True)
 
         self.print("Copying scripts to {}".format(Path(running_folder+"MVSCE/SCRIPTS").resolve()))
-        shutil.copytree(Path('SCRIPTS').resolve(), Path(running_folder+"MVSCE/SCRIPTS").resolve())
+        shutil.copytree(Path('SCRIPTS').resolve(), Path(running_folder+"MVSCE/SCRIPTS").resolve(),dirs_exist_ok=True)
 
         up = "| {:9} | {:8}|\n"
 
