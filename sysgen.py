@@ -531,7 +531,7 @@ class sysgen:
         self.reset_hercules()
         self.dasdinit('distribution_libs')
         self.set_configs('smp1')
-        self.wait_for_string("0:0151 CKD")
+        self.wait_for_string("0:0151 CCKD")
         self.print("Installing SMP 4.44 on the Starter System")
         self.send_herc("ipl 150")
         self.wait_for_string("HHC00010A Enter input for console 0:001F")
@@ -548,7 +548,7 @@ class sysgen:
         self.send_herc('attach 148 3350 MVSCE/DASD/smp000.3350')
         self.send_herc('attach 149 3350 MVSCE/DASD/work00.3350')
         self.send_herc('attach 14a 3350 MVSCE/DASD/work01.3350')
-        self.wait_for_string('HHC00414I 0:0148 CKD file')
+        self.wait_for_string('HHC00414I 0:0148 CCKD file')
         self.print("Installing SMP 4.44")
         self.send_herc("devinit 12 jcl/smp4p44.jcl")
         self.wait_for_string('HHC02245I 0:0012 device initialized')
@@ -900,7 +900,7 @@ class sysgen:
         self.send_herc('attach 14a 3350 MVSCE/DASD/mvs000.3350')
         self.send_herc('attach 14b 3350 MVSCE/DASD/spool1.3350')
         self.send_herc('attach 14c 3350 MVSCE/DASD/page00.3350')
-        self.wait_for_string('HHC00414I 0:014C CKD file')
+        self.wait_for_string('HHC00414I 0:014C CCKD file')
         self.print("Initializing target DASD volumes and preparing for System Generation")
         self.send_herc("devinit 12 jcl/sysgen00.jcl")
         self.wait_for_string("ICK003D REPLY U TO ALTER VOLUME 149 CONTENTS")
@@ -1623,7 +1623,7 @@ class sysgen:
         ]
         for i in dasd:
             self.send_herc('attach {}'.format(i))
-        self.wait_for_string("HHC00414I 0:0253 CKD file MVSCE/DASD/syscpk.3350")
+        self.wait_for_string("HHC00414I 0:0253 CCKD file MVSCE/DASD/syscpk.3350")
         self.submit_file('jcl/mvs00.jcl')
 
         dev = ["180","190","220","221","222","223","224","225"]

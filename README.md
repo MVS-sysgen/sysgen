@@ -7,7 +7,7 @@ To use this version of MVS you can download the current release and run `bash st
 Requirements:
 
 - Linux
-- hercules SDL >= 4.0 (see below how to build SDL Hercules)
+- hercules SDL >= 4.5 (see below how to build SDL Hercules)
 - python3
 - git
 

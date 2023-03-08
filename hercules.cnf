@@ -1,2 +1,4 @@
 # DUMMY CONFIG
 # Real configs are in sysgen.conf
+# This setting is to counteract a bug in 4.5
+ARCHMODE  S/370 
