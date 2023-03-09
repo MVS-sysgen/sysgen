@@ -12,7 +12,7 @@ jobs:
     name: MVS 3.8j System Generation Release
     runs-on: [ubuntu-latest]
     timeout-minutes: 70
-    container: mainframed767/hyperion:develop
+    container: mainframed767/hercules:develop
 
     steps:
 
