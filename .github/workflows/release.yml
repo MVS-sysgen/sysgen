@@ -25,9 +25,13 @@ jobs:
           mv * /mvsce/
         shell: bash
 
-      - uses: BSFishy/pip-action@v1
-        with:
-          packages: colorama
+      - name: Set up Python 3.8
+      #  uses: actions/setup-python@v1
+      #  with:
+      #    python-version: 3.8
+        run: |
+          apt-get update
+          apt-get -yq install --no-install-recommends python3 python3-pip git
 
       - name: Get git tag
         id: tag
