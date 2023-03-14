@@ -6,15 +6,15 @@
 * setting up automated responses
 hao clear
 hao tgt HASP099
-hao cmd script scripts/pjes2
+hao cmd script SCRIPTS/pjes2
 hao tgt HASP085
-hao cmd script scripts/zeod
+hao cmd script SCRIPTS/zeod
 hao tgt IEE334I
-hao cmd script scripts/quiesce
+hao cmd script SCRIPTS/quiesce
 hao tgt HHC00814I Processor CP00: SIGP Stop
-hao cmd script scripts/poweroff
+hao cmd script SCRIPTS/poweroff
 hao tgt HHC00814I Processor CP01: SIGP Stop
-hao cmd script scripts/poweroff
+hao cmd script SCRIPTS/poweroff
 hao tgt ([0-9]{2}) IKT010D 
 hao cmd /R $1,FSTOP
 # For information see https://www.ibm.com/docs/en/zos/2.3.0?topic=commands-mvs-system-reference
