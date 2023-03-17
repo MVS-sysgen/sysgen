@@ -2063,7 +2063,28 @@ class sysgen:
         self.restore_dasd("32_RAKF")
         self.custjobs_ipl("Installing MVP", clpa=True)
         self.git_clone("https://github.com/MVS-sysgen/MVP", out_folder="MVSCE")
-        x= subprocess.check_output(['MVSCE/MVP/MVP','INSTALL_MVP'])
+        
+        rakf_admin_user = ''
+        rakf_admin_password = ''
+
+        with open("temp/rakf_users.txt", 'r') as rakf_users:
+            for u in rakf_users.readlines():
+                if len(u.split()) > 0: # skip blank lines
+                    un = u.split()[0]
+                    gp = u.split()[1]
+                    pw = u.strip()[18:-1]
+                    if gp == 'RAKFADM':
+                        rakf_admin_user = un
+                        rakf_admin_password = pw
+                        break
+        if not rakf_admin_user:
+            raise Exception('Unable to find RAKFADM user for MVP install in temp/rakf_users.txt')
+
+        self.print("MVP install user: {}".format(rakf_admin_user))
+        x= subprocess.check_output(['MVSCE/MVP/MVP',
+                                    '-u',rakf_admin_user,
+                                    '-p',rakf_admin_password,
+                                    'INSTALL_MVP'])
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("MVPINSTL")
         if not os.path.exists("MVP"):
