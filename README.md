@@ -140,8 +140,6 @@ To build MVS/CE use `sysgen.py`. This python script can take many arguments:
 - `--users` By default sysgen will use the users in the file `users.conf`, you can supply your own with this argument
 - `--profiles` By default sysgen will use the RAKF profiles in the file `profiles.conf`, you can supply your own with this argument
 - `--username`/`--password` These arguments add an admin user with the username/password supplied
-- `--nobrexx` Do not install brexx (this will also prevent RAKF from installing)
-- `--norakf ` Do not install RAKF
 - `--timeout` Sometimes hercules will end up in a state which can deadlock sysgen, to prevent it from running forever a timeout has been set. The defaul it thirty minutes. Use this argument to change it to something shorter/longer, in seconds.
 - `--hercules` Path to a specific hercules binary
 - `--no-compress` By default this script will compress DASD files, that is not needed on some file systems, this will disable compression
