@@ -2180,9 +2180,13 @@ class sysgen:
         if not self.keeptemp:
             self.print("Removing temp folder")
             shutil.rmtree(Path("temp").resolve())
+        
+        self.print("Creating: "+running_folder+"MVSCE/start_mvs.sh")
 
         with open(running_folder+"MVSCE/start_mvs.sh", 'w') as script:
-            script.write("#!/bin/bash\nhercules -f conf/local.cnf -r conf/mvsce.rc")
+            script.write("#!/bin/bash\nhercules -f conf/local.cnf -r conf/mvsce.rc -o hercules.log")
+
+        os.chmod(running_folder+"MVSCE/start_mvs.sh",755)
 
         self.print("Cleanup Complete",color="GREEN")
 
