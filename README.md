@@ -80,44 +80,7 @@ If you wish to build this docker container yourself you can see the Dockerfile h
 
 # Building and Installing Hercules
 
-**Ubuntu**: Install m4, make, autoconf, automake, cmake, flex, build-essential, libbz2-dev, libregina3-dev, zlib1g-dev, libtool and, libltdl-dev with:
-`sudo apt install m4 make autoconf automake cmake flex build-essential libbz2-dev zlib1g-dev libtool libltdl-dev`
-
-The following script will then autobuild and install hercules for you.
-
-```bash
-# MVS3.8 Sysgen Automation - Build hercules
-set -e
-if [ -d "build" ]; then rm -rf build/; fi
-mkdir build
-cd build
-mkdir ./hercpkgs
-mkdir ./WORK
-
-for i in crypto decNumber SoftFloat telnet; do
-    git clone https://github.com/SDL-Hercules-390/$i.git
-    mkdir ./WORK/$i
-    cd ./WORK/$i
-    ../../$i/build --pkgname . --all --install ../../hercpkgs
-    cd ../../
-done
-
-echo "Building Hercules Hyperion SDL"
-git clone https://github.com/SDL-Hercules-390/hyperion.git
-cd hyperion
-./configure --enable-cckd-bzip2 --enable-het-bzip2 --enable-extpkgs=$(realpath ../hercpkgs) --enable-optimization="-O3 -march=native"
-
-echo "Compiling Hercules"
-# thanks Mike Grossman for the CPU/o3
-export NUMCPUS=`grep -c '^processor' /proc/cpuinfo`
-make -j$NUMCPUS --load-average=$NUMCPUS
-
-echo "Installing Hercules"
-sudo make install
-sudo ldconfig
-cd ..
-echo "Done!"
-```
+Please use https://github.com/wrljet/hercules-helper to build hercules
 
 ## Sysgen
 
