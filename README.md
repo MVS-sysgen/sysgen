@@ -10,6 +10,7 @@ Requirements:
 - hercules SDL >= 4.5 (see below how to build SDL Hercules)
 - python3
 - git
+- tar
 
 The following is also recommended:
 
@@ -110,6 +111,17 @@ To build MVS/CE use `sysgen.py`. This python script can take many arguments:
 - `--no-compress` By default this script will compress DASD files, that is not needed on some file systems, this will disable compression
 - `--keep-backup` This script backups after every step then removes the backups when completed, if you'd like to keep the backup DASD images use this flag
 - `--keep-temp` This script generates multiple temp files during sysgen and removes the folder when completed, if you wish to keep the temp files pass this flag
+
+Assuming you have all the prerequisites installed (git, tar, python3 and
+ hercules) the recommended command used to build sysgen is:
+
+```bash
+until ./sysgen.py --CONTINUE; do echo "Failed, rerunning"; done
+```
+
+This until loop will run until sysgen is complete. This is due to multiple
+bugs in hercules which may cause it to fail and which is typically fixed
+by rerunning the failed step.
 
 ### Automation control options
 
