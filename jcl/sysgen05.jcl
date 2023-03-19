@@ -688,7 +688,13 @@ EXIT
 //             ' DEFINE NONVSAM (NAME(&ID..LOAD) DEVT(3380) ',          00012300
 //             'VOL(PUB000))')                                          00012400
 //STEPLIB  DD  DSN=SYSC.LINKLIB,DISP=SHR                                00012500
-//SYSOUT   DD  DSN=&&IDCAMS,DISP=(MOD,PASS)                             00012600
+//SYSOUT   DD  DSN=&&IDCAMS,DISP=(MOD,PASS)                             00012510
+//*                                                                     00012520
+//PW14     EXEC PGM=PSU002,PARM=('\',                                   00012530
+//             ' DEFINE NONVSAM (NAME(&ID..EXEC) DEVT(3380) ',          00012540
+//             'VOL(PUB000))')                                          00012550
+//STEPLIB  DD  DSN=SYSC.LINKLIB,DISP=SHR                                00012560
+//SYSOUT   DD  DSN=&&IDCAMS,DISP=(MOD,PASS)                             00012570
 //*                                                                     00012700
 //*PW14     EXEC PGM=PSU002,PARM=('\',                                  00012800
 //*             ' REPRO INFILE(SYSPROC) ',                              00012900
