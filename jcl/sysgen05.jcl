@@ -588,7 +588,7 @@ EXIT
 //             UNIT=SYSDA,VOL=SER=PUB000,                               00003000
 //             SPACE=(CYL,0),DCB=SYS1.LINKLIB                           00003100
 //USREXEC  DD  DSN=&ID..EXEC,DISP=(MOD,DELETE,DELETE),                  00003110
-//             VOL=SER=MVS000,                                          00003120
+//             VOL=SER=PUB000,                                          00003120
 //             UNIT=SYSDA,                                              00003130
 //             SPACE=(CYL,0),DCB=SYS1.MACLIB                            00003140
 //*                                                                     00003200
@@ -608,7 +608,7 @@ EXIT
 //             UNIT=SYSDA,VOL=SER=PUB000,                               00004600
 //             SPACE=(CYL,(1,1,20)),DCB=SYS1.LINKLIB                    00004700
 //USEREXEC  DD  DSN=&ID..EXEC,DISP=(,KEEP,DELETE),                      00004500
-//             UNIT=SYSDA,VOL=SER=MVS000,                               00004600
+//             UNIT=SYSDA,VOL=SER=PUB000,                               00004600
 //             SPACE=(CYL,(1,1,20)),DCB=SYS1.MACLIB                     00004700
 //*                                                                     00004800
 //* GENERATE COMMAND FILE TO CREATE NEW USER'S PROFILE                  00004900

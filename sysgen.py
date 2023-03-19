@@ -26,12 +26,15 @@ except ModuleNotFoundError:
 VERSION = "V1R0M0"
 CODENAME = 'UNEXPECTED SLOTH'
 
+# Hercules will frequently crash for some reason, we use this to try 
+# and catch them instead of waiting for the timeout
 error_check = [
                 'open error',
                 'Creating crash dump',
                 'DISASTROUS ERROR',
                 'HHC01023W Waiting for port 3270 to become free for console connections',
-                'disabled wait state 00020000 80000005'
+                'disabled wait state 00020000 80000005',
+                'HHC00839E Processor CP00: ipl failed: architecture mode ESA/390, invalid ipl psw 0000000000000'
               ]
 
 logname='sysgen.log'
