@@ -2186,7 +2186,7 @@ class sysgen:
             script.write("#!/bin/bash\nhercules -f conf/local.cnf -r conf/mvsce.rc -o hercules.log")
 
         os.chmod(running_folder+"MVSCE/start_mvs.sh",33261)
-
+        
         self.print("Cleanup Complete",color="GREEN")
 
         if self.release:
