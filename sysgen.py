@@ -81,17 +81,16 @@ reply_num = 0
 if has_colorama:
     init(autoreset=True)
     colors = {
-        "BLACK" : Fore.BLACK, 
-        "RED": Fore.RED, 
-        "GREEN": Fore.GREEN, 
-        "YELLOW": Fore.YELLOW, 
-        "BLUE": Fore.BLUE, 
-        "MAGENTA": Fore.MAGENTA, 
-        "CYAN": Fore.CYAN, 
-        "WHITE": Fore.WHITE, 
+        "BLACK" : Fore.BLACK,
+        "RED": Fore.RED,
+        "GREEN": Fore.GREEN,
+        "YELLOW": Fore.YELLOW,
+        "BLUE": Fore.BLUE,
+        "MAGENTA": Fore.MAGENTA,
+        "CYAN": Fore.CYAN,
+        "WHITE": Fore.WHITE,
         "RESET": Fore.RESET
     }
-    
 
 quit_herc_event = threading.Event()
 kill_hercules = threading.Event()
@@ -2476,9 +2475,6 @@ def main():
                  keepbackup=args.keep_backup,
                  no_compress=args.no_compress,
                  release=args.release,
-                 no_rakf=args.no_rakf,
-                 no_brexx=args.no_brexx,
-                 no_ispf=args.no_ispf,
                  )
 
     mvsce.install(step, substep)
