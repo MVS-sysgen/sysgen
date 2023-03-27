@@ -119,6 +119,15 @@ USERJOB = ('''//{usern}    JOB (1),'ADD TSO USERS',CLASS=S,MSGLEVEL=(1,1),
 //      MT='{mount}'
 ''')
 
+POST_RAKF_JOB_CARD = ('''//{JOBNAME} JOB (SYSGEN),'{DESC}',      
+//             CLASS=A,                     
+//             MSGCLASS=A,                  
+//             MSGLEVEL=(1,1),
+//             USER={USER},
+//             PASSWORD={PASSWORD},
+//             REGION={REGION}
+''')
+
 class sysgen:
     ''' sysgen class to build hercules '''
     def __init__(self,
@@ -2066,21 +2075,7 @@ class sysgen:
         self.custjobs_ipl("Installing MVP", clpa=True)
         self.git_clone("https://github.com/MVS-sysgen/MVP", out_folder="MVSCE")
         
-        rakf_admin_user = ''
-        rakf_admin_password = ''
-
-        with open("temp/rakf_users.txt", 'r') as rakf_users:
-            for u in rakf_users.readlines():
-                if len(u.split()) > 0: # skip blank lines
-                    un = u.split()[0]
-                    gp = u.split()[1]
-                    pw = u.strip()[18:-1]
-                    if gp == 'RAKFADM':
-                        rakf_admin_user = un
-                        rakf_admin_password = pw
-                        break
-        if not rakf_admin_user:
-            raise Exception('Unable to find RAKFADM user for MVP install in temp/rakf_users.txt')
+        rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
 
         self.print("MVP install user: {}".format(rakf_admin_user))
         x= subprocess.check_output(['MVSCE/MVP/MVP',
@@ -2103,7 +2098,23 @@ class sysgen:
 
         self.restore_dasd("33_MVP")
         self.custjobs_ipl("Adding support for indirect cataloging using VOLUME(******) (Usermods ZP60041, ZP60042, ZP60043)", clpa=True)
-        self.submit_file_binary('usermods/ZP60041.jcl')
+        '''
+        //ZP60041  JOB (SYSGEN),'ZP60041 + 42 + 43',
+        //             CLASS=A,
+        //             MSGCLASS=A,
+        //             MSGLEVEL=(1,1),
+        //             REGION=4096K,USER=IBMUSER,PASSWORD=SYS1
+        '''
+        rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
+
+        #self.submit_file_binary('jcl/ZP60041.jcl')
+
+        self.submit_file_binary_post_rakf(
+            jclfile='jcl/ZP60041.jcl',
+            jobname='ZP60041',
+            user=rakf_admin_user,password=rakf_admin_password,
+            desc='ZP60041 + 42 + 43',
+            region='4096K')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("ZP60041")
         self.shutdown_mvs(cust=True)
@@ -2114,11 +2125,17 @@ class sysgen:
         self.set_step("step_11_ispf")
 
         self.print("Step 11. Installing Wally ISPF", color="CYAN")
-        # This (optional but default) step installs Wally ISPF and Review Front End
+        # This step installs Wally ISPF and Review Front End
 
         self.restore_dasd("34_EXTRAS")
-        self.custjobs_ipl("Installing Wally ISPF and Review Front End", clpa=True)
-        self.submit_file('jcl/ispf.jcl')
+        self.custjobs_ipl("Installing Wally ISPF and Review Front End with MVP", clpa=True)
+        #self.submit_file('jcl/ispf.jcl')
+        rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
+        self.submit_file_binary_post_rakf(
+            jclfile='jcl/ispf.jcl',
+            jobname='MVPISPF',
+            user=rakf_admin_user,password=rakf_admin_password,
+            desc='MVP INSTALL')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("MVPISPF")
         self.shutdown_mvs(cust=True)
@@ -2206,13 +2223,36 @@ class sysgen:
             self.restore_dasd("35_ISPF")
 
         self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True)
-        self.submit_file('jcl/finalize.jcl')
+        #self.submit_file('jcl/finalize.jcl')
+
+        rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
+        self.submit_file_binary_post_rakf(
+            jclfile='jcl/finalize.jcl',
+            jobname='FINALIZE',
+            user=rakf_admin_user,password=rakf_admin_password,
+            desc='Finalize MVSCE')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("FINALIZE")
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("36_FINAL")
 
+    def get_rakf_admin(self,rakf_file='temp/rakf_users.txt'):
+        rakf_admin_user = ''
+        rakf_admin_password = ''
+        with open(rakf_file, 'r') as rakf_users:
+            for u in rakf_users.readlines():
+                if len(u.split()) > 0: # skip blank lines
+                    un = u.split()[0]
+                    gp = u.split()[1]
+                    pw = u.strip()[18:-1]
+                    if gp == 'RAKFADM':
+                        rakf_admin_user = un.strip()
+                        rakf_admin_password = pw.strip()
+                        break
+        if not rakf_admin_user:
+            raise Exception('Unable to find a RAKFADM user in {}'.format(rakf_file))
+        return rakf_admin_user,rakf_admin_password
 
     def dasdinit(self, dasd_to_create):
         '''Creates empty dasd, argument is one of starter, distribution_libs, sysgen, user'''
@@ -2303,6 +2343,36 @@ class sysgen:
             jcl = f.read()
             self.submit(jcl)
 
+    def submit_file_binary_post_rakf(self, 
+                                     jclfile, 
+                                     jobname,user,password,
+                                     host='127.0.0.1',port=3505,
+                                     desc='INSTALL',
+                                     region='8192K',
+                                     ):
+        ''' Submits a job after RAKF has been installed and generates 
+            the jobcard
+            jobname = jobname
+            user = user with admin rights
+            password = password for that user
+            desc = programmer name
+            region = region
+        '''
+
+        jobcard = POST_RAKF_JOB_CARD.format(JOBNAME=jobname,DESC=desc,USER=user,PASSWORD=password,REGION=region)
+        logging.debug("[SUBMIT BINARY POST RAKF] Submitting {} with user {}".format(jclfile,user))
+
+        with open(jclfile, 'rb') as f:
+            jcl = f.read()
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+            try:
+                # Connect to server and send data
+                sock.connect((host, port))
+                sock.send(jobcard.encode() + jcl)
+            finally:
+                sock.close()
 
     def submit_file_binary(self, jclfile, host='127.0.0.1',port=3505):
         logging.debug("[SUBMIT BINARY] Submitting {}".format(jclfile))
