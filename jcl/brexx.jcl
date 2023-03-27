@@ -3,7 +3,8 @@
 //             CLASS=A,
 //             MSGCLASS=A,
 //             MSGLEVEL=(1,1),
-//             REGION=8192K,USER=IBMUSER,PASSWORD=SYS1
+//             REGION=8192K
+//* ,USER=IBMUSER,PASSWORD=SYS1
 //* First step is to make an alias for BREXX
 //CLEANUP EXEC PGM=IDCAMS
 //SYSIN    DD *
