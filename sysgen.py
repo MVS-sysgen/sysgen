@@ -2143,6 +2143,7 @@ class sysgen:
         self.backup_dasd("35_ISPF")
 
     def step_12_cleanup(self):
+        self.set_step("step_12_cleanup")
         self.print("Step 12. Finalizing and Cleaning Up", color="CYAN")
 
         self.finalize()
@@ -2167,7 +2168,7 @@ class sysgen:
         Path(running_folder+"MVSCE/punchcards").mkdir(parents=True, exist_ok=True)
 
         self.print("Copying scripts to {}".format(Path(running_folder+"MVSCE/SCRIPTS").resolve()))
-        shutil.copytree(Path('SCRIPTS').resolve(), Path(running_folder+"MVSCE/SCRIPTS").resolve(),dirs_exist_ok=True)
+        shutil.copytree(Path('SCRIPTS').resolve(), Path(running_folder+"MVSCE/SCRIPTS").resolve())
 
         up = "| {:9} | {:8}|\n"
 
