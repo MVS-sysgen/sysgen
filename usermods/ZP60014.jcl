@@ -11,7 +11,7 @@
 //STEP01  EXEC PGM=IEBGENER
 //SYSPRINT DD  SYSOUT=*
 //SYSUT1   DD  *
-++USERMOD(ZP60014)                 /* ADD CLIST EXTENSIONS */  .
+++USERMOD(ZP60014)    REWORK(20201207)    /* ADD CLIST EXTENSIONS */.
 ++VER(Z038) FMID(EBB1102)
   PRE(UY16532,UY17021)
  /*
@@ -24,7 +24,7 @@
        THIS USERMOD CHANGES SEVERAL TSO MODULES.
 
        THE EXEC COMMAND HAS BEEN CHANGED TO DEFINE AND RESOLVE AN
-       ADDITIONAL 20 CONTROL VARIABLES AND BUILT-IN FUNCTIONS AS
+       ADDITIONAL 21 CONTROL VARIABLES AND BUILT-IN FUNCTIONS AS
        WELL AS THE ORIGINAL 19.
 
        PUTLINE HAS BEEN ALTERED TO SUPPORT THE CAPTURE OF LINE-MODE
@@ -104,6 +104,7 @@
          SYS4IDATE  - ISO-FORMAT DATE:  'YYYY-MM-DD'
 
          SYSENV     - CLIST ENVIRONMENT: 'FORE' OR 'BACK'
+         SYSISPF    - ISPF ENVIRONMENT: 'ACTIVE' OR 'NOT ACTIVE'
          SYSSMFID   - SYSTEM SMF IDENTIFIER
          SYSOPSYS   - OPERATING SYSTEM NAME: 'OS/VS2 3.8 EBB1102'
          SYSJES     - NAME OF SUBSYSTEM PROVIDING JOB ID
@@ -132,6 +133,7 @@
                    SKIP OUTTRAP CHECK IF CLIST ACTIVE FLAG NOT SET.
        2009-06-13: CORRECT RESUME SCAN DATA ADDRESS AFTER SYSDSN.
        2009-08-23: ADD NRSTR "NO RESCAN STRING".
+       2020-12-07: ADD SYSISPF.
 
      THE FOLLOWING MODULES AND/OR MACROS ARE AFFECTED BY THIS USERMOD:
      MODULES:
@@ -141,16 +143,14 @@
  */.
 ++MOD(IKJCT431) DISTLIB(AOST4).
 /*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(NEW,PASS),UNIT=SYSALLDA,
-//             SPACE=(CYL,3),
+//SYSUT2   DD  DSN=&&SMPMCS,DISP=(NEW,PASS),UNIT=VIO,SPACE=(CYL,3),
 //             DCB=(DSORG=PS,RECFM=FB,LRECL=80,BLKSIZE=4080)
 //SYSIN    DD  DUMMY
-//*
 //STEP02  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
 //SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
+//SYSUT1   DD  UNIT=VIO,SPACE=(CYL,10)
+//SYSUT2   DD  UNIT=VIO,SPACE=(CYL,10)
+//SYSUT3   DD  UNIT=VIO,SPACE=(CYL,10)
 //SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
 //         DD  DSN=SYS1.SMPMTS,DISP=SHR
 //         DD  DSN=SYS1.AMODGEN,DISP=SHR
@@ -161,6 +161,7 @@
 *   MODIFIED BY GREG PRICE SEPTEMBER 2005 FOR USERMOD ZP60014
 *
 *   2009-08-23 - ADD &NRSTR "NO RESCAN STRING"
+*   2020-12-07 - ADD &SYSISPF
 *
 IKJCT431 CSECT ,                                                   0001
          USING PSA,0
@@ -169,7 +170,7 @@ IKJCT431 CSECT ,                                                   0001
          B     @PROLOG                                             0001
          DC    AL1(33)                                             0001
          DC    C'IKJCT431  87.344'                                 0001
-         DC    C' ZP60014 20090823'
+         DC    C' ZP60014 20201207'
          DROP  R15
 @PROLOG  STM   R14,R12,12(R13)                                     0001
          BALR  R11,0                                               0001
@@ -186,11 +187,11 @@ IKJCT431 CSECT ,                                                   0001
          LR    R13,R10                                             0001
          MVC   @PC00001(4),0(R1)                                   0001
 *   ECDAPTR=R1;                     /* SAVE ADDRESS OF COMMON DATA   */
-         LR    ECDAPTR,R1                                          0093
+         LR    ECDAPTR7,R1                                         0093
 *   RFY                                                            0094
 *     R1 UNRSTD;                                                   0094
 *   LINELNG=RECLNG-CON4;            /* LINE LENGTH FOR FIRST RECORD  */
-         L     R6,ECDAIREC(,ECDAPTR)                               0095
+         L     R6,ECDAIREC(,ECDAPTR7)                              0095
          LH    R6,RECLNG(,R6)                                      0095
          SL    R6,FW04                                             0095
          ST    R6,LINELNG                                          0095
@@ -224,7 +225,7 @@ IKJCT431 CSECT ,                                                   0001
 *     I00401=GETSIZE;               /* LENGTH                        */
          MVC   I00401(4),FW8192     WAS 4096             ZP60014   0104
 *     I00403=ADDR(ECDAGADD);        /* ADDR OF ADDR LIST             */
-         LA    R14,ECDAGADD(,ECDAPTR)                              0105
+         LA    R14,ECDAGADD(,ECDAPTR7)                             0105
          STCM  R14,7,I00403                                        0105
 *     I00405=78;                    /* SUBPOOL VALUE                 */
          MVI   I00405,X'4E'                                        0106
@@ -258,7 +259,7 @@ IKJCT431 CSECT ,                                                   0001
          BAL   R14,MSGRTN                                          0116
 *       NOTEXEC=YES;                /* COMMAND PROCEDURE NOT       0117
 *                                      EXECUTABLE                    */
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0117
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0117
 *       CT431RET=CON16;                                            0118
          MVC   CT431RET(4),FW16                                    0118
 *     END;                          /* CONTROL RETURNS TO EXIT POINT */
@@ -286,13 +287,13 @@ IKJCT431 CSECT ,                                                   0001
          ST    R6,TIOTPTR
 *       SP78BLK=YES;                /* INDICATE CORE HAS BEEN GOTTEN */
 *       SP78CORE=YES;                                              0122
-         OI    SP78BLK(ECDAPTR),B'00100100'                        0122
+         OI    ECDAFLAG(ECDAPTR7),SP78CORE+SP78BLK                 0122
 *       ECDALSD=ECDAGADD;           /* LSD IS FIRST BLOCK IN INITIAL */
-         L     R6,ECDAGADD(,ECDAPTR)                               0123
-         ST    R6,ECDALSD(,ECDAPTR)                                0123
+         L     R6,ECDAGADD(,ECDAPTR7)                              0123
+         ST    R6,ECDALSD(,ECDAPTR7)                               0123
 *       LSDRCLEN=CON0;              /* GETMAIN AREA - RECLEN IS      */
          SLR   R8,R8                                               0124
-         L     R9,LSDPTR(,ECDAPTR)                                 0124
+         L     R9,LSDPTR(,ECDAPTR7)                                0124
          STH   R8,LSDRCLEN-LSD(,R9)                                0124
 *       LSDADATA=ECDAGADD+HALF;     /* VARIABLE                      */
          L     R14,FW4096           WAS LA R14,2048      ZP60014   0125
@@ -321,12 +322,12 @@ IKJCT431 CSECT ,                                                   0001
 *                                                                  0130
 *       ECDACBLK=LSDADATA;          /* INITIALIZE COMMAND PROCEDURE  */
          L     R1,LSDADATA-LSD(,R9)                                0130
-         ST    R1,ECDACBLK(,ECDAPTR)                               0130
+         ST    R1,ECDACBLK(,ECDAPTR7)                              0130
 *       ECDACNXT=LSDANEXT;                                         0131
          L     R9,LSDANEXT-LSD(,R9)                                0131
-         ST    R9,ECDACNXT(,ECDAPTR)                               0131
+         ST    R9,ECDACNXT(,ECDAPTR7)                              0131
 *       ECDACPRE=ECDACNXT;          /* SAME AS NEXT PTR INITIALLY    */
-         ST    R9,ECDACPRE(,ECDAPTR)                               0132
+         ST    R9,ECDACPRE(,ECDAPTR7)                              0132
 *       COMPRNXT=CON0;              /* INDICATE NO MORE BLOCKS       */
          STCM  R8,7,COMPRNXT(R1)                                   0133
 *       COMPRID=CON1;               /* THIS IS FIRST BLOCK           */
@@ -345,21 +346,21 @@ IKJCT431 CSECT ,                                                   0001
 *       EXECDATA=EXECDATA&&EXECDATA;/* CLEAR CORE                    */
          XC    EXECDATA(64,R6),EXECDATA(R6)                        0137
 *       IF NESTED=YES THEN          /* IF THIS IS A NESTED EXEC THEN */
-         TM    NESTED(ECDAPTR),B'00000010'                         0138
+         TM    ECDAFLAG(ECDAPTR7),NESTED                           0138
          BNO   @RF00138                                            0138
 *         GEXECDAT=ECDAGDAT->GEXECDAT;/* PICK UP ADDRESS OF NEXT   0139
 *                                      LOWER EXECDATA OTHERWISE      */
-         L     R1,ECDAGDAT(,ECDAPTR)                               0139
+         L     R1,ECDAGDAT(,ECDAPTR7)                              0139
          L     R1,GEXECDAT(,R1)                                    0139
          ST    R1,GEXECDAT(,R6)                                    0139
 *       ELSE                        /* SAVE THE ADDRESS OF FIRST     */
 *         GEXECDAT=ADDR(EXECDATA);  /* LEVEL EXECDATA                */
          B     @RC00138                                            0140
-@RF00138 L     R6,LSDPTR(,ECDAPTR)                                 0140
+@RF00138 L     R6,LSDPTR(,ECDAPTR7)                                0140
          L     R6,LSDEXEC-LSD(,R6)                                 0140
          ST    R6,GEXECDAT(,R6)                                    0140
 *       SNTABFST=LSDEXEC+(LENGTH(EXECDATA)+CON7)/CON8*CON8;/* SPLIT  */
-@RC00138 L     R6,LSDPTR(,ECDAPTR)                                 0141
+@RC00138 L     R6,LSDPTR(,ECDAPTR7)                                0141
          L     R6,LSDEXEC-LSD(,R6)                                 0141
          LA    R14,64                                              0141
          ALR   R14,R6                                              0141
@@ -372,7 +373,7 @@ IKJCT431 CSECT ,                                                   0001
          SLR   R15,R15                                             0143
          ICM   R15,7,SNTABBLK                                      0143
          SLR   R0,R0                                               0143
-         ICM   R0,7,CPBLKPTR(ECDAPTR)                              0143
+         ICM   R0,7,CPBLKPTR(ECDAPTR7)                             0143
          LR    R2,R0                                               0143
          SLR   R2,R15                                              0143
          SRDA  R2,32                                               0143
@@ -406,7 +407,7 @@ IKJCT431 CSECT ,                                                   0001
          MVC   SNTABUSE(4,R14),FW12                                0147
 *       SNTELPTR=ADDR(SNTELFST);    /* FIRST AVAILABLE SLOT          */
 *                                                                  0148
-         LA    SNTELPTR,SNTELFST(,R14)                             0148
+         LA    SNTELPTR,SNTELFST(,R14)             R8=SNTELPTR     0148
 *       /*************************************************************/
 *       /*                                                           */
 *       /* INITIALIZE FIRST SVTAB                                    */
@@ -425,7 +426,7 @@ IKJCT431 CSECT ,                                                   0001
 *       SVTELPTR=ADDR(SVTELFST);    /* ALL CONTROL BLOCKS ARE BUILT  */
          LA    SVTELPTR,SVTELFST(,R5)                              0153
 *       SP78BLK=NO;                                                0154
-         NI    SP78BLK(ECDAPTR),B'11111011'                        0154
+         NI    ECDAFLAG(ECDAPTR7),255-SP78BLK                      0154
 *                                                                  0155
 *       /*************************************************************/
 *       /*                                                           */
@@ -463,11 +464,11 @@ IKJCT431 CSECT ,                                                   0001
 *         R5) UNRSTD;                                              0164
 *       DO ICTR=1 TO DIM(NULLVAR);  /* INITIALIZE NULL VALUE       0165
 *                                      VARIABLES                     */
-         LA    ICTR,1                                              0165
+         LA    R6ICTR,1                                            0165
 @DL00165 DS    0H                                                  0166
 *         SNTDATA(1:NULLEN(ICTR))=NULLADR(ICTR)->NULLVDAT(1:NULLEN(ICTR
 *             ));                                                  0166
-         LR    R14,ICTR                                            0166
+         LR    R14,R6ICTR                                          0166
          SLA   R14,2                                               0166
          SLR   R15,R15                                             0166
          IC    R15,NULLEN-4(R14)                                   0166
@@ -484,19 +485,19 @@ IKJCT431 CSECT ,                                                   0001
          L     R1,SVTABPTR                                         0168
          LA    R2,SVTELFST(,R1)                                    0168
          ST    R2,SNTVLPTR(,SNTELPTR)                              0168
-         C     ICTR,FW#EVAL         NEW IMMEDIATE EVALUATION?   ZP60014
+         C     R6ICTR,FW#EVAL       NEW IMMEDIATE EVALUATION?   ZP60014
          BH    @SYMEVAL             YES, GO SET THE FLAG        ZP60014
 *         IF ICTR<CON11 THEN        /* FIRST 10 VARIABLES REQUIRE    */
-         C     ICTR,FW11                                           0169
+         C     R6ICTR,FW11                                         0169
          BNL   @RF00169                                            0169
 @SYMEVAL EQU   *                                                ZP60014
 *           SNTEVAL=YES;            /* IMMEDIATE EVALUATION          */
          OI    SNTEVAL(SNTELPTR),B'00000010'                       0170
 *         IF ICTR<=CON15 THEN       /* FIRST 15 VARIABLES CAN NOT    */
 @RF00169 EQU   *                                                   0171
-         C     ICTR,FW#GRP1         NO USER UPDATE 2ND GROUP?   ZP60014
+         C     R6ICTR,FW#GRP1       NO USER UPDATE 2ND GROUP?   ZP60014
          BH    @SYMNOUU             YES, SET THE FLAG           ZP60014
-         C     ICTR,FW15                                           0171
+         C     R6ICTR,FW15                                         0171
          BH    @RF00171                                            0171
 @SYMNOUU EQU   *                                                ZP60014
 *           SNTNAUTH=YES;           /* BE SET BY USER                */
@@ -512,10 +513,10 @@ IKJCT431 CSECT ,                                                   0001
 *         SNTELPTR=SNTELPTR+SNTLNG+LENGTH(SNTELEM);                0174
          ALR   R4,SNTELPTR                                         0174
          ALR   R4,R2                                               0174
-         LR    SNTELPTR,R4                                         0174
+         LR    SNTELPTR,R4                         R8=SNTELPTR     0174
 *       END;                                                       0175
-         AL    ICTR,FW01                                           0175
-         C     ICTR,FW#SYM          ORIGINALLY 19         ZP60014  0175
+         AL    R6ICTR,FW01                                         0175
+         C     R6ICTR,FW#SYM        ORIGINALLY 19         ZP60014  0175
          BNH   @DL00165                                            0175
 *       RFY                                                        0176
 *         SVTELEM BASED(SVTELPTR);                                 0176
@@ -528,7 +529,7 @@ IKJCT431 CSECT ,                                                   0001
 *       /*************************************************************/
 *                                                                  0177
 *       SVTDATA(1:PSCBUSRL)=PSCBUSER(1:PSCBUSRL);                  0177
-         L     R6,CPPLPTR(,ECDAPTR)                                0177
+         L     R6,CPPLPTR(,ECDAPTR7)                               0177
          L     R6,CPPLPSCB-CPPL(,R6)                               0177
          SLR   R14,R14                                             0177
          IC    R14,PSCBUSRL-PSCB(,R6)                              0177
@@ -553,29 +554,29 @@ IKJCT431 CSECT ,                                                   0001
 *       /*************************************************************/
 *                                                                  0182
 *       DO ICTR=8 TO 1 BY-1 WHILE(CSCBPROC(ICTR)=BLANK);/* DETERMINE */
-         LA    ICTR,8                                              0192
+         LA    R6ICTR,8                                            0192
 @DL00192 L     R1,TIOTPTR                                          0192
-         ALR   R1,ICTR                                             0192
+         ALR   R1,R6ICTR                                           0192
          CLI   CSCBPROC-1(R1),C' '                                 0192
          BNE   @DC00192                                            0192
 *       END;                        /* LENGTH OF THE PROCEDURE NAME  */
-         BCTR  ICTR,0                                              0193
-         LTR   ICTR,ICTR                                           0193
+         BCTR  R6ICTR,0                                            0193
+         LTR   R6ICTR,R6ICTR                                       0193
          BP    @DL00192                                            0193
 @DC00192 DS    0H                                                  0194
 *       IF ICTR>CON0 THEN           /* MOVE PROCNAME IN IF PRESENT   */
-         LTR   ICTR,ICTR                                           0194
+         LTR   R6ICTR,R6ICTR                                       0194
          BNP   @RF00194                                            0194
 *         DO;                                                      0195
 *           SVTDATA(1:ICTR)=CSCBPROC(1:ICTR);                      0196
-         LR    R2,ICTR                                             0196
+         LR    R2,R6ICTR                                           0196
          BCTR  R2,0                                                0196
          L     R1,TIOTPTR                                          0196
          EX    R2,@SM01546                                         0196
 *           SVTLNG=ICTR;                                           0197
-         STH   ICTR,SVTLNG(,SVTELPTR)                              0197
+         STH   R6ICTR,SVTLNG(,SVTELPTR)                            0197
 *           SVTORIG=ICTR;                                          0198
-         STH   ICTR,SVTORIG(,SVTELPTR)                             0198
+         STH   R6ICTR,SVTORIG(,SVTELPTR)                           0198
 *           CPROCVAL=SVTELPTR;                                     0199
          L     R6,SNTABPTR                                         0199
          STCM  SVTELPTR,15,CPROCVAL(R6)                            0199
@@ -692,7 +693,7 @@ IKJCT431 CSECT ,                                                   0001
 *       /*************************************************************/
 *                                                                  0227
 *       IF NESTED=YES THEN          /* IF WE ARE EXECUTING IN A      */
-         TM    NESTED(ECDAPTR),B'00000010'                         0227
+         TM    ECDAFLAG(ECDAPTR7),NESTED                           0227
          BNO   @RF00227                                            0227
 *         DO;                       /* NESTED LEVEL THEN VALUE IS    */
 *           SVTDATA(1:LENGTH(NYES))=NYES;/* YES                      */
@@ -726,7 +727,7 @@ IKJCT431 CSECT ,                                                   0001
 *       /*                                                  ZP60014  */
 *       /*************************************************************/
 *
-         L     R14,CPPLPTR(,ECDAPTR)
+         L     R14,CPPLPTR(,ECDAPTR7)
          L     R14,CPPLECT-CPPL(,R14)
          XC    44(4,R14),44(R14)           RESET ECTNUM
          MVI   SVTDATA(SVTELPTR),C'0'      SET VALUE FOR SYSOUTLINE
@@ -794,19 +795,19 @@ GROUNDOK STCM  R1,15,SVTDATA(SVTELPTR)     SET VALUE FOR SYSENV
          LTR   R15,R15                     SUCCESS?
          BNZ   TERMDONE                    NO, CANNOT SET TERMINAL ID
          LA    R1,GTTRMNAM                 YES, POINT TO TERMINAL NAME
-         LA    ICTR,8                      GET MAXIMUM NAME LENGTH
-TERMBLNK LA    R2,0(ICTR,R1)               POINT PAST TRAILING CHAR
+         LA    R6ICTR,8                    GET MAXIMUM NAME LENGTH
+TERMBLNK LA    R2,0(R6ICTR,R1)             POINT PAST TRAILING CHAR
          BCTR  R2,0                        POINT TO TRAILING CHAR
          CLI   0(R2),C' '                  TRAILING BLANK?
          BH    TERMOKAY                    NO, HAVE LENGTH
-         BCT   ICTR,TERMBLNK               YES, DECREMENT LENGTH
+         BCT   R6ICTR,TERMBLNK             YES, DECREMENT LENGTH
          B     TERMDONE                    TERMINAL NAME NOT ACQUIRED
-TERMOKAY LTR   R2,ICTR                     GET LENGTH OF TERMINAL NAME
+TERMOKAY LTR   R2,R6ICTR                   GET LENGTH OF TERMINAL NAME
          BNP   TERMDONE                    NAME NOT SUPPLIED
          BCTR  R2,0                        GET TERMINAL ID LENGTH CODE
          EX    R2,@SM01548                 MOVE IN TERMINAL NAME
-         STH   ICTR,SVTLNG(,SVTELPTR)      SET CURRENT VALUE LENGTH
-         STH   ICTR,SVTORIG(,SVTELPTR)     SET ORIGINAL VALUE LENGTH
+         STH   R6ICTR,SVTLNG(,SVTELPTR)    SET CURRENT VALUE LENGTH
+         STH   R6ICTR,SVTORIG(,SVTELPTR)   SET ORIGINAL VALUE LENGTH
          L     R6,SNTABPTR                 POINT TO SYMBOL NAME TABLE
          STCM  SVTELPTR,15,CTERMVAL(R6)    SET POINTER TO VALUE
          BAL   R14,SVTELUPT                UPDATE SYMBOL VALUE TABLE
@@ -821,16 +822,16 @@ TERMDONE EQU   *
          L     R2,CVTPTR                   ---> CVT
          L     R2,CVTSMCA-CVT(,R2)         ---> SMCA
          LA    R1,SMCASID-SMCABASE(,R2)    ---> SMCASID
-         LA    ICTR,3
-SMFBLANK LA    R2,0(ICTR,R1)               ---> END OF SMCASID
+         LA    R6ICTR,3
+SMFBLANK LA    R2,0(R6ICTR,R1)             ---> END OF SMCASID
          CLI   0(R2),C' '                  TRAILING BLANK?
          BNE   SMFIDOK                     NO, HAVE LENGTH
-         BCT   ICTR,SMFBLANK               YES, DECREMENT LENGTH
-SMFIDOK  LR    R2,ICTR                     GET LENGTH CODE OF SID
+         BCT   R6ICTR,SMFBLANK             YES, DECREMENT LENGTH
+SMFIDOK  LR    R2,R6ICTR                   GET LENGTH CODE OF SID
          EX    R2,@SM01548                 MOVE IN SMF ID
-         LA    ICTR,1(,ICTR)               RESTORE LENGTH
-         STH   ICTR,SVTLNG(,SVTELPTR)      SET CURRENT VALUE LENGTH
-         STH   ICTR,SVTORIG(,SVTELPTR)     SET ORIGINAL VALUE LENGTH
+         LA    R6ICTR,1(,R6ICTR)           RESTORE LENGTH
+         STH   R6ICTR,SVTLNG(,SVTELPTR)    SET CURRENT VALUE LENGTH
+         STH   R6ICTR,SVTORIG(,SVTELPTR)   SET ORIGINAL VALUE LENGTH
          L     R6,SNTABPTR                 POINT TO SYMBOL NAME TABLE
          STCM  SVTELPTR,15,CSMFVAL(R6)     SET POINTER TO VALUE
          BAL   R14,SVTELUPT                UPDATE SYMBOL VALUE TABLE
@@ -859,23 +860,51 @@ SMFIDOK  LR    R2,ICTR                     GET LENGTH CODE OF SID
          L     R14,TCBJSCB-TCB(,R14)       ---> JSCB
          L     R14,JSCBSSIB-IEZJSCB(,R14)  ---> SSIB
          LA    R1,SSIBSSNM-SSIB(,R14)      ---> JOB'S SUBSYSTEM NAME
-         LA    ICTR,4                      GET MAXIMUM NAME LENGTH
-JSNMBLNK LA    R2,0(ICTR,R1)               POINT PAST TRAILING CHAR
+         LA    R6ICTR,4                    GET MAXIMUM NAME LENGTH
+JSNMBLNK LA    R2,0(R6ICTR,R1)             POINT PAST TRAILING CHAR
          BCTR  R2,0                        POINT TO TRAILING CHAR
          CLI   0(R2),C' '                  TRAILING BLANK?
          BH    JSNMOKAY                    NO, HAVE LENGTH
-         BCT   ICTR,JSNMBLNK               YES, DECREMENT LENGTH
+         BCT   R6ICTR,JSNMBLNK             YES, DECREMENT LENGTH
          B     JSNMDONE                    JES NAME NOT ACQUIRED
-JSNMOKAY LTR   R2,ICTR                     GET LENGTH OF JES NAME
+JSNMOKAY LTR   R2,R6ICTR                   GET LENGTH OF JES NAME
          BNP   JSNMDONE                    NAME NOT SUPPLIED
          BCTR  R2,0                        GET JES NAME LENGTH CODE
          EX    R2,@SM01548                 MOVE IN JES NAME
-         STH   ICTR,SVTLNG(,SVTELPTR)      SET CURRENT VALUE LENGTH
-         STH   ICTR,SVTORIG(,SVTELPTR)     SET ORIGINAL VALUE LENGTH
+         STH   R6ICTR,SVTLNG(,SVTELPTR)    SET CURRENT VALUE LENGTH
+         STH   R6ICTR,SVTORIG(,SVTELPTR)   SET ORIGINAL VALUE LENGTH
          L     R6,SNTABPTR                 POINT TO SYMBOL NAME TABLE
          STCM  SVTELPTR,15,CJESVAL(R6)     SET POINTER TO VALUE
          BAL   R14,SVTELUPT                UPDATE SYMBOL VALUE TABLE
 JSNMDONE EQU   *
+*
+*       /*************************************************************/
+*       /*                                 2020-12-07       ZP60014  */
+*       /* -SYSISPF                                         ZP60014  */
+*       /*                                                  ZP60014  */
+*       /*************************************************************/
+*
+         SR    R15,R15                     CLEAR FOR INSERT
+         L     R2,PSATOLD                  POINT TO THE CURRENT TCB
+         MVC   SVTDATA(6,SVTELPTR),$ACTIVE LOAD VALUE
+         LA    R0,6                        GET THE VALUE LENGTH
+ISPFTASK ICM   R2,15,TCBOTC-TCB(R2)        POINT TO PARENT TASK
+         BZ    ISPFNOT                     MUST HAVE GOT TO RCT
+         CL    R2,TCBJSTCB-TCB(R2)         JOB STEP TCB?
+         BE    ISPFNOT                     YES, ISPF NOT ACTIVE
+         L     R14,TCBRBP-TCB(,R2)         POINT TO CURRENT RB
+         ICM   R15,7,RBCDE1-RBBASIC(R14)   POINT TO THE CDE
+         BZ    ISPFTASK                    NONE SO GO UP A TASK
+         CLC   ISPFLIT,CDNAME-CDENTRY(R15) ISPF?
+         BNE   ISPFTASK                    NO
+         B     ISPFRDY                     YES
+ISPFNOT  MVC   SVTDATA(L'$NOTACTV,SVTELPTR),$NOTACTV
+         LA    R0,L'$NOTACTV               GET THE VALUE LENGTH
+ISPFRDY  STH   R0,SVTLNG(,SVTELPTR)        SET CURRENT VALUE LENGTH
+         STH   R0,SVTORIG(,SVTELPTR)       SET ORIGINAL VALUE LENGTH
+         L     R6,SNTABPTR                 POINT TO SYMBOL NAME TABLE
+         STCM  SVTELPTR,15,CISPFVAL(R6)    SET POINTER TO VALUE
+         BAL   R14,SVTELUPT                UPDATE SYMBOL VALUE TABLE
 *                                                                  0239
 *       /*************************************************************/
 *       /*                                                           */
@@ -884,15 +913,15 @@ JSNMDONE EQU   *
 *       /*************************************************************/
 *                                                                  0239
 *       IF IMPLICIT=YES THEN        /* INIT TO IMPLICIT INVOC NAME   */
-         TM    IMPLICIT(ECDAPTR),B'10000000'                       0239
+         TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0239
          BNO   @RF00239                                            0239
 *         DO;                                                      0240
 *           SVTDATA(1:ECDAILNG)=PROCNAME(1:ECDAILNG);/* IMPLICIT NME */
          SLR   R6,R6                                               0241
-         IC    R6,ECDAILNG(,ECDAPTR)                               0241
+         IC    R6,ECDAILNG(,ECDAPTR7)                              0241
          LR    R14,R6                                              0241
          BCTR  R14,0                                               0241
-         L     R1,ECDAINME(,ECDAPTR)                               0241
+         L     R1,ECDAINME(,ECDAPTR7)                              0241
          EX    R14,@SM01548                                        0241
 *           SVTORIG=ECDAILNG;       /* SAVE LENGTH                   */
          STH   R6,SVTORIG(,SVTELPTR)                               0242
@@ -907,7 +936,7 @@ JSNMDONE EQU   *
 *       ECDALNEL=ADDR(CLASTVAL);                          ZP60014  0247
 @RF00239 L     R14,SNTABPTR                                        0247
          LA    R15,CLASTVAL(,R14)                         ZP60014  0247
-         ST    R15,ECDALNEL(,ECDAPTR)                              0247
+         ST    R15,ECDALNEL(,ECDAPTR7)                             0247
 *       USNTABST=SNTABPTR+SNTABUSE;                                0248
          LR    R15,R14                                             0248
          AL    R15,SNTABUSE(,R14)                                  0248
@@ -922,41 +951,41 @@ JSNMDONE EQU   *
 *       /*************************************************************/
 *                                                                  0250
 *       ICTR=CON1;                                                 0250
-         LA    ICTR,1                                              0250
+         LA    R6ICTR,1                                            0250
 *       CALL SKIPSEP;               /* SKIP LEADING SEPERATORS       */
          BAL   R14,SKIPSEP                                         0251
 *       SCTR=ICTR;                  /* SAVE START OF PARM            */
-         LR    SCTR,ICTR                                           0252
-         C     SCTR,LINELNG
+         LR    R2SCTR,R6ICTR                                       0252
+         C     R2SCTR,LINELNG
          BNH   DOFNDSEP
          MVC   CT431RET(4),FW08
          B     @RC00112
 *       CALL FINDSEP;               /* LOCATE THE NEXT SEPERATOR     */
 DOFNDSEP BAL   R14,FINDSEP                                         0253
 *       IF(ICTR-SCTR)^=LENGTH(CPROC) RECORD(SCTR:ICTR-CON1)^=CPROC THEN
-         LR    R9,ICTR                                             0254
-         SLR   R9,SCTR                                             0254
+         LR    R9,R6ICTR                                           0254
+         SLR   R9,R2SCTR                                           0254
          C     R9,FW04                                             0254
          BNE   @RT00254                                            0254
-         L     R3,ECDAIREC(,ECDAPTR)                               0254
-         ALR   R3,SCTR                                             0254
+         L     R3,ECDAIREC(,ECDAPTR7)                              0254
+         ALR   R3,R2SCTR                                           0254
          CLC   RECORD-1(4,R3),$PROC                                0254
          BE    @RF00254                                            0254
 @RT00254 DS    0H                                                  0255
 *         DO;                                                      0255
-*           IF(IMPLICIT=NO&(VLST=YES&VLSTLNG^=CON0)) (IMPLICIT=YES&
+*           IF(ECDAFLAG=NO&(VLST=YES&VLSTLNG^=CON0)) (IMPLICIT=YES&
 *               ECTNOPD=NO) THEN    /* IF THERE WERE PARMS IN        */
-         TM    IMPLICIT(ECDAPTR),B'10000000'                       0256
+         TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0256
          BNZ   @GL00002                                            0256
-         L     R9,ECDAEANS(,ECDAPTR)                               0256
+         L     R9,ECDAEANS(,ECDAPTR7)                              0256
          TM    VLST(R9),B'10000000'                                0256
          BNO   @GL00002                                            0256
          LH    R9,VLSTLNG(,R9)                                     0256
          LTR   R9,R9                                               0256
          BNZ   @RT00256                                            0256
-@GL00002 TM    IMPLICIT(ECDAPTR),B'10000000'                       0256
+@GL00002 TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0256
          BNO   @RF00256                                            0256
-         L     R9,CPPLPTR(,ECDAPTR)                                0256
+         L     R9,CPPLPTR(,ECDAPTR7)                               0256
          L     R9,CPPLECT-CPPL(,R9)                                0256
          TM    ECTSWS-ECT(R9),ECTNOPD                              0256
          BNZ   @RF00256                                            0256
@@ -966,11 +995,11 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                      PARMS ARE IGNORED             */
          MVC   EXMSGID(4),$MSGA529                                 0258
 *               IF IMPLICIT=NO THEN /* EXPLICIT - PICK UP ADDRESS OF */
-         TM    IMPLICIT(ECDAPTR),B'10000000'                       0259
+         TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0259
          BNZ   @RF00259                                            0259
 *                 DO;               /* VALUE LIST FROM PARSE PDL     */
 *                   MVAR(1)=VLSTPTR;                               0261
-         L     R9,ECDAEANS(,ECDAPTR)                               0261
+         L     R9,ECDAEANS(,ECDAPTR7)                              0261
          L     R15,VLSTPTR(,R9)                                    0261
          ST    R15,MVAR                                            0261
 *                   MVARLEN(1)=VLSTLNG;                            0262
@@ -983,7 +1012,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00259 DS    0H                                                  0265
 *                   MVAR(1)=ADDR(CBUFTEXT)+CBUFOFF;/* CMD BUFFER   0265
 *                                      OFFSETS                       */
-         L     R9,CPPLPTR(,ECDAPTR)                                0265
+         L     R9,CPPLPTR(,ECDAPTR7)                               0265
          L     R9,CPPLCBUF-CPPL(,R9)                               0265
          LA    R14,CBUFTEXT(,R9)                                   0265
          LH    R15,CBUFOFF(,R9)                                    0265
@@ -1031,20 +1060,20 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *           CALL SKIPSEP;           /* FIND START OF NUMBER          */
          BAL   R14,SKIPSEP                                         0276
 *           SCTR=ICTR;                                             0277
-         LR    SCTR,ICTR                                           0277
+         LR    R2SCTR,R6ICTR                                       0277
 *           CALL FINDSEP;           /* FIND END OF NUMBER            */
          BAL   R14,FINDSEP                                         0278
 *           IF ICTR-SCTR>CON0&ICTR-SCTR<CON9 THEN/* IF NUMBER EIGHT
 *                                      OR LESS BYTES                 */
-         LR    R3,ICTR                                             0279
-         SLR   R3,SCTR                                             0279
+         LR    R3,R6ICTR                                           0279
+         SLR   R3,R2SCTR                                           0279
          LTR   R3,R3                                               0279
          BNP   @RF00279                                            0279
          C     R3,FW09                                             0279
          BNL   @RF00279                                            0279
 *             DO;                   /* LONG THEN IT MAY BE VALID-    */
 *               PCTR=CON8;          /* OVER EIGHT BYTES IT IS INVALID*/
-         LA    PCTR,8                                              0281
+         LA    R5PCTR,8                                            0281
 *               PACKLOC='';                                        0282
 *                                                                  0282
          MVI   PACKLOC,C' '                                        0282
@@ -1058,11 +1087,11 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                                                  0283
 *               DO JCTR=ICTR-CON1 TO SCTR BY-1 WHILE RECORD(JCTR)^<
 *                     CONC0&RECORD(JCTR)^>CONC9;                   0283
-         LR    R9,ICTR                                             0283
+         LR    R9,R6ICTR                                           0283
          BCTR  R9,0                                                0283
          ST    R9,JCTR                                             0283
          B     @DE00283                                            0283
-@DL00283 L     R3,ECDAIREC(,ECDAPTR)                               0283
+@DL00283 L     R3,ECDAIREC(,ECDAPTR7)                              0283
          ALR   R9,R3                                               0283
          CLI   RECORD-1(R9),C'0'                                   0283
          BL    @DC00283                                            0283
@@ -1072,21 +1101,21 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          BH    @DC00283                                            0283
 *                 PACKLOC(PCTR)=RECORD(JCTR);/* POSITIONAL         0284
 *                                      SPECIFICATION MUST            */
-         LA    R9,PACKLOC-1(PCTR)                                  0284
+         LA    R9,PACKLOC-1(R5PCTR)                                0284
          L     R4,JCTR                                             0284
          ALR   R3,R4                                               0284
          MVC   0(1,R9),RECORD-1(R3)                                0284
 *                 PCTR=PCTR-CON1;   /* BE NUMERIC                    */
-         BCTR  PCTR,0                                              0285
+         BCTR  R5PCTR,0                                            0285
 *               END;                                               0286
          BCTR  R4,0                                                0286
          LR    R9,R4                                               0286
          ST    R9,JCTR                                             0286
-@DE00283 CR    R9,SCTR                                             0286
+@DE00283 CR    R9,R2SCTR                                           0286
          BNL   @DL00283                                            0286
 @DC00283 DS    0H                                                  0287
 *               IF JCTR^<SCTR THEN  /* IF ALL DIGITS WERE NOT MOVED  */
-         C     SCTR,JCTR                                           0287
+         C     R2SCTR,JCTR                                         0287
          BH    @RF00287                                            0287
 *                 POSPCERR=YES;     /* IN THEN ONE OF THE DIGITS WAS
 *                                      NOT NUMERIC - INDICATE      0288
@@ -1113,14 +1142,14 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          BNO   @RF00295                                            0295
 *             DO;                   /* INVALID NOTIFY USER AND       */
 *               NOTEXEC=YES;        /* EXIT TO IKJCT430              */
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0297
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0297
 *               MVAR(1)=ADDR(RECORD(SCTR));                        0298
-         L     R3,ECDAIREC(,ECDAPTR)                               0298
-         LA    R3,RECORD-1(SCTR,R3)                                0298
+         L     R3,ECDAIREC(,ECDAPTR7)                              0298
+         LA    R3,RECORD-1(R2SCTR,R3)                              0298
          ST    R3,MVAR                                             0298
 *               MVARLEN(1)=ICTR-SCTR;                              0299
-         LR    R3,ICTR                                             0299
-         SLR   R3,SCTR                                             0299
+         LR    R3,R6ICTR                                           0299
+         SLR   R3,R2SCTR                                           0299
          STC   R3,MVARLEN                                          0299
 *               EXMSGID=M506;                                      0300
          MVC   EXMSGID(4),$MSGM506                                 0300
@@ -1139,47 +1168,47 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          B     @RC00295                                            0303
 @RF00295 DS    0H                                                  0304
 *               POSCHAR=CON0;                                      0304
-         SLR   POSCHAR,POSCHAR                                     0304
+         SLR   R4POSCHR,R4POSCHR                                   0304
 *               CALL SKIPSEP;       /* SKIP PRECEEDING SEPERATORS    */
          BAL   R14,SKIPSEP                                         0305
 *               DO PCTR=1 TO POSNUM WHILE ICTR<=LINELNG&STABERR=NO;/*
 *                                      FIND PARAMETER START          */
-         LA    PCTR,1                                              0306
+         LA    R5PCTR,1                                            0306
          B     @DE00306                                            0306
-@DL00306 C     ICTR,LINELNG                                        0306
+@DL00306 C     R6ICTR,LINELNG                                      0306
          BH    @DC00306                                            0306
          TM    STABERR,B'10000000'                                 0306
          BNZ   @DC00306                                            0306
 *                 SCTR=ICTR;        /* SAVE START OF PARAMETER       */
-         LR    SCTR,ICTR                                           0307
+         LR    R2SCTR,R6ICTR                                       0307
 *                 POSERR=NO;                                       0308
          NI    POSERR,B'11011111'                                  0308
 *                 IF(RECORD(SCTR)^<CONCA&/* FIRST CHARACTER MUST BE  */
 *                     RECORD(SCTR)^>CONCI) (RECORD(SCTR)^<CONCJ&RECORD(
 *                     SCTR)^>CONCR) (RECORD(SCTR)^<CONCS&RECORD(SCTR)^>
 *                     CONCZ) THEN   /* ALPHA                         */
-         L     R9,ECDAIREC(,ECDAPTR)                               0309
+         L     R9,ECDAIREC(,ECDAPTR7)                              0309
          LR    R3,R9                                               0309
-         ALR   R3,SCTR                                             0309
+         ALR   R3,R2SCTR                                           0309
          CLI   RECORD-1(R3),C'A'                                   0309
          BL    @GL00010                                            0309
-         ALR   R9,SCTR                                             0309
+         ALR   R9,R2SCTR                                           0309
          CLI   RECORD-1(R9),C'I'                                   0309
          BNH   @RT00309                                            0309
-@GL00010 L     R9,ECDAIREC(,ECDAPTR)                               0309
+@GL00010 L     R9,ECDAIREC(,ECDAPTR7)                              0309
          LR    R3,R9                                               0309
-         ALR   R3,SCTR                                             0309
+         ALR   R3,R2SCTR                                           0309
          CLI   RECORD-1(R3),C'J'                                   0309
          BL    @GL00009                                            0309
-         ALR   R9,SCTR                                             0309
+         ALR   R9,R2SCTR                                           0309
          CLI   RECORD-1(R9),C'R'                                   0309
          BNH   @RT00309                                            0309
-@GL00009 L     R9,ECDAIREC(,ECDAPTR)                               0309
+@GL00009 L     R9,ECDAIREC(,ECDAPTR7)                              0309
          LR    R3,R9                                               0309
-         ALR   R3,SCTR                                             0309
+         ALR   R3,R2SCTR                                           0309
          CLI   RECORD-1(R3),C'S'                                   0309
          BL    @RF00309                                            0309
-         ALR   R9,SCTR                                             0309
+         ALR   R9,R2SCTR                                           0309
          CLI   RECORD-1(R9),C'Z'                                   0309
          BH    @RF00309                                            0309
 @RT00309 DS    0H                                                  0310
@@ -1195,19 +1224,19 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RC00309 TM    POSERR,B'00100100'                                  0312
          BNZ   @RF00312                                            0312
          L     R9,JCTR                                             0312
-         SLR   R9,SCTR                                             0312
+         SLR   R9,R2SCTR                                           0312
          C     R9,FW253                                            0312
          BNL   @RF00312                                            0312
 *                   DO;                                            0313
 *                     PARMADR=ADDR(RECORD(SCTR));/* USE THE        0314
 *                                      SNTAB/SVTAB                   */
-         L     R3,ECDAIREC(,ECDAPTR)                               0314
-         LA    R3,RECORD-1(SCTR,R3)                                0314
+         L     R3,ECDAIREC(,ECDAPTR7)                              0314
+         LA    R3,RECORD-1(R2SCTR,R3)                              0314
          ST    R3,PARMADR                                          0314
 *                     PARMLNG=JCTR-SCTR;/* UPDATE ROUTINE TO PLACE IN*/
          ST    R9,PARMLNG                                          0315
 *                     POSCHAR=POSCHAR+PARMLNG;/* TABLES              */
-         ALR   POSCHAR,R9                                          0316
+         ALR   R4POSCHR,R9                                         0316
 *                     PARMTYPE=POSIT;                              0317
          SLR   R9,R9                                               0317
          STH   R9,PARMTYPE                                         0317
@@ -1220,8 +1249,8 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00312 DS    0H                                                  0321
 *                     IF ICTR-SCTR^<CON253 THEN/* USE INVALID PARM 0321
 *                                      LENGTH                        */
-         LR    R3,ICTR                                             0321
-         SLR   R3,SCTR                                             0321
+         LR    R3,R6ICTR                                           0321
+         SLR   R3,R2SCTR                                           0321
          C     R3,FW253                                            0321
          BL    @RF00321                                            0321
 *                       EXMSGID=A507;/* MESSAGE                      */
@@ -1233,7 +1262,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                         EXMSGID=M507;                            0324
          MVC   EXMSGID(4),$MSGM507                                 0324
 *                         ICTR=ICTR+CON1;                          0325
-         AL    ICTR,FW01                                           0325
+         AL    R6ICTR,FW01                                         0325
 *                       END;                                       0326
 *                     MVAR(1)=ADDR(CPOSIT);                        0327
 @RC00321 LA    R9,@CC01304                                         0327
@@ -1241,12 +1270,12 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                     MVARLEN(1)=LENGTH(CPOSIT);                   0328
          MVI   MVARLEN,X'0A'                                       0328
 *                     MVAR(2)=ADDR(RECORD(SCTR));                  0329
-         L     R3,ECDAIREC(,ECDAPTR)                               0329
-         LA    R9,RECORD-1(SCTR,R3)                                0329
+         L     R3,ECDAIREC(,ECDAPTR7)                              0329
+         LA    R9,RECORD-1(R2SCTR,R3)                              0329
          ST    R9,MVAR+4                                           0329
 *                     MVARLEN(2)=ICTR-SCTR;                        0330
-         LR    R3,ICTR                                             0330
-         SLR   R3,SCTR                                             0330
+         LR    R3,R6ICTR                                           0330
+         SLR   R3,R2SCTR                                           0330
          STC   R3,MVARLEN+4                                        0330
 *                     IF ICTR-SCTR>CON127 THEN/* TRUNCATE            */
          C     R3,FW127                                            0331
@@ -1254,26 +1283,26 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                       MVARLEN(2)=CON127;/* LENGTHS GT 127          */
          MVI   MVARLEN+4,X'7F'                                     0332
 *                     NOTEXEC=YES;  /* PROCEDURE HAS ERRORS          */
-@RF00331 OI    NOTEXEC(ECDAPTR),B'01000000'                        0333
+@RF00331 OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0333
 *                     CALL MSGRTN;  /* ISSUE MESSAGE TO USER         */
          BAL   R14,MSGRTN                                          0334
 *                     CALL SKIPSEP; /* FIND START OF NEXT PARM       */
          BAL   R14,SKIPSEP                                         0335
 *                   END;                                           0336
 *               END;                                               0337
-@RC00312 AL    PCTR,FW01                                           0337
-@DE00306 C     PCTR,POSNUM                                         0337
+@RC00312 AL    R5PCTR,FW01                                         0337
+@DE00306 C     R5PCTR,POSNUM                                       0337
          BNH   @DL00306                                            0337
 @DC00306 DS    0H                                                  0338
 *               IF PCTR<=POSNUM&STABERR=NO THEN/* IF WE DID NOT    0338
 *                                      PROCESS ENOUGH                */
-         C     PCTR,POSNUM                                         0338
+         C     R5PCTR,POSNUM                                       0338
          BH    @RF00338                                            0338
          TM    STABERR,B'10000000'                                 0338
          BNZ   @RF00338                                            0338
 *                 DO;               /* PARMS THEN NOTIFY USER        */
 *                   NOTEXEC=YES;                                   0340
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0340
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0340
 *                   EXMSGID=M509;                                  0341
          MVC   EXMSGID(4),$MSGM509                                 0341
 *                   CALL MSGRTN;                                   0342
@@ -1301,7 +1330,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          B     @DE00349                                            0349
 @DL00349 DS    0H                                                  0350
 *                 SCTR=ICTR;                                       0350
-         LR    SCTR,ICTR                                           0350
+         LR    R2SCTR,R6ICTR                                       0350
 *                 KEYERR=NO;                                       0351
          NI    KEYERR,B'11101111'                                  0351
 *                 IF(RECORD(SCTR)^<CONCA&/* FIRST CHARACTER MUST BE
@@ -1309,28 +1338,28 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                     RECORD(SCTR)^>CONCI) (RECORD(SCTR)^<CONCJ&RECORD(
 *                     SCTR)^>CONCR) (RECORD(SCTR)^<CONCS&RECORD(SCTR)^>
 *                     CONCZ) THEN                                  0352
-         L     R9,ECDAIREC(,ECDAPTR)                               0352
+         L     R9,ECDAIREC(,ECDAPTR7)                              0352
          LR    R1,R9                                               0352
-         ALR   R1,SCTR                                             0352
+         ALR   R1,R2SCTR                                           0352
          CLI   RECORD-1(R1),C'A'                                   0352
          BL    @GL00017                                            0352
-         ALR   R9,SCTR                                             0352
+         ALR   R9,R2SCTR                                           0352
          CLI   RECORD-1(R9),C'I'                                   0352
          BNH   @RT00352                                            0352
-@GL00017 L     R9,ECDAIREC(,ECDAPTR)                               0352
+@GL00017 L     R9,ECDAIREC(,ECDAPTR7)                              0352
          LR    R1,R9                                               0352
-         ALR   R1,SCTR                                             0352
+         ALR   R1,R2SCTR                                           0352
          CLI   RECORD-1(R1),C'J'                                   0352
          BL    @GL00016                                            0352
-         ALR   R9,SCTR                                             0352
+         ALR   R9,R2SCTR                                           0352
          CLI   RECORD-1(R9),C'R'                                   0352
          BNH   @RT00352                                            0352
-@GL00016 L     R9,ECDAIREC(,ECDAPTR)                               0352
+@GL00016 L     R9,ECDAIREC(,ECDAPTR7)                              0352
          LR    R1,R9                                               0352
-         ALR   R1,SCTR                                             0352
+         ALR   R1,R2SCTR                                           0352
          CLI   RECORD-1(R1),C'S'                                   0352
          BL    @RF00352                                            0352
-         ALR   R9,SCTR                                             0352
+         ALR   R9,R2SCTR                                           0352
          CLI   RECORD-1(R9),C'Z'                                   0352
          BH    @RF00352                                            0352
 @RT00352 DS    0H                                                  0353
@@ -1345,22 +1374,22 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RC00352 TM    KEYERR,B'00010100'                                  0355
          BNZ   @RF00355                                            0355
          L     R9,JCTR                                             0355
-         SLR   R9,SCTR                                             0355
+         SLR   R9,R2SCTR                                           0355
          C     R9,FW31                                             0355
          BH    @RF00355                                            0355
 *                   DO;             /* THEN PREPARE FOR SNTAB ENTRY  */
 *                     PARMADR=ADDR(RECORD(SCTR));                  0357
-         L     R14,ECDAIREC(,ECDAPTR)                              0357
-         LA    R15,RECORD-1(SCTR,R14)                              0357
+         L     R14,ECDAIREC(,ECDAPTR7)                             0357
+         LA    R15,RECORD-1(R2SCTR,R14)                            0357
          ST    R15,PARMADR                                         0357
 *                     PARMLNG=JCTR-SCTR;/* IF THE NEXT NON SEPERATOR
 *                                      IS                            */
          ST    R9,PARMLNG                                          0358
 *                     IF ICTR<=LINELNG&RECORD(ICTR)=LFPAREN THEN/* A
 *                                      LEFT PAREN THEN IT A          */
-         C     ICTR,LINELNG                                        0359
+         C     R6ICTR,LINELNG                                      0359
          BH    @RF00359                                            0359
-         ALR   R14,ICTR                                            0359
+         ALR   R14,R6ICTR                                          0359
          CLI   RECORD-1(R14),C'('                                  0359
          BNE   @RF00359                                            0359
 *                       DO;         /* KEYWORD WITH VALUE            */
@@ -1385,7 +1414,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          AL    R2,FW01                                             0367
          ST    R2,VALLNG                                           0367
 *                             VALADR=ADDR(RECORD(VALSTR));         0368
-         L     R2,ECDAIREC(,ECDAPTR)                               0368
+         L     R2,ECDAIREC(,ECDAPTR7)                              0368
          LA    R9,RECORD-1(R9,R2)                                  0368
          ST    R9,VALADR                                           0368
 *                           END;                                   0369
@@ -1418,7 +1447,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                     IF JCTR-SCTR>CON31 THEN/* THEN NOTIFY USER AND
 *                                      CONTINUE                      */
          L     R9,JCTR                                             0380
-         SLR   R9,SCTR                                             0380
+         SLR   R9,R2SCTR                                           0380
          C     R9,FW31                                             0380
          BNH   @RF00380                                            0380
 *                       EXMSGID=A507;/* SYNTAX CHECKING ANY OTHER    */
@@ -1430,7 +1459,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                         EXMSGID=M507;                            0383
          MVC   EXMSGID(4),$MSGM507                                 0383
 *                         ICTR=ICTR+CON1;                          0384
-         AL    ICTR,FW01                                           0384
+         AL    R6ICTR,FW01                                         0384
 *                       END;                                       0385
 *                     MVAR(1)=ADDR(CKEYWORD);                      0386
 @RC00380 LA    R9,$KEYWORD                                         0386
@@ -1438,28 +1467,28 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                     MVARLEN(1)=LENGTH(CKEYWORD);                 0387
          MVI   MVARLEN,X'07'                                       0387
 *                     MVAR(2)=ADDR(RECORD(SCTR));                  0388
-         L     R9,ECDAIREC(,ECDAPTR)                               0388
-         LA    R9,RECORD-1(SCTR,R9)                                0388
+         L     R9,ECDAIREC(,ECDAPTR7)                              0388
+         LA    R9,RECORD-1(R2SCTR,R9)                              0388
          ST    R9,MVAR+4                                           0388
 *                     MVARLEN(2)=ICTR-SCTR;                        0389
-         LR    R9,ICTR                                             0389
-         SLR   R9,SCTR                                             0389
+         LR    R9,R6ICTR                                           0389
+         SLR   R9,R2SCTR                                           0389
          STC   R9,MVARLEN+4                                        0389
 *                     NOTEXEC=YES;                                 0390
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0390
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0390
 *                     CALL MSGRTN;                                 0391
          BAL   R14,MSGRTN                                          0391
 *                   END;                                           0392
 *                 CALL SKIPSEP;     /* UPDATE TO NEXT KEYWORD        */
 @RC00355 BAL   R14,SKIPSEP                                         0393
 *               END;                                               0394
-@DE00349 C     ICTR,LINELNG                                        0394
+@DE00349 C     R6ICTR,LINELNG                                      0394
          BH    @DC00349                                            0394
          TM    STABERR,B'10000000'                                 0394
          BZ    @DL00349                                            0394
 @DC00349 DS    0H                                                  0395
 *               IF NOTEXEC=YES (POSNUM+KEYNUM+KEYWNUM=CON0) THEN   0395
-         TM    NOTEXEC(ECDAPTR),B'01000000'                        0395
+         TM    ECDAFLAG(ECDAPTR7),NOTEXEC                          0395
          BO    @RT00395                                            0395
          L     R2,POSNUM                                           0395
          AL    R2,KEYNUM                                           0395
@@ -1469,22 +1498,22 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RT00395 DS    0H                                                  0396
 *                 DO;                                              0396
 *                   IF NOTEXEC=NO THEN                             0397
-         TM    NOTEXEC(ECDAPTR),B'01000000'                        0397
+         TM    ECDAFLAG(ECDAPTR7),NOTEXEC                          0397
          BNZ   @RF00397                                            0397
 *                     DO;                                          0398
 *                       IF(IMPLICIT=NO&(VLST=YES&VLSTLNG^=CON0)) ( 0399
 *                           IMPLICIT=YES&ECTNOPD=NO) THEN          0399
-         TM    IMPLICIT(ECDAPTR),B'10000000'                       0399
+         TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0399
          BNZ   @GL00025                                            0399
-         L     R6,ECDAEANS(,ECDAPTR)                               0399
+         L     R6,ECDAEANS(,ECDAPTR7)                              0399
          TM    VLST(R6),B'10000000'                                0399
          BNO   @GL00025                                            0399
          LH    R6,VLSTLNG(,R6)                                     0399
          LTR   R6,R6                                               0399
          BNZ   @RT00399                                            0399
-@GL00025 TM    IMPLICIT(ECDAPTR),B'10000000'                       0399
+@GL00025 TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0399
          BNO   @RF00399                                            0399
-         L     R6,CPPLPTR(,ECDAPTR)                                0399
+         L     R6,CPPLPTR(,ECDAPTR7)                               0399
          L     R6,CPPLECT-CPPL(,R6)                                0399
          TM    ECTSWS-ECT(R6),ECTNOPD                              0399
          BNZ   @RF00399                                            0399
@@ -1494,11 +1523,11 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          MVC   EXMSGID(4),$MSGB529                                 0401
 *                           IF IMPLICIT=NO THEN/* EXPLICIT - PICK UP
 *                                      ADDR FROM                     */
-         TM    IMPLICIT(ECDAPTR),B'10000000'                       0402
+         TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0402
          BNZ   @RF00402                                            0402
 *                             DO;   /* FROM PDL                      */
 *                               MVAR(1)=VLSTPTR;                   0404
-         L     R6,ECDAEANS(,ECDAPTR)                               0404
+         L     R6,ECDAEANS(,ECDAPTR7)                              0404
          L     R9,VLSTPTR(,R6)                                     0404
          ST    R9,MVAR                                             0404
 *                               MVARLEN(1)=VLSTLNG;                0405
@@ -1510,7 +1539,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          B     @RC00402                                            0407
 @RF00402 DS    0H                                                  0408
 *                               MVAR(1)=ADDR(CBUFTEXT)+CBUFOFF;    0408
-         L     R6,CPPLPTR(,ECDAPTR)                                0408
+         L     R6,CPPLPTR(,ECDAPTR7)                               0408
          L     R6,CPPLCBUF-CPPL(,R6)                               0408
          LA    R8,CBUFTEXT(,R6)                                    0408
          LH    R9,CBUFOFF(,R6)                                     0408
@@ -1548,9 +1577,9 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                   POSAR=POSNUM*LENGTH(IDMOD)+POSCHAR;/* AMOUNT   0416
 *                                      NEEDED FOR POSITIONAL       0416
 *                                      PARAMETERS                    */
-         L     POSAR,POSNUM                                        0416
-         MH    POSAR,HW56                                          0416
-         ALR   POSAR,POSCHAR                                       0416
+         L     R8POSAR,POSNUM                                      0416
+         MH    R8POSAR,HW56                                        0416
+         ALR   R8POSAR,R4POSCHR                                    0416
 *                   KEYAR=KEYNUM*LENGTH(KWMOD)+KEYCHAR;/* AMOUNT   0417
 *                                      NEEDED FOR KEYWORDS WITHOUT 0417
 *                                      VALUES                        */
@@ -1561,15 +1590,15 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                   KEYWAR=KEYWNUM*(LENGTH(KWMOD)+CON2+LENGTH(SUBMOD)+
 *                       LENGTH(VIDMAP))+KEYWCHAR*CON2;/* AMOUNT FOR
 *                                      KEYWORDS WITH VALUES          */
-         L     KEYWAR,KEYWNUM                                      0418
-         MH    KEYWAR,HW69                                         0418
+         L     R2KEYWAR,KEYWNUM                                    0418
+         MH    R2KEYWAR,HW69                                       0418
          LR    R4,KEYWCHAR                                         0418
          ALR   R4,R4                                               0418
-         ALR   KEYWAR,R4                                           0418
+         ALR   R2KEYWAR,R4                                         0418
 *                   GETAMT=POSAR+KEYAR+KEYWAR+LENGTH(PCEHEAD)+LENGTH(
 *                       PCEEND);                                   0419
-         ALR   R9,POSAR                                            0419
-         ALR   R9,KEYWAR                                           0419
+         ALR   R9,R8POSAR                                          0419
+         ALR   R9,R2KEYWAR                                         0419
          AL    R9,FW08                                             0419
          ST    R9,GETAMT                                           0419
 *                   GETAMT=GETAMT-1;                                 */
@@ -1588,9 +1617,9 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                                                  0421
 *                   IF IMPLICIT=NO&VLST=YES&VLSTLNG^=CON0 THEN/* IF
 *                                      EXPLICIT THEN                 */
-         TM    IMPLICIT(ECDAPTR),B'10000000'                       0421
+         TM    ECDAFLAG(ECDAPTR7),IMPLICIT                         0421
          BNZ   @RF00421                                            0421
-         L     R6,ECDAEANS(,ECDAPTR)                               0421
+         L     R6,ECDAEANS(,ECDAPTR7)                              0421
          TM    VLST(R6),B'10000000'                                0421
          BNO   @RF00421                                            0421
          LH    R4,VLSTLNG(,R6)                                     0421
@@ -1638,7 +1667,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                       EXMSGID=M511;/* AND TERMINATE                */
          MVC   EXMSGID(4),$MSGM511                                 0440
 *                       NOTEXEC=YES;                               0441
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0441
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0441
 *                       CT431RET=CON16;                            0442
          MVC   CT431RET(4),FW16                                    0442
 *                       CALL MSGRTN;                               0443
@@ -1649,36 +1678,36 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          B     @RC00438                                            0445
 @RF00438 DS    0H                                                  0446
 *                       PCLCUR=GETADR;/* INIT ADDRESS OF CURRENT PCL */
-         L     PCLCUR,GETADR                                       0446
+         L     R2PCLCUR,GETADR                                     0446
 *                       PCLLNG=PCLAMT;/* LENGTH OF PCL               */
          L     R14,PCLAMT                                          0447
-         STH   R14,PCLLNG(,PCLCUR)                                 0447
+         STH   R14,PCLLNG(,R2PCLCUR)                               0447
 *                       PCLBASE=PCLCUR;                            0448
-         LR    PCLBASE,PCLCUR                                      0448
+         LR    PCLBASE,R2PCLCUR                                    0448
 *                       PCLKEYOF=POSAR+LENGTH(PCEHEAD);/* OFFSET TO
 *                                      KEYWORDS ADDRESS OF START OF
 *                                      SUBFIELD AREA                 */
          LA    R6,6                                                0449
-         LR    R14,POSAR                                           0449
+         LR    R14,R8POSAR                                         0449
          ALR   R14,R6                                              0449
-         STH   R14,PCLKEYOF(,PCLCUR)                               0449
+         STH   R14,PCLKEYOF(,R2PCLCUR)                             0449
 *                       SBFCUR=PCLCUR+LENGTH(PCEHEAD)+POSAR+KEYAR+ 0450
 *                           KEYWNUM*(LENGTH(KWMOD)+CON2)+KEYWCHAR; 0450
-         LR    SBFCUR,PCLCUR                                       0450
-         ALR   SBFCUR,R6                                           0450
-         ALR   SBFCUR,POSAR                                        0450
-         AL    SBFCUR,KEYAR                                        0450
+         LR    R4SBFCUR,R2PCLCUR                                   0450
+         ALR   R4SBFCUR,R6                                         0450
+         ALR   R4SBFCUR,R8POSAR                                    0450
+         AL    R4SBFCUR,KEYAR                                      0450
          L     R14,KEYWNUM                                         0450
          MH    R14,HW13                                            0450
-         ALR   SBFCUR,R14                                          0450
-         ALR   SBFCUR,KEYWCHAR                                     0450
+         ALR   R4SBFCUR,R14                                        0450
+         ALR   R4SBFCUR,KEYWCHAR                                   0450
 *                       SBFBASE=SBFCUR;                            0451
-         ST    SBFCUR,SBFBASE                                      0451
+         ST    R4SBFCUR,SBFBASE                                    0451
 *                       PCLCUR=PCLCUR+LENGTH(PCEHEAD);/* UPDATE TO 0452
 *                                      NEXT PCE                      */
-         ALR   PCLCUR,R6                                           0452
+         ALR   R2PCLCUR,R6                                         0452
 *                       PDLCUR=CON8;/* DSECT OFFSET PAST PDL HEADER  */
-         LA    PDLCUR,8                                            0453
+         LA    R3PDLCUR,8                                          0453
 *                                                                  0454
 *                       /*********************************************/
 *                       /*                                           */
@@ -1689,19 +1718,19 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                                                  0454
 *                       SNTELPTR=USNTABST;/* ELEMENT BASE TO FIRST 0454
 *                                      USER                          */
-         L     SNTELPTR,USNTABST                                   0454
+         L     SNTELPTR,USNTABST                   R8=SNTELPTR     0454
 *                       SNTABPTR=SNTABFST;/* PARM                    */
-         L     R14,LSDPTR(,ECDAPTR)                                0455
+         L     R14,LSDPTR(,ECDAPTR7)                               0455
          L     R5,LSDEXEC-LSD(,R14)                                0455
          L     R14,SNTABFST(,R5)                                   0455
          ST    R14,SNTABPTR                                        0455
 *                       DO PCTR=1 TO POSNUM;/* MOVE IN A COPY OF THE
 *                                      MODEL                         */
-         LA    PCTR,1                                              0456
+         LA    R5PCTR,1                                            0456
          B     @DE00456                                            0456
 @DL00456 DS    0H                                                  0457
 *                         PCELMT(1:LENGTH(IDMOD))=IDMOD;           0457
-         MVC   PCELMT(56,PCLCUR),IDMOD                             0457
+         MVC   PCELMT(56,R2PCLCUR),IDMOD                           0457
 *                         IDPRNME(1:SNTLNG)=SNTDATA(1:SNTLNG);/* COPY
 *                                      POSIT PARM NAME               */
          LH    R6,SNTLNG(,SNTELPTR)                                0458
@@ -1710,37 +1739,37 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          EX    R14,@SM01557                                        0458
 *                         IDLNG=IDLNG+SNTLNG;/* ADJUST TOTAL LENGTH
 *                                      TO INCLUDE NAME               */
-         ICM   R14,12,IDLNG(PCLCUR)                                0459
+         ICM   R14,12,IDLNG(R2PCLCUR)                              0459
          SRA   R14,16                                              0459
          ALR   R14,R6                                              0459
-         STCM  R14,3,IDLNG(PCLCUR)                                 0459
+         STCM  R14,3,IDLNG(R2PCLCUR)                               0459
 *                         IF IDPRMLNG+SNTLNG>CON223 THEN/* IF PROMPT
 *                                      INFO TOO LARGE                */
          SLR   R14,R14                                             0460
-         IC    R14,IDPRMLNG(,PCLCUR)                               0460
+         IC    R14,IDPRMLNG(,R2PCLCUR)                             0460
          ALR   R6,R14                                              0460
          C     R6,FW223                                            0460
          BNH   @RF00460                                            0460
 *                           IDPRMLNG=CON223;/* FOR PARSE PROMPT    0461
 *                                      MESSAGE THEN                  */
-         MVI   IDPRMLNG(PCLCUR),X'DF'                              0461
+         MVI   IDPRMLNG(R2PCLCUR),X'DF'                            0461
 *                         ELSE                                     0462
 *                           IDPRMLNG=IDPRMLNG+SNTLNG;              0462
          B     @RC00460                                            0462
 @RF00460 SLR   R6,R6                                               0462
-         IC    R6,IDPRMLNG(,PCLCUR)                                0462
+         IC    R6,IDPRMLNG(,R2PCLCUR)                              0462
          AH    R6,SNTLNG(,SNTELPTR)                                0462
-         STC   R6,IDPRMLNG(,PCLCUR)                                0462
+         STC   R6,IDPRMLNG(,R2PCLCUR)                              0462
 *                         IDPDLOFF=PDLCUR;/* OFFSET TO PCE           */
-@RC00460 STCM  PDLCUR,3,IDPDLOFF(PCLCUR)                           0463
+@RC00460 STCM  R3PDLCUR,3,IDPDLOFF(R2PCLCUR)                       0463
 *                         PCLCUR=PCLCUR+IDLNG;/* UPDATE TO START OF
 *                                      NEXT PCE                      */
-         ICM   R14,12,IDLNG(PCLCUR)                                0464
+         ICM   R14,12,IDLNG(R2PCLCUR)                              0464
          SRA   R14,16                                              0464
-         ALR   PCLCUR,R14                                          0464
+         ALR   R2PCLCUR,R14                                        0464
 *                         PDLCUR=PDLCUR+LENGTH(IDENTPDE);/* UPDATE TO
 *                                      NEXT PDE                      */
-         AL    PDLCUR,FW08                                         0465
+         AL    R3PDLCUR,FW08                                       0465
 *                         IF SNTLAST=YES THEN/* IF THIS IS LAST SNTAB
 *                                      ELEMENT                       */
          TM    SNTLAST(SNTELPTR),B'00000001'                       0466
@@ -1752,7 +1781,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          ST    R14,SNTABPTR                                        0468
 *                             SNTELPTR=SNTABPTR+LENGTH(SNTAB);     0469
          AL    R14,FW12                                            0469
-         LR    SNTELPTR,R14                                        0469
+         LR    SNTELPTR,R14                        R8=SNTELPTR     0469
 *                           END;                                   0470
 *                         ELSE      /* OTHERWISE STEP UP TO NEXT     */
 *                           SNTELPTR=SNTELPTR+SNTLNG+LENGTH(SNTELEM);
@@ -1760,11 +1789,11 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00466 LR    R6,SNTELPTR                                         0471
          AH    R6,SNTLNG(,SNTELPTR)                                0471
          AL    R6,FW08                                             0471
-         LR    SNTELPTR,R6                                         0471
+         LR    SNTELPTR,R6                         R8=SNTELPTR     0471
 *                                   /* ELEMENT                       */
 *                       END;                                       0472
-@RC00466 AL    PCTR,FW01                                           0472
-@DE00456 C     PCTR,POSNUM                                         0472
+@RC00466 AL    R5PCTR,FW01                                         0472
+@DE00456 C     R5PCTR,POSNUM                                       0472
          BNH   @DL00456                                            0472
 *                                                                  0473
 *                       /*********************************************/
@@ -1775,13 +1804,13 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                                                  0473
 *                       DO PCTR=1 TO(KEYWNUM+KEYNUM);/* MOVE IN MODEL
 *                                      PCL                           */
-         LA    PCTR,1                                              0473
+         LA    R5PCTR,1                                            0473
          B     @DE00473                                            0473
 @DL00473 DS    0H                                                  0474
 *                         PCELMT(1:LENGTH(KWMOD))=KWMOD;           0474
-         MVC   PCELMT(11,PCLCUR),KWMOD                             0474
+         MVC   PCELMT(11,R2PCLCUR),KWMOD                           0474
 *                         KWPDLOFF=PDLCUR;/* SAVE OFFSET TO PDL      */
-         STCM  PDLCUR,3,KWPDLOFF(PCLCUR)                           0475
+         STCM  R3PDLCUR,3,KWPDLOFF(R2PCLCUR)                       0475
 *                         NADAT(1:SNTLNG)=SNTDATA(1:SNTLNG);/* COPY
 *                                      NAME AND                      */
          LH    R6,SNTLNG(,SNTELPTR)                                0476
@@ -1792,13 +1821,13 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                      SNTAB                         */
          LA    R0,5                                                0477
          ALR   R0,R6                                               0477
-         STCM  R0,3,NALNG(PCLCUR)                                  0477
+         STCM  R0,3,NALNG(R2PCLCUR)                                0477
 *                         NADATLNG=SNTLNG-CON1;                    0478
-         STC   R14,NADATLNG(,PCLCUR)                               0478
+         STC   R14,NADATLNG(,R2PCLCUR)                             0478
 *                         PDLCUR=PDLCUR+LENGTH(KEYPDE);/* UPDATE TO
 *                                      NEXT PDL                      */
          LA    R1,2                                                0479
-         ALR   PDLCUR,R1                                           0479
+         ALR   R3PDLCUR,R1                                         0479
 *                         IF SNTKEYW=YES THEN/* IF THIS A KEYWORD  0480
 *                                      WITH                          */
          TM    SNTKEYW(SNTELPTR),B'00100000'                       0480
@@ -1807,92 +1836,92 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                             NALNG=NALNG+CON2;/* ADD TWO BYTES FOR
 *                                      SBFD OFFSET                   */
          ALR   R0,R1                                               0482
-         STCM  R0,3,NALNG(PCLCUR)                                  0482
+         STCM  R0,3,NALNG(R2PCLCUR)                                0482
 *                             KWSUBFLD=YES;/* SET SUBFLD INDICATOR   */
-         OI    KWSUBFLD(PCLCUR),B'00000100'                        0483
+         OI    KWSUBFLD(R2PCLCUR),B'00000100'                      0483
 *                             PCLCUR=PCLCUR+KEYLNG+NALNG;/* UPDATE TO
 *                                      NEXT PCE                      */
-         LR    R6,PCLCUR                                           0484
-         ICM   R0,12,KEYLNG(PCLCUR)                                0484
+         LR    R6,R2PCLCUR                                         0484
+         ICM   R0,12,KEYLNG(R2PCLCUR)                              0484
          SRA   R0,16                                               0484
          ALR   R6,R0                                               0484
-         ICM   R0,12,NALNG(PCLCUR)                                 0484
+         ICM   R0,12,NALNG(R2PCLCUR)                               0484
          SRA   R0,16                                               0484
          ALR   R6,R0                                               0484
-         LR    PCLCUR,R6                                           0484
+         LR    R2PCLCUR,R6                                         0484
 *                             SBFOFF=SBFCUR-PCLBASE+CON1;/* SAVE   0485
 *                                      OFFSET TO SUBFIELD            */
          LCR   R1,R1                                               0485
-         ALR   R1,PCLCUR                                           0485
-         LR    R6,SBFCUR                                           0485
+         ALR   R1,R2PCLCUR                                         0485
+         LR    R6,R4SBFCUR                                         0485
          SLR   R6,PCLBASE                                          0485
          LA    R0,1                                                0485
          ALR   R0,R6                                               0485
          STH   R0,SBFOFF(,R1)                                      0485
 *                             SBFELMT(1:LENGTH(SUBMOD))=SUBMOD;/*  0486
 *                                      COPY MODEL SUBFLD             */
-         MVC   SBFELMT(3,SBFCUR),SUBMOD                            0486
+         MVC   SBFELMT(3,R4SBFCUR),SUBMOD                          0486
 *                             SUBNXSUB=SBFCUR-PCLBASE+LENGTH(SUBFLD)+
 *                                 LENGTH(VIDMAP)+SNTLNG;/* FIND    0487
 *                                      OFFSET TO NEXT SUBFIELD       */
          AL    R6,FW56                                             0487
          LH    R1,SNTLNG(,SNTELPTR)                                0487
          ALR   R6,R1                                               0487
-         STCM  R6,3,SUBNXSUB(SBFCUR)                               0487
+         STCM  R6,3,SUBNXSUB(R4SBFCUR)                             0487
 *                             SBFCUR=SBFCUR+LENGTH(SUBFLD);/* UPDATE
 *                                      TO NEXT JBF PCE               */
          LA    R6,3                                                0488
-         ALR   SBFCUR,R6                                           0488
+         ALR   R4SBFCUR,R6                                         0488
 *                             SBFELMT(1:LENGTH(VIDMAP))=IDMOD;/* COPY
 *                                      IDENT MODEL                   */
-         MVC   SBFELMT(53,SBFCUR),IDMOD                            0489
+         MVC   SBFELMT(53,R4SBFCUR),IDMOD                          0489
 *                             SBFCUR->IDMODTYP=KEYTYPE;/* MODIFY TYPE
 *                                      TO KEYWORD                    */
-         MVC   IDMODTYP(21,SBFCUR),@CC01285                        0490
+         MVC   IDMODTYP(21,R4SBFCUR),@CC01285                      0490
 *                             SBFCUR->VIDPRINF=KEYTYPE;            0491
-         MVC   VIDPRINF(18,SBFCUR),@CC01285                        0491
+         MVC   VIDPRINF(18,R4SBFCUR),@CC01285                      0491
 *                             SBFCUR->VIDNAME(1:SNTLNG)=SNTDATA(1: 0492
 *                                 SNTLNG);/* KEY-NAME                */
          EX    R14,@SM01561                                        0492
 *                             SBFCUR->IDPRMLNG=SBFCUR->IDPRMLNG+SNTLNG-
 *                                 CON3;                            0493
          SLR   R14,R14                                             0493
-         IC    R14,IDPRMLNG(,SBFCUR)                               0493
+         IC    R14,IDPRMLNG(,R4SBFCUR)                             0493
          ALR   R14,R1                                              0493
          SLR   R14,R6                                              0493
-         STC   R14,IDPRMLNG(,SBFCUR)                               0493
+         STC   R14,IDPRMLNG(,R4SBFCUR)                             0493
 *                             SBFCUR->IDLNG=SBFCUR->IDLNG+SNTLNG-CON3;
-         ICM   R14,12,IDLNG(SBFCUR)                                0494
+         ICM   R14,12,IDLNG(R4SBFCUR)                              0494
          SRA   R14,16                                              0494
          ALR   R1,R14                                              0494
          SLR   R1,R6                                               0494
-         STCM  R1,3,IDLNG(SBFCUR)                                  0494
+         STCM  R1,3,IDLNG(R4SBFCUR)                                0494
 *                                   /* SAVE PCE LENGTH               */
 *                             SBFCUR->IDCHAR=YES;/* INDICATE IDENT IS
 *                                      CHARACTER                     */
-         OI    IDCHAR(SBFCUR),B'00001000'                          0495
+         OI    IDCHAR(R4SBFCUR),B'00001000'                        0495
 *                             SBFCUR->IDPDLOFF=PDLCUR;/* PDL OFFSET
 *                                      FOR THIS PCE                  */
-         STCM  PDLCUR,3,IDPDLOFF(SBFCUR)                           0496
+         STCM  R3PDLCUR,3,IDPDLOFF(R4SBFCUR)                       0496
 *                             SBFCUR=SBFCUR+SBFCUR->IDLNG;/* UPDATE
 *                                      TO NEXT SBF PCE               */
-         ALR   SBFCUR,R1                                           0497
+         ALR   R4SBFCUR,R1                                         0497
 *                             PDLCUR=PDLCUR+LENGTH(IDENTPDE);/* NEXT
 *                                      AVAILABLE PDE                 */
-         AL    PDLCUR,FW08                                         0498
+         AL    R3PDLCUR,FW08                                       0498
 *                           END;                                   0499
 *                         ELSE      /* FOR KEYWORDS WITHOUT VALUES   */
 *                           PCLCUR=PCLCUR+KEYLNG+NALNG;/* NO SUBFIELD
 *                                      NECESSARY                     */
          B     @RC00480                                            0500
-@RF00480 LR    R6,PCLCUR                                           0500
-         ICM   R14,12,KEYLNG(PCLCUR)                               0500
+@RF00480 LR    R6,R2PCLCUR                                         0500
+         ICM   R14,12,KEYLNG(R2PCLCUR)                             0500
          SRA   R14,16                                              0500
          ALR   R6,R14                                              0500
-         ICM   R14,12,NALNG(PCLCUR)                                0500
+         ICM   R14,12,NALNG(R2PCLCUR)                              0500
          SRA   R14,16                                              0500
          ALR   R6,R14                                              0500
-         LR    PCLCUR,R6                                           0500
+         LR    R2PCLCUR,R6                                         0500
 *                         IF SNTLAST=YES THEN/* IF LAST ELEMENT THEN
 *                                      UPDATE                        */
 @RC00480 TM    SNTLAST(SNTELPTR),B'00000001'                       0501
@@ -1904,7 +1933,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          ST    R14,SNTABPTR                                        0503
 *                             SNTELPTR=SNTABPTR+LENGTH(SNTAB);     0504
          AL    R14,FW12                                            0504
-         LR    SNTELPTR,R14                                        0504
+         LR    SNTELPTR,R14                        R8=SNTELPTR     0504
 *                           END;                                   0505
 *                         ELSE      /* OTHERWISE-STEP TO NEXT ELEMT  */
 *                           SNTELPTR=SNTELPTR+SNTLNG+LENGTH(SNTELEM);
@@ -1912,18 +1941,18 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00501 LR    R6,SNTELPTR                                         0506
          AH    R6,SNTLNG(,SNTELPTR)                                0506
          AL    R6,FW08                                             0506
-         LR    SNTELPTR,R6                                         0506
+         LR    SNTELPTR,R6                         R8=SNTELPTR     0506
 *                       END;                                       0507
-@RC00501 AL    PCTR,FW01                                           0507
+@RC00501 AL    R5PCTR,FW01                                         0507
 @DE00473 L     R14,KEYWNUM                                         0507
          AL    R14,KEYNUM                                          0507
-         CR    PCTR,R14                                            0507
+         CR    R5PCTR,R14                                          0507
          BNH   @DL00473                                            0507
 *                       SBFELMT(1)=ENDMOD;/* INITIALIZE THE END PCE  */
-         MVC   SBFELMT(1,SBFCUR),ENDMOD                            0508
+         MVC   SBFELMT(1,R4SBFCUR),ENDMOD                          0508
 *                       PCLBASE->PDLLNG=PDLCUR;/* UPDATE FINAL PDL 0509
 *                                      LENGTH                        */
-         STH   PDLCUR,PDLLNG(,PCLBASE)                             0509
+         STH   R3PDLCUR,PDLLNG(,PCLBASE)                           0509
 *                                                                  0510
 *                       /*********************************************/
 *                       /*                                           */
@@ -1932,22 +1961,22 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                       /*********************************************/
 *                                                                  0510
 *                       PPLPTR=ADDR(SERVBLK);/* SET UP PARSE PARMS   */
-         LA    PPLPTR,SERVBLK                                      0510
+         LA    R8PPLPTR,SERVBLK                                    0510
 *                       PPLUPT=CPPLUPT;                            0511
-         L     R14,CPPLPTR(,ECDAPTR)                               0511
+         L     R14,CPPLPTR(,ECDAPTR7)                              0511
          L     R6,CPPLUPT-CPPL(,R14)                               0511
-         ST    R6,PPLUPT-PPL(,PPLPTR)                              0511
+         ST    R6,PPLUPT-PPL(,R8PPLPTR)                            0511
 *                       PPLPCL=PCLBASE;                            0512
-         ST    PCLBASE,PPLPCL-PPL(,PPLPTR)                         0512
+         ST    PCLBASE,PPLPCL-PPL(,R8PPLPTR)                       0512
 *                       PPLECT=CPPLECT;                            0513
          L     R14,CPPLECT-CPPL(,R14)                              0513
-         ST    R14,PPLECT-PPL(,PPLPTR)                             0513
+         ST    R14,PPLECT-PPL(,R8PPLPTR)                           0513
 *                       PPLECB=ADDR(ECB);                          0514
          LA    R6,ECB                                              0514
-         ST    R6,PPLECB-PPL(,PPLPTR)                              0514
+         ST    R6,PPLECB-PPL(,R8PPLPTR)                            0514
 *                       PPLANS=ADDR(VLSTANS);                      0515
          LA    R14,VLSTANS                                         0515
-         ST    R14,PPLANS-PPL(,PPLPTR)                             0515
+         ST    R14,PPLANS-PPL(,R8PPLPTR)                           0515
 *                       IF COPYVLST=YES THEN/* COPY OVER THE VALUE   */
          TM    COPYVLST,B'00000010'                                0516
          BNO   @RF00516                                            0516
@@ -1958,7 +1987,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                             R4,                                  0518
 *                             R5) RSTD;                            0518
 *                           R4=VLSTPTR;/* ADDRESS OF VALUE LIST      */
-         L     R6,ECDAEANS(,ECDAPTR)                               0519
+         L     R6,ECDAEANS(,ECDAPTR7)                              0519
          L     R4,VLSTPTR(,R6)                                     0519
 *                           R3=VLSTLNG;/* LENGTH OF VALUE LIST       */
          LH    R6,VLSTLNG(,R6)                                     0520
@@ -1977,7 +2006,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          SLR   R6,R6                                               0524
          STH   R6,NVLSTOFF(,R2)                                    0524
 *                           PPLCBUF=R2;/* ADDRESS OF VALUE LIST      */
-         ST    R2,PPLCBUF-PPL(,PPLPTR)                             0525
+         ST    R2,PPLCBUF-PPL(,R8PPLPTR)                           0525
 *                           R2=R2+CON4;/* UPDATE TO DATA AREA        */
          ALR   R2,R14                                              0526
 *                           MVCL(R2,R4);/* MOVE DATA                 */
@@ -1991,15 +2020,15 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                       ELSE        /* SET ADDRESS OF THE VALUE LIST */
 *                         PPLCBUF=CPPLCBUF;                        0530
          B     @RC00516                                            0530
-@RF00516 L     R14,CPPLPTR(,ECDAPTR)                               0530
+@RF00516 L     R14,CPPLPTR(,ECDAPTR7)                              0530
          L     R14,CPPLCBUF-CPPL(,R14)                             0530
-         ST    R14,PPLCBUF-PPL(,PPLPTR)                            0530
+         ST    R14,PPLCBUF-PPL(,R8PPLPTR)                          0530
 *                       RFY                                        0531
 *                        (R1,                                      0531
 *                         R15) RSTD;                               0531
 @RC00516 DS    0H                                                  0532
 *                       R1=PPLPTR;                                 0532
-         LR    R1,PPLPTR                                           0532
+         LR    R1,R8PPLPTR                                         0532
 *                       DO;         /* CALLTSSR EP(IKJPARS)          */
 *                         RESPECIFY                                0534
 *                           R1 RSTD;                               0534
@@ -2044,7 +2073,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                           RFY                                    0545
 *                             R15 UNRSTD;                          0545
 *                           GFCPPLP=CPPLPTR;                       0546
-         L     R15,CPPLPTR(,ECDAPTR)                               0546
+         L     R15,CPPLPTR(,ECDAPTR7)                              0546
          ST    R15,GFCPPLP(,R8)                                    0546
 *                           GFCALLID=GFPARSE;                      0547
          MVC   GFCALLID(2,R8),HW21                                 0547
@@ -2076,7 +2105,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                           RFY                                    0561
 *                             R1 UNRSTD;                           0561
 *                           NOTEXEC=YES;                           0562
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0562
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0562
 *                         END;                                     0563
 *                       ELSE        /* PARSE SUCCESSFUL - CONTINUE   */
 *                         DO;                                      0564
@@ -2084,25 +2113,25 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00541 DS    0H                                                  0565
 *                           SNTABPTR=SNTABFST;/* RESET BASES TO START
 *                                      OF PROC                       */
-         L     R5,LSDPTR(,ECDAPTR)                                 0565
+         L     R5,LSDPTR(,ECDAPTR7)                                0565
          L     R6,LSDEXEC-LSD(,R5)                                 0565
          L     R6,SNTABFST(,R6)                                    0565
          ST    R6,SNTABPTR                                         0565
 *                           SNTELPTR=USNTABST;/* PARMS LOOP CONTROL  */
-         L     SNTELPTR,USNTABST                                   0566
+         L     SNTELPTR,USNTABST                   R8=SNTELPTR     0566
 *                           PDLCUR=VLSTANS+LENGTH(PDLHEAD);/* RESET
 *                                      BASES- PDLSTART               */
-         LA    PDLCUR,8                                            0567
-         AL    PDLCUR,VLSTANS                                      0567
+         LA    R3PDLCUR,8                                          0567
+         AL    R3PDLCUR,VLSTANS                                    0567
 *                           PCLCUR=PCLBASE+LENGTH(PCEHEAD);/* -    0568
 *                                      PCLSTART                      */
-         LA    PCLCUR,6                                            0568
-         ALR   PCLCUR,PCLBASE                                      0568
+         LA    R2PCLCUR,6                                          0568
+         ALR   R2PCLCUR,PCLBASE                                    0568
 *                           SBFCUR=SBFBASE+LENGTH(SUBFLD);/* -     0569
 *                                      SUBSTART                      */
 *                                                                  0569
-         LA    SBFCUR,3                                            0569
-         AL    SBFCUR,SBFBASE                                      0569
+         LA    R4SBFCUR,3                                          0569
+         AL    R4SBFCUR,SBFBASE                                    0569
 *                           /*****************************************/
 *                           /*                                       */
 *                           /* PLACE POSITIONAL PARAMETER VALUES IN  */
@@ -2111,14 +2140,14 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                           /*****************************************/
 *                                                                  0570
 *                           DO PCTR=1 TO POSNUM WHILE STABERR=NO;  0570
-         LA    PCTR,1                                              0570
+         LA    R5PCTR,1                                            0570
          B     @DE00570                                            0570
 @DL00570 TM    STABERR,B'10000000'                                 0570
          BNZ   @DC00570                                            0570
 *                             VALADR=IDPDEPTR;/* VALUE ADDRESS       */
-         MVC   VALADR(4),IDPDEPTR(PDLCUR)                          0571
+         MVC   VALADR(4),IDPDEPTR(R3PDLCUR)                        0571
 *                             VALLNG=IDPDELNG;/* VALUE LENGTH        */
-         ICM   R6,12,IDPDELNG(PDLCUR)                              0572
+         ICM   R6,12,IDPDELNG(R3PDLCUR)                            0572
          SRA   R6,16                                               0572
          ST    R6,VALLNG                                           0572
 *                             RFY                                  0573
@@ -2138,7 +2167,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          ST    R4,SNTABPTR                                         0578
 *                                 SNTELPTR=SNTABPTR+LENGTH(SNTAB); 0579
          AL    R4,FW12                                             0579
-         LR    SNTELPTR,R4                                         0579
+         LR    SNTELPTR,R4                         R8=SNTELPTR     0579
 *                               END;                               0580
 *                             ELSE  /* OTHERWISE UPDATE TO NEXT    0581
 *                                      ELEMENT IN THE CURRENT SNTAB  */
@@ -2148,12 +2177,12 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00576 LR    R6,SNTELPTR                                         0581
          AH    R6,SNTLNG(,SNTELPTR)                                0581
          AL    R6,FW08                                             0581
-         LR    SNTELPTR,R6                                         0581
+         LR    SNTELPTR,R6                         R8=SNTELPTR     0581
 *                             PDLCUR=PDLCUR+LENGTH(IDENTPDE);      0582
-@RC00576 AL    PDLCUR,FW08                                         0582
+@RC00576 AL    R3PDLCUR,FW08                                       0582
 *                           END;                                   0583
-         AL    PCTR,FW01                                           0583
-@DE00570 C     PCTR,POSNUM                                         0583
+         AL    R5PCTR,FW01                                         0583
+@DE00570 C     R5PCTR,POSNUM                                       0583
          BNH   @DL00570                                            0583
 @DC00570 DS    0H                                                  0584
 *                                                                  0584
@@ -2165,7 +2194,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                                                  0584
 *                           DO PCTR=1 TO(KEYNUM+KEYWNUM) WHILE STABERR=
 *                                 NO;                              0584
-         LA    PCTR,1                                              0584
+         LA    R5PCTR,1                                            0584
          B     @DE00584                                            0584
 @DL00584 TM    STABERR,B'10000000'                                 0584
          BNZ   @DC00584                                            0584
@@ -2177,7 +2206,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                      FOUND OR NOT                  */
 *                                 IF KEYPDEP=CON1 THEN/* IF FOUND IN
 *                                      VALUE LIST THEN               */
-         CLC   KEYPDEP(2,PDLCUR),HW01                              0587
+         CLC   KEYPDEP(2,R3PDLCUR),HW01                            0587
          BNE   @RF00587                                            0587
 *                                   DO;/* CONVERT IT TO A KEYWORD  0588
 *                                      WITH VALUE WITH ITS VALUE THE */
@@ -2208,12 +2237,12 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00585 DS    0H                                                  0598
 *                                 IF KEYPDEP=CON1 THEN/* IF KEYWORD
 *                                      FOUND THEN                    */
-         CLC   KEYPDEP(2,PDLCUR),HW01                              0598
+         CLC   KEYPDEP(2,R3PDLCUR),HW01                            0598
          BNE   @RF00598                                            0598
 *                                   DO;/* REPLACE OLD VALUE          */
 *                                    VALADR=VIPDEPTR;              0600
          LA    R2,2                                                0600
-         ALR   R2,PDLCUR                                           0600
+         ALR   R2,R3PDLCUR                                         0600
          MVC   VALADR(4),VIPDEPTR(R2)                              0600
 *                                    VALLNG=VIPDELNG;              0601
          ICM   R4,12,VIPDELNG(R2)                                  0601
@@ -2228,7 +2257,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 *                                      THEN GO UPDATE                */
 @RC00585 TM    SNTKEY(SNTELPTR),B'01000000'                        0604
          BO    @RT00604                                            0604
-         CLC   KEYPDEP(2,PDLCUR),HW01                              0604
+         CLC   KEYPDEP(2,R3PDLCUR),HW01                            0604
          BNE   @RF00604                                            0604
 @RT00604 DS    0H                                                  0605
 *                               DO; /* THE SVTAB                     */
@@ -2244,13 +2273,13 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00604 TM    SNTKEY(SNTELPTR),B'01000000'                        0610
          BNO   @RF00610                                            0610
 *                               PDLCUR=PDLCUR+LENGTH(KEYPDE);      0611
-         AL    PDLCUR,FW02                                         0611
+         AL    R3PDLCUR,FW02                                       0611
 *                             ELSE  /* UPEATE PDLCUR FOR KEYWORDS  0612
 *                                      WITH VALUE                    */
 *                               PDLCUR=PDLCUR+LENGTH(KEYPDE)+LENGTH(
 *                                   IDENTPDE);                     0612
          B     @RC00610                                            0612
-@RF00610 AL    PDLCUR,FW10                                         0612
+@RF00610 AL    R3PDLCUR,FW10                                       0612
 *                             IF SNTLAST=YES THEN/* IF THIS IS THE 0613
 *                                      LAST ELMT IN                  */
 @RC00610 TM    SNTLAST(SNTELPTR),B'00000001'                       0613
@@ -2262,7 +2291,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          ST    R2,SNTABPTR                                         0615
 *                                 SNTELPTR=SNTABPTR+LENGTH(SNTAB); 0616
          AL    R2,FW12                                             0616
-         LR    SNTELPTR,R2                                         0616
+         LR    SNTELPTR,R2                         R8=SNTELPTR     0616
 *                               END;                               0617
 *                             ELSE  /* OTHERWISE UPDATE TO NEXT ELMT
 *                                      IN THE CURRENT SNTAB          */
@@ -2272,12 +2301,12 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
 @RF00613 LR    R4,SNTELPTR                                         0618
          AH    R4,SNTLNG(,SNTELPTR)                                0618
          AL    R4,FW08                                             0618
-         LR    SNTELPTR,R4                                         0618
+         LR    SNTELPTR,R4                         R8=SNTELPTR     0618
 *                           END;                                   0619
-@RC00613 AL    PCTR,FW01                                           0619
+@RC00613 AL    R5PCTR,FW01                                         0619
 @DE00584 L     R6,KEYNUM                                           0619
          AL    R6,KEYWNUM                                          0619
-         CR    PCTR,R6                                             0619
+         CR    R5PCTR,R6                                           0619
          BNH   @DL00584                                            0619
 @DC00584 DS    0H                                                  0620
 *                         END;                                     0620
@@ -2295,7 +2324,7 @@ DOFNDSEP BAL   R14,FINDSEP                                         0253
          BNO   @RF00624                                            0624
 *                         FREEAMT=FREEAMT+VLSTLNG+CON4;/* COPIED THEN
 *                                      UP THE AMT TO BE FREED        */
-         L     R6,ECDAEANS(,ECDAPTR)                               0625
+         L     R6,ECDAEANS(,ECDAPTR7)                              0625
          AH    R8,VLSTLNG(,R6)                                     0625
          AL    R8,FW04                                             0625
          ST    R8,FREEAMT                                          0625
@@ -2397,77 +2426,77 @@ SKIPSEP  STM   R14,R5,12(R13)                                      0649
          STM   R7,R8,48(R13)                                       0649
          STM   R10,R12,60(R13)                                     0649
 *   CYCLE=CON1;                                                    0650
-         LA    CYCLE,1                                             0650
+         LA    R9CYCLE,1                                           0650
 *   DO WHILE CYCLE=CON1;                                           0651
          B     @DE00651                                            0651
 @DL00651 DS    0H                                                  0652
 *     DO ICTR=ICTR TO LINELNG WHILE RECORD(ICTR)=BLANK RECORD(ICTR)=
 *           COMMA RECORD(ICTR)=TAB;                                0652
          B     @DE00652                                            0652
-@DL00652 L     R8,ECDAIREC(,ECDAPTR)                               0652
+@DL00652 L     R8,ECDAIREC(,ECDAPTR7)                              0652
          LR    R1,R8                                               0652
-         ALR   R1,ICTR                                             0652
+         ALR   R1,R6ICTR                                           0652
          CLI   RECORD-1(R1),C' '                                   0652
          BE    @DB00652                                            0652
          LR    R1,R8                                               0652
-         ALR   R1,ICTR                                             0652
+         ALR   R1,R6ICTR                                           0652
          CLI   RECORD-1(R1),C','                                   0652
          BE    @DB00652                                            0652
-         ALR   R8,ICTR                                             0652
+         ALR   R8,R6ICTR                                           0652
          CLI   RECORD-1(R8),X'05'                                  0652
          BNE   @DC00652                                            0652
 @DB00652 DS    0H                                                  0653
 *     END;                                                         0653
-         AL    ICTR,FW01                                           0653
-@DE00652 C     ICTR,LINELNG                                        0653
+         AL    R6ICTR,FW01                                         0653
+@DE00652 C     R6ICTR,LINELNG                                      0653
          BNH   @DL00652                                            0653
 @DC00652 DS    0H                                                  0654
 *     IF ICTR<LINELNG&RECORD(ICTR:ICTR+CON1)=SLASHAST THEN         0654
-         C     ICTR,LINELNG                                        0654
+         C     R6ICTR,LINELNG                                      0654
          BNL   @RF00654                                            0654
-         L     R8,ECDAIREC(,ECDAPTR)                               0654
-         ALR   R8,ICTR                                             0654
+         L     R8,ECDAIREC(,ECDAPTR7)                              0654
+         ALR   R8,R6ICTR                                           0654
          CLC   RECORD-1(2,R8),SLSHASTR                             0654
          BNE   @RF00654                                            0654
 *       DO;                                                        0655
 *         DO ICTR=(ICTR+CON2) TO(LINELNG-CON1) WHILE RECORD(ICTR:ICTR+
 *               CON1)^=ASTSLASH;                                   0656
          LA    R8,2                                                0656
-         ALR   R8,ICTR                                             0656
-         LR    ICTR,R8                                             0656
+         ALR   R8,R6ICTR                                           0656
+         LR    R6ICTR,R8                                           0656
          B     @DE00656                                            0656
-@DL00656 L     R8,ECDAIREC(,ECDAPTR)                               0656
-         ALR   R8,ICTR                                             0656
+@DL00656 L     R8,ECDAIREC(,ECDAPTR7)                              0656
+         ALR   R8,R6ICTR                                           0656
          CLC   RECORD-1(2,R8),ASTRSLSH                             0656
          BE    @DC00656                                            0656
 *         END;                                                     0657
-         AL    ICTR,FW01                                           0657
+         AL    R6ICTR,FW01                                         0657
 @DE00656 L     R8,LINELNG                                          0657
          BCTR  R8,0                                                0657
-         CR    ICTR,R8                                             0657
+         CR    R6ICTR,R8                                           0657
          BNH   @DL00656                                            0657
 @DC00656 DS    0H                                                  0658
 *         IF ICTR=LINELNG THEN                                     0658
-         C     ICTR,LINELNG                                        0658
+         C     R6ICTR,LINELNG                                      0658
          BNE   @RF00658                                            0658
 *           DO;                                                    0659
 *             CYCLE=CON0;                                          0660
-         SLR   CYCLE,CYCLE                                         0660
+         SLR   R9CYCLE,R9CYCLE                                     0660
 *             ICTR=ICTR+CON1;                                      0661
-         AL    ICTR,FW01                                           0661
+         AL    R6ICTR,FW01                                         0661
 *           END;                                                   0662
 *         ELSE                                                     0663
 *           ICTR=ICTR+CON2;                                        0663
          B     @RC00658                                            0663
-@RF00658 AL    ICTR,FW02                                           0663
+@RF00658 AL    R6ICTR,FW02                                         0663
 *       END;                                                       0664
 *     ELSE                                                         0665
 *       CYCLE=CON0;                                                0665
          B     @RC00654                                            0665
-@RF00654 SLR   CYCLE,CYCLE                                         0665
+@RF00654 SLR   R9CYCLE,R9CYCLE                                     0665
 *   END;                                                           0666
 @RC00654 DS    0H                                                  0666
-@DE00651 C     CYCLE,FW01                                          0666
+@DE00651 C     R9CYCLE,FW01                                        0666
          BE    @DL00651                                            0666
 *   END;                            /* PROCEDURE END                 */
 @EL00003 DS    0H                                                  0667
@@ -2488,33 +2517,33 @@ SKIPSEP  STM   R14,R5,12(R13)                                      0649
 FINDSEP  STM   R14,R5,12(R13)                                      0668
          STM   R7,R12,48(R13)                                      0668
 *   CYCLE=CON1;                                                    0669
-         LA    CYCLE,1                                             0669
+         LA    R9CYCLE,1                                           0669
 *   DO WHILE CYCLE=CON1;                                           0670
          B     @DE00670                                            0670
 @DL00670 DS    0H                                                  0671
 *     DO ICTR=ICTR TO LINELNG WHILE RECORD(ICTR)^=BLANK&RECORD(ICTR)^=
 *           COMMA&RECORD(ICTR)^=TAB&RECORD(ICTR)^=SLASH;           0671
          B     @DE00671                                            0671
-@DL00671 L     R8,ECDAIREC(,ECDAPTR)                               0671
+@DL00671 L     R8,ECDAIREC(,ECDAPTR7)                              0671
          LR    R1,R8                                               0671
-         ALR   R1,ICTR                                             0671
+         ALR   R1,R6ICTR                                           0671
          CLI   RECORD-1(R1),C' '                                   0671
          BE    @DC00671                                            0671
          LR    R1,R8                                               0671
-         ALR   R1,ICTR                                             0671
+         ALR   R1,R6ICTR                                           0671
          CLI   RECORD-1(R1),C','                                   0671
          BE    @DC00671                                            0671
          LR    R1,R8                                               0671
-         ALR   R1,ICTR                                             0671
+         ALR   R1,R6ICTR                                           0671
          CLI   RECORD-1(R1),X'05'                                  0671
          BE    @DC00671                                            0671
-         ALR   R8,ICTR                                             0671
+         ALR   R8,R6ICTR                                           0671
          CLI   RECORD-1(R8),C'/'                                   0671
          BE    @DC00671                                            0671
 *     END;                                                         0672
 *                                                                  0672
-         AL    ICTR,FW01                                           0672
-@DE00671 C     ICTR,LINELNG                                        0672
+         AL    R6ICTR,FW01                                         0672
+@DE00671 C     R6ICTR,LINELNG                                      0672
          BNH   @DL00671                                            0672
 @DC00671 DS    0H                                                  0673
 *     /***************************************************************/
@@ -2525,29 +2554,29 @@ FINDSEP  STM   R14,R5,12(R13)                                      0668
 *                                                                  0673
 *     IF RECORD(ICTR)=SLASH&(ICTR=LINELNG ICTR<LINELNG&RECORD(ICTR:ICTR
 *         +CON1)^=SLASHAST) THEN                                   0673
-         L     R8,ECDAIREC(,ECDAPTR)                               0673
+         L     R8,ECDAIREC(,ECDAPTR7)                              0673
          LR    R1,R8                                               0673
-         ALR   R1,ICTR                                             0673
+         ALR   R1,R6ICTR                                           0673
          CLI   RECORD-1(R1),C'/'                                   0673
          BNE   @RF00673                                            0673
          L     R2,LINELNG                                          0673
-         CR    ICTR,R2                                             0673
+         CR    R6ICTR,R2                                           0673
          BE    @RT00673                                            0673
-         CR    ICTR,R2                                             0673
+         CR    R6ICTR,R2                                           0673
          BNL   @RF00673                                            0673
-         ALR   R8,ICTR                                             0673
+         ALR   R8,R6ICTR                                           0673
          CLC   RECORD-1(2,R8),SLSHASTR                             0673
          BE    @RF00673                                            0673
 @RT00673 DS    0H                                                  0674
 *       ICTR=ICTR+CON1;                                            0674
-         AL    ICTR,FW01                                           0674
+         AL    R6ICTR,FW01                                         0674
 *     ELSE                                                         0675
 *       CYCLE=CON0;                                                0675
          B     @RC00673                                            0675
-@RF00673 SLR   CYCLE,CYCLE                                         0675
+@RF00673 SLR   R9CYCLE,R9CYCLE                                     0675
 *   END;                                                           0676
 @RC00673 DS    0H                                                  0676
-@DE00670 C     CYCLE,FW01                                          0676
+@DE00670 C     R9CYCLE,FW01                                        0676
          BE    @DL00670                                            0676
 *   END;                            /* END OF FINDSEP PROCEDURE      */
 @EL00004 DS    0H                                                  0677
@@ -2571,10 +2600,10 @@ VALIDATE STM   R14,R5,@SA00005                                     0678
 *   VALIDERR=NO;                                                   0679
          NI    VALIDERR,B'11111011'                                0679
 *   CYCLE=CON1;                                                    0680
-         LA    CYCLE,1                                             0680
+         LA    R9CYCLE,1                                           0680
 *   DO ICTR=ICTR TO LINELNG WHILE CYCLE=CON1&VALIDERR=NO;          0681
          B     @DE00681                                            0681
-@DL00681 C     CYCLE,FW01                                          0681
+@DL00681 C     R9CYCLE,FW01                                        0681
          BNE   @DC00681                                            0681
          TM    VALIDERR,B'00000100'                                0681
          BNZ   @DC00681                                            0681
@@ -2584,56 +2613,56 @@ VALIDATE STM   R14,R5,@SA00005                                     0678
 *         (RECORD(ICTR)>CONCR&RECORD(ICTR)<CONCS) (RECORD(ICTR)>CONCZ&
 *         RECORD(ICTR)<CONC0) RECORD(ICTR)>CONC9 THEN/* SKIPSEP - IF
 *                                      OFFSETS DIFFER                */
-         L     R8,ECDAIREC(,ECDAPTR)                               0682
+         L     R8,ECDAIREC(,ECDAPTR7)                              0682
          LR    R1,R8                                               0682
-         ALR   R1,ICTR                                             0682
+         ALR   R1,R6ICTR                                           0682
          CLI   RECORD-1(R1),C'A'                                   0682
          BL    @RT00682                                            0682
          LR    R1,R8                                               0682
-         ALR   R1,ICTR                                             0682
+         ALR   R1,R6ICTR                                           0682
          CLI   RECORD-1(R1),C'I'                                   0682
          BNH   @GL00044                                            0682
-         ALR   R8,ICTR                                             0682
+         ALR   R8,R6ICTR                                           0682
          CLI   RECORD-1(R8),C'J'                                   0682
          BL    @RT00682                                            0682
-@GL00044 L     R8,ECDAIREC(,ECDAPTR)                               0682
+@GL00044 L     R8,ECDAIREC(,ECDAPTR7)                              0682
          LR    R1,R8                                               0682
-         ALR   R1,ICTR                                             0682
+         ALR   R1,R6ICTR                                           0682
          CLI   RECORD-1(R1),C'R'                                   0682
          BNH   @GL00043                                            0682
-         ALR   R8,ICTR                                             0682
+         ALR   R8,R6ICTR                                           0682
          CLI   RECORD-1(R8),C'S'                                   0682
          BL    @RT00682                                            0682
-@GL00043 L     R8,ECDAIREC(,ECDAPTR)                               0682
+@GL00043 L     R8,ECDAIREC(,ECDAPTR7)                              0682
          LR    R1,R8                                               0682
-         ALR   R1,ICTR                                             0682
+         ALR   R1,R6ICTR                                           0682
          CLI   RECORD-1(R1),C'Z'                                   0682
          BNH   @GL00042                                            0682
-         ALR   R8,ICTR                                             0682
+         ALR   R8,R6ICTR                                           0682
          CLI   RECORD-1(R8),C'0'                                   0682
          BL    @RT00682                                            0682
-@GL00042 L     R8,ECDAIREC(,ECDAPTR)                               0682
-         ALR   R8,ICTR                                             0682
+@GL00042 L     R8,ECDAIREC(,ECDAPTR7)                              0682
+         ALR   R8,R6ICTR                                           0682
          CLI   RECORD-1(R8),C'9'                                   0682
          BNH   @RF00682                                            0682
 @RT00682 DS    0H                                                  0683
 *       DO;                         /* UPON RETURN THEN IT IS AN     */
 *         JCTR=ICTR;                /* ERROR SYNTAX UNLESS THIS IS   */
-         ST    ICTR,JCTR                                           0684
+         ST    R6ICTR,JCTR                                         0684
 *         CALL SKIPSEP;             /* A KEYWORD WITH VALUE          */
          BAL   R14,SKIPSEP                                         0685
 *         IF ICTR=JCTR THEN                                        0686
-         C     ICTR,JCTR                                           0686
+         C     R6ICTR,JCTR                                         0686
          BNE   @RF00686                                            0686
 *           IF KEYWORD=YES&RECORD(ICTR)=LFPAREN THEN               0687
          TM    KEYWORD,B'00001000'                                 0687
          BNO   @RF00687                                            0687
-         L     R8,ECDAIREC(,ECDAPTR)                               0687
-         ALR   R8,ICTR                                             0687
+         L     R8,ECDAIREC(,ECDAPTR7)                              0687
+         ALR   R8,R6ICTR                                           0687
          CLI   RECORD-1(R8),C'('                                   0687
          BNE   @RF00687                                            0687
 *             CYCLE=CON0;                                          0688
-         SLR   CYCLE,CYCLE                                         0688
+         SLR   R9CYCLE,R9CYCLE                                     0688
 *           ELSE                                                   0689
 *             VALIDERR=YES;                                        0689
          B     @RC00687                                            0689
@@ -2641,23 +2670,23 @@ VALIDATE STM   R14,R5,@SA00005                                     0678
 *         ELSE                                                     0690
 *           CYCLE=CON0;                                            0690
          B     @RC00686                                            0690
-@RF00686 SLR   CYCLE,CYCLE                                         0690
+@RF00686 SLR   R9CYCLE,R9CYCLE                                     0690
 *       END;                                                       0691
 @RC00686 DS    0H                                                  0692
 *   END;                                                           0692
-@RF00682 AL    ICTR,FW01                                           0692
-@DE00681 C     ICTR,LINELNG                                        0692
+@RF00682 AL    R6ICTR,FW01                                         0692
+@DE00681 C     R6ICTR,LINELNG                                      0692
          BNH   @DL00681                                            0692
 @DC00681 DS    0H                                                  0693
 *   IF CYCLE=CON1 THEN                                             0693
-         C     CYCLE,FW01                                          0693
+         C     R9CYCLE,FW01                                        0693
          BNE   @RF00693                                            0693
 *     JCTR=ICTR;                                                   0694
-         ST    ICTR,JCTR                                           0694
+         ST    R6ICTR,JCTR                                         0694
 *   ELSE                                                           0695
 *     ICTR=ICTR-CON1;                                              0695
          B     @RC00693                                            0695
-@RF00693 BCTR  ICTR,0                                              0695
+@RF00693 BCTR  R6ICTR,0                                            0695
 *   END;                            /* END OF VALIDATE PROCEDURE     */
 @EL00005 DS    0H                                                  0696
 @EF00005 DS    0H                                                  0696
@@ -2681,7 +2710,7 @@ VALIDATE STM   R14,R5,@SA00005                                     0678
 SNTABUPT STM   R14,R7,@SA00006                                     0697
          STM   R9,R12,@SA00006+40                                  0697
 *   SNTABPTR=SNTABFST;                                             0698
-         L     R3,LSDPTR(,ECDAPTR)                                 0698
+         L     R3,LSDPTR(,ECDAPTR7)                                0698
          L     R6,LSDEXEC-LSD(,R3)                                 0698
          L     R3,SNTABFST(,R6)                                    0698
          ST    R3,SNTABPTR                                         0698
@@ -2696,7 +2725,7 @@ SNTABUPT STM   R14,R7,@SA00006                                     0697
 *   /*****************************************************************/
 *                                                                  0700
 *   CYCLE=CON1;                                                    0700
-         LA    CYCLE,1                                             0700
+         LA    R9CYCLE,1                                           0700
 *   DO WHILE UPTPTR1^=SNTELPTR&CYCLE=CON1;                         0701
          B     @DE00701                                            0701
 @DL00701 DS    0H                                                  0702
@@ -2710,7 +2739,7 @@ SNTABUPT STM   R14,R7,@SA00006                                     0697
          EX    R3,@SC01563                                         0702
          BNE   @RF00702                                            0702
 *       CYCLE=CON0;                                                0703
-         SLR   CYCLE,CYCLE                                         0703
+         SLR   R9CYCLE,R9CYCLE                                     0703
 *     ELSE                                                         0704
 *       IF UPTPTR1->SNTLAST=YES THEN                               0704
          B     @RC00702                                            0704
@@ -2737,11 +2766,11 @@ SNTABUPT STM   R14,R7,@SA00006                                     0697
 @RC00702 DS    0H                                                  0710
 @DE00701 CR    UPTPTR1,SNTELPTR                                    0710
          BE    @DC00701                                            0710
-         C     CYCLE,FW01                                          0710
+         C     R9CYCLE,FW01                                        0710
          BE    @DL00701                                            0710
 @DC00701 DS    0H                                                  0711
 *   IF CYCLE=CON0 THEN              /* CYCLE SET TO ZERO IF PARAMETER*/
-         LTR   CYCLE,CYCLE                                         0711
+         LTR   R9CYCLE,R9CYCLE                                     0711
          BNZ   @RF00711                                            0711
 *     DO;                           /* IS MULTIPLY DEFINED           */
 *       EXMSGID=M530;                                              0713
@@ -2758,7 +2787,7 @@ SNTABUPT STM   R14,R7,@SA00006                                     0697
          L     R6,PARMLNG                                          0717
          STC   R6,MVARLEN+4                                        0717
 *       NOTEXEC=YES;                                               0718
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0718
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0718
 *       CALL MSGRTN;                                               0719
          BAL   R14,MSGRTN                                          0719
 *     END;                                                         0720
@@ -2768,7 +2797,7 @@ SNTABUPT STM   R14,R7,@SA00006                                     0697
          B     @RC00711                                            0721
 @RF00711 DS    0H                                                  0722
 *       IF NOTEXEC=NO&(SNTABLNG-SNTABUSE<PARMLNG+LENGTH(SNTELEM)) THEN
-         TM    NOTEXEC(ECDAPTR),B'01000000'                        0722
+         TM    ECDAFLAG(ECDAPTR7),NOTEXEC                          0722
          BNZ   @RF00722                                            0722
          L     R9,SNTABPTR                                         0722
          L     R6,SNTABLNG(,R9)                                    0722
@@ -2785,7 +2814,7 @@ SNTABUPT STM   R14,R7,@SA00006                                     0697
 *           ECDALNEL->SNTLAST=YES;  /* INDICATE LAST ELEMENT IN    0724
 *                                      CURRENT SNTAB                 */
 *                                                                  0724
-         L     R1,ECDALNEL(,ECDAPTR)                               0724
+         L     R1,ECDALNEL(,ECDAPTR7)                              0724
          OI    SNTLAST(R1),B'00000001'                             0724
 *           /*********************************************************/
 *           /*                                                       */
@@ -2881,7 +2910,7 @@ LBL01222 L     R6,SNTABPTR                                         0739
 *               EXMSGID=M511;                                      0756
          MVC   EXMSGID(4),$MSGM511                                 0756
 *               NOTEXEC=YES;                                       0757
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0757
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0757
 *               CALL MSGRTN;                                       0758
          BAL   R14,MSGRTN                                          0758
 *               CT431RET=CON16;                                    0759
@@ -2915,12 +2944,12 @@ LBL01222 L     R6,SNTABPTR                                         0739
          ST    R6,SNTABPTR                                         0767
 *               SNTELPTR=SNTABPTR+LENGTH(SNTAB);                   0768
          ALR   R6,R9                                               0768
-         LR    SNTELPTR,R6                                         0768
+         LR    SNTELPTR,R6                         R8=SNTELPTR     0768
 *             END;                                                 0769
 *         END;                                                     0770
 @RC00753 DS    0H                                                  0771
 *       IF NOTEXEC=NO THEN          /* MOVE IN NAME OF SYMBOLIC PARM */
-@RF00722 TM    NOTEXEC(ECDAPTR),B'01000000'                        0771
+@RF00722 TM    ECDAFLAG(ECDAPTR7),NOTEXEC                          0771
          BNZ   @RF00771                                            0771
 *         DO;                                                      0772
 *           SNTDATA(1:PARMLNG)=PARMDAT(1:PARMLNG);                 0773
@@ -2966,12 +2995,12 @@ LBL01222 L     R6,SNTABPTR                                         0739
 *               END;                                               0785
 *           ECDALNEL=SNTELPTR;                                     0786
 @RC00780 DS    0H                                                  0786
-@RC00778 ST    SNTELPTR,ECDALNEL(,ECDAPTR)                         0786
+@RC00778 ST    SNTELPTR,ECDALNEL(,ECDAPTR7)        R8=SNTELPTR     0786
 *           SNTELPTR=SNTELPTR+SNTLNG+LENGTH(SNTELEM);              0787
          LR    R9,SNTELPTR                                         0787
          AH    R9,SNTLNG(,SNTELPTR)                                0787
          AL    R9,FW08                                             0787
-         LR    SNTELPTR,R9                                         0787
+         LR    SNTELPTR,R9                         R8=SNTELPTR     0787
 *         END;                                                     0788
 *     END;                                                         0789
 *   END;                            /* END OF SNTAB UPDATE PROCEDURE */
@@ -2998,7 +3027,7 @@ SVTABUPT STM   R14,R7,@SA00007                                     0791
          LR    TOBEADD,SNTELPTR                                    0792
 *   SVTABPTR=SVTABFST;                                             0793
 *                                                                  0793
-         L     R6,LSDPTR(,ECDAPTR)                                 0793
+         L     R6,LSDPTR(,ECDAPTR7)                                0793
          L     R6,LSDEXEC-LSD(,R6)                                 0793
          L     R6,SVTABFST(,R6)                                    0793
          ST    R6,SVTABPTR                                         0793
@@ -3107,7 +3136,7 @@ SVTABUPT STM   R14,R7,@SA00007                                     0791
 *               CT431RET=CON16;                                    0820
          MVC   CT431RET(4),FW16                                    0820
 *               NOTEXEC=YES;                                       0821
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0821
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0821
 *               CALL MSGRTN;                                       0822
          BAL   R14,MSGRTN                                          0822
 *               STABERR=YES;                                       0823
@@ -3161,13 +3190,13 @@ SVTABUPT STM   R14,R7,@SA00007                                     0791
          L     R14,SNTABPTR                                        0837
          ST    R14,SAVSNTAB                                        0837
 *               SNTABPTR=SNTABFST;  /* AND FIRST SNTAB ELEMENT       */
-         L     R1,LSDPTR(,ECDAPTR)                                 0838
+         L     R1,LSDPTR(,ECDAPTR7)                                0838
          L     R1,LSDEXEC-LSD(,R1)                                 0838
          L     R2,SNTABFST(,R1)                                    0838
          ST    R2,SNTABPTR                                         0838
 *               SNTELPTR=SNTABPTR+LENGTH(SNTAB);                   0839
          AL    R2,FW12                                             0839
-         LR    SNTELPTR,R2                                         0839
+         LR    SNTELPTR,R2                         R8=SNTELPTR     0839
 *               RFY                                                0840
 *                (R2) RSTD;                                        0840
 *               R2=NEWVELEM;        /* REGISTER TWO IS START OF FREE
@@ -3182,7 +3211,7 @@ SVTABUPT STM   R14,R7,@SA00007                                     0791
 *               /*****************************************************/
 *                                                                  0842
 *               LASTELMT=ECDALNEL+ECDALNEL->SNTLNG+LENGTH(SNTELEM);
-         L     R3,ECDALNEL(,ECDAPTR)                               0842
+         L     R3,ECDALNEL(,ECDAPTR7)                              0842
          LH    LASTELMT,SNTLNG(,R3)                                0842
          ALR   LASTELMT,R3                                         0842
          AL    LASTELMT,FW08                                       0842
@@ -3191,7 +3220,7 @@ SVTABUPT STM   R14,R7,@SA00007                                     0791
 @DL00843 DS    0H                                                  0844
 *                 IF SNTELPTR^=TOBEADD THEN/* IF WE ARE AT THE     0844
 *                                      ELEMENT                       */
-         CR    SNTELPTR,TOBEADD                                    0844
+         CR    SNTELPTR,TOBEADD                    R8=SNTELPTR     0844
          BE    @RF00844                                            0844
 *                   DO;             /* THAT IS CHANGING THEN BYPASS
 *                                      THE VALUE MOVE                */
@@ -3262,7 +3291,7 @@ SVTABUPT STM   R14,R7,@SA00007                                     0791
          ST    R3,SNTABPTR                                         0863
 *                     SNTELPTR=SNTABPTR+LENGTH(SNTAB);             0864
          AL    R3,FW12                                             0864
-         LR    SNTELPTR,R3                                         0864
+         LR    SNTELPTR,R3                         R8=SNTELPTR     0864
 *                   END;                                           0865
 *                 ELSE              /* OTHERWISE UPDATE TO NEXT      */
 *                   SNTELPTR=SNTELPTR+SNTLNG+LENGTH(SNTELEM);/*    0866
@@ -3272,10 +3301,10 @@ SVTABUPT STM   R14,R7,@SA00007                                     0791
 @RF00861 LR    R3,SNTELPTR                                         0866
          AH    R3,SNTLNG(,SNTELPTR)                                0866
          AL    R3,FW08                                             0866
-         LR    SNTELPTR,R3                                         0866
+         LR    SNTELPTR,R3                         R8=SNTELPTR     0866
 *               END;                                               0867
 @RC00861 DS    0H                                                  0867
-@DE00843 CR    SNTELPTR,LASTELMT                                   0867
+@DE00843 CR    SNTELPTR,LASTELMT                   R8=SNTELPTR     0867
          BE    LBL0154E
          L     R3,SNTVLPTR(,SNTELPTR)
          LTR   R3,R3
@@ -3289,7 +3318,7 @@ LBL0154E L     R6,SVTABPTR                                         0869
          L     R8,SVTABLNG(,R6)                                    0870
          ST    R8,FREEAMT                                          0870
 *               SVTABFST=SVTABNXT;                                 0871
-         L     R1,LSDPTR(,ECDAPTR)                                 0871
+         L     R1,LSDPTR(,ECDAPTR7)                                0871
          L     R1,LSDEXEC-LSD(,R1)                                 0871
          L     R6,SVTABNXT(,R6)                                    0871
          ST    R6,SVTABFST(,R1)                                    0871
@@ -3323,10 +3352,10 @@ LBL0154E L     R6,SVTABPTR                                         0869
          L     R6,SAVSNTAB                                         0885
          ST    R6,SNTABPTR                                         0885
 *           SNTELPTR=TOBEADD;       /* RESTORE SNTAB ELEMENT BASE    */
-         LR    SNTELPTR,TOBEADD                                    0886
+         LR    SNTELPTR,TOBEADD                    R8=SNTELPTR     0886
 *         END;                                                     0887
 *       SVTELPTR=SVTABFST+SVTABUSE; /* PLACE NEW ELEMENT AT END OF   */
-@RF00798 L     R6,LSDPTR(,ECDAPTR)                                 0888
+@RF00798 L     R6,LSDPTR(,ECDAPTR7)                                0888
          L     R6,LSDEXEC-LSD(,R6)                                 0888
          L     R14,SVTABPTR                                        0888
          L     R15,SVTABUSE(,R14)                                  0888
@@ -3409,36 +3438,36 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
 *   VALEND=CON0;                                                   0907
          ST    R3,VALEND                                           0907
 *   ICTR=ICTR+CON1;                 /* INCREMENT PAST LEFT PAREN     */
-         ALR   ICTR,R8                                             0908
+         ALR   R6ICTR,R8                                           0908
 *   CALL SKIPSEP;                                                  0909
          BAL   R14,SKIPSEP                                         0909
 *   IF ICTR^>LINELNG THEN                                          0910
-         C     ICTR,LINELNG                                        0910
+         C     R6ICTR,LINELNG                                      0910
          BH    @RF00910                                            0910
 *     DO;                                                          0911
 *       IF RECORD(ICTR)=QUOTE THEN  /* QUOTED STRING PROCESSING      */
-         L     R3,ECDAIREC(,ECDAPTR)                               0912
-         ALR   R3,ICTR                                             0912
+         L     R3,ECDAIREC(,ECDAPTR7)                              0912
+         ALR   R3,R6ICTR                                           0912
          CLI   RECORD-1(R3),C''''                                  0912
          BNE   @RF00912                                            0912
 *         DO;                                                      0913
 *           ICTR=ICTR+CON1;         /* INCREMENT PAST FIRST QUOTE    */
          LA    R8,1                                                0914
-         ALR   ICTR,R8                                             0914
+         ALR   R6ICTR,R8                                           0914
 *           VALSTR=ICTR;            /* SAVE START OF VALUE           */
-         ST    ICTR,VALSTR                                         0915
+         ST    R6ICTR,VALSTR                                       0915
 *           CYCLE=CON1;             /* LOOP CONTROL SEARCH FOR VALUE
 *                                      END                           */
-         LR    CYCLE,R8                                            0916
+         LR    R9CYCLE,R8                                          0916
 *           DO ICTR=ICTR TO LINELNG WHILE CYCLE=CON1;              0917
          B     @DE00917                                            0917
 @DL00917 LA    R8,1                                                0917
-         CR    CYCLE,R8                                            0917
+         CR    R9CYCLE,R8                                          0917
          BNE   @DC00917                                            0917
 *             IF RECORD(ICTR)=QUOTE THEN/* CHECK FOR ENDING QUOTE    */
-         L     R14,ECDAIREC(,ECDAPTR)                              0918
+         L     R14,ECDAIREC(,ECDAPTR7)                             0918
          LR    R15,R14                                             0918
-         ALR   R15,ICTR                                            0918
+         ALR   R15,R6ICTR                                          0918
          CLI   RECORD-1(R15),C''''                                 0918
          BNE   @RF00918                                            0918
 *               DO;                 /* IF THIS IS A DOUBLE QUOTE THEN
@@ -3446,10 +3475,10 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
 *                                      CONTINUE SEARCH FOR VALUE END */
 *                 IF ICTR<LINELNG&RECORD(ICTR+CON1)=QUOTE THEN     0920
          L     R15,LINELNG                                         0920
-         CR    ICTR,R15                                            0920
+         CR    R6ICTR,R15                                          0920
          BNL   @RF00920                                            0920
          LR    R1,R14                                              0920
-         ALR   R1,ICTR                                             0920
+         ALR   R1,R6ICTR                                           0920
          CLI   RECORD(R1),C''''                                    0920
          BNE   @RF00920                                            0920
 *                   DO;                                            0921
@@ -3459,11 +3488,11 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
 *                       R4,                                        0922
 *                       R5) RSTD;                                  0922
 *                     R2=ADDR(RECORD(ICTR));                       0923
-         LA    R2,RECORD-1(ICTR,R14)                               0923
+         LA    R2,RECORD-1(R6ICTR,R14)                             0923
 *                     R4=ADDR(RECORD(ICTR+CON1));                  0924
-         LA    R4,RECORD(ICTR,R14)                                 0924
+         LA    R4,RECORD(R6ICTR,R14)                               0924
 *                     R3=LINELNG-ICTR+CON1;                        0925
-         SLR   R15,ICTR                                            0925
+         SLR   R15,R6ICTR                                          0925
          ALR   R15,R8                                              0925
          LR    R3,R15                                              0925
 *                     R5=R3;                                       0926
@@ -3485,24 +3514,24 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
          B     @RC00920                                            0931
 @RF00920 DS    0H                                                  0932
 *                     VALEND=ICTR-CON1;                            0932
-         LR    R8,ICTR                                             0932
+         LR    R8,R6ICTR                                           0932
          BCTR  R8,0                                                0932
          ST    R8,VALEND                                           0932
 *                     CYCLE=CON0;                                  0933
-         SLR   CYCLE,CYCLE                                         0933
+         SLR   R9CYCLE,R9CYCLE                                     0933
 *                     ICTR=ICTR+CON1;                              0934
-         AL    ICTR,FW01                                           0934
+         AL    R6ICTR,FW01                                         0934
 *                     CALL SKIPSEP; /* FIND END OF VALUE (END PAREN) */
          BAL   R14,SKIPSEP                                         0935
 *                     IF ICTR<=LINELNG THEN/* IF CLOSING PAREN NOT   */
-         C     ICTR,LINELNG                                        0936
+         C     R6ICTR,LINELNG                                      0936
          BH    @RF00936                                            0936
 *                       DO;                                        0937
 *                         IF RECORD(ICTR)^=RTPAREN THEN/* FOUND THEN
 *                                      IT                            */
-         L     R8,ECDAIREC(,ECDAPTR)                               0938
+         L     R8,ECDAIREC(,ECDAPTR7)                              0938
          LR    R1,R8                                               0938
-         ALR   R1,ICTR                                             0938
+         ALR   R1,R6ICTR                                           0938
          CLI   RECORD-1(R1),C')'                                   0938
          BE    @RF00938                                            0938
 *                           DO;     /* IS AN ERROR                   */
@@ -3513,12 +3542,12 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
          ST    R2,MVAR                                             0941
 *                             MVARLEN(1)=ADDR(RECORD(ICTR))-PARMADR+
 *                                 CON1;                            0942
-         LA    R8,RECORD-1(ICTR,R8)                                0942
+         LA    R8,RECORD-1(R6ICTR,R8)                              0942
          SLR   R8,R2                                               0942
          AL    R8,FW01                                             0942
          STC   R8,MVARLEN                                          0942
 *                             NOTEXEC=YES;                         0943
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0943
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0943
 *                             CALL MSGRTN;                         0944
          BAL   R14,MSGRTN                                          0944
 *                           END;                                   0945
@@ -3529,12 +3558,12 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
 *               END;                                               0948
 @RC00920 DS    0H                                                  0949
 *           END;                    /* IF WE DID NOT FIND END OF THE */
-@RF00918 AL    ICTR,FW01                                           0949
-@DE00917 C     ICTR,LINELNG                                        0949
+@RF00918 AL    R6ICTR,FW01                                         0949
+@DE00917 C     R6ICTR,LINELNG                                      0949
          BNH   @DL00917                                            0949
 @DC00917 DS    0H                                                  0950
 *           IF CYCLE=CON1 THEN      /* VALUE THEN ASSUME END AT      */
-         C     CYCLE,FW01                                          0950
+         C     R9CYCLE,FW01                                        0950
          BNE   @RF00950                                            0950
 *             DO;                   /* RECORD END                    */
 *               EXMSGID=M527;                                      0952
@@ -3543,14 +3572,14 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
          L     R9,PARMADR                                          0953
          ST    R9,MVAR                                             0953
 *               MVARLEN(1)=ADDR(RECORD(ICTR))-PARMADR;             0954
-         L     R1,ECDAIREC(,ECDAPTR)                               0954
-         LA    R8,RECORD-1(ICTR,R1)                                0954
+         L     R1,ECDAIREC(,ECDAPTR7)                              0954
+         LA    R8,RECORD-1(R6ICTR,R1)                              0954
          SLR   R8,R9                                               0954
          STC   R8,MVARLEN                                          0954
 *               CALL MSGRTN;                                       0955
          BAL   R14,MSGRTN                                          0955
 *               VALEND=ICTR-CON1;                                  0956
-         LR    R9,ICTR                                             0956
+         LR    R9,R6ICTR                                           0956
          BCTR  R9,0                                                0956
          ST    R9,VALEND                                           0956
 *             END;                  /* IF THE VALUE WAS A NULL QUOTED*/
@@ -3578,17 +3607,17 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
          B     @RC00912                                            0964
 @RF00912 DS    0H                                                  0965
 *           VALSTR=ICTR;            /* SAVE VALUE START              */
-         ST    ICTR,VALSTR                                         0965
+         ST    R6ICTR,VALSTR                                       0965
 *           CYCLE=CON1;                                            0966
-         LA    CYCLE,1                                             0966
+         LA    R9CYCLE,1                                           0966
 *           DO ICTR=ICTR TO LINELNG WHILE CYCLE=CON1;              0967
          B     @DE00967                                            0967
 @DL00967 LA    R3,1                                                0967
-         CR    CYCLE,R3                                            0967
+         CR    R9CYCLE,R3                                          0967
          BNE   @DC00967                                            0967
 *             IF RECORD(ICTR)=LFPAREN THEN/* IF LEFT PAREN FOUND UP  */
-         L     R8,ECDAIREC(,ECDAPTR)                               0968
-         ALR   R8,ICTR                                             0968
+         L     R8,ECDAIREC(,ECDAPTR7)                              0968
+         ALR   R8,R6ICTR                                           0968
          CLI   RECORD-1(R8),C'('                                   0968
          BNE   @RF00968                                            0968
 *               LFPARCTR=LFPARCTR+CON1;/* COUNT                      */
@@ -3596,8 +3625,8 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
 *             ELSE                                                 0970
 *               IF RECORD(ICTR)=RTPAREN THEN/* IF THIS IS A RIGHT    */
          B     @RC00968                                            0970
-@RF00968 L     R3,ECDAIREC(,ECDAPTR)                               0970
-         ALR   R3,ICTR                                             0970
+@RF00968 L     R3,ECDAIREC(,ECDAPTR7)                              0970
+         ALR   R3,R6ICTR                                           0970
          CLI   RECORD-1(R3),C')'                                   0970
          BNE   @RF00970                                            0970
 *                 DO;               /* PAREN THEN DETERMINE IF WE ARE
@@ -3609,11 +3638,11 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
          BNZ   @RF00973                                            0973
 *                     DO;                                          0974
 *                       VALEND=ICTR-CON1;                          0975
-         LR    R8,ICTR                                             0975
+         LR    R8,R6ICTR                                           0975
          BCTR  R8,0                                                0975
          ST    R8,VALEND                                           0975
 *                       CYCLE=CON0;                                0976
-         SLR   CYCLE,CYCLE                                         0976
+         SLR   R9CYCLE,R9CYCLE                                     0976
 *                     END;                                         0977
 *                 END;                                             0978
 *               ELSE                /* IF THIS IS A DELIMITER THEN   */
@@ -3623,47 +3652,47 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
 *                   IF RECORD(ICTR)=BLANK RECORD(ICTR)=COMMA RECORD(
 *                       ICTR)=TAB (RECORD(ICTR)=SLASH&(ICTR<LINELNG&
 *                       RECORD(ICTR:ICTR+CON1)=SLASHAST)) THEN     0980
-         L     R3,ECDAIREC(,ECDAPTR)                               0980
+         L     R3,ECDAIREC(,ECDAPTR7)                              0980
          LR    R8,R3                                               0980
-         ALR   R8,ICTR                                             0980
+         ALR   R8,R6ICTR                                           0980
          CLI   RECORD-1(R8),C' '                                   0980
          BE    @RT00980                                            0980
          LR    R8,R3                                               0980
-         ALR   R8,ICTR                                             0980
+         ALR   R8,R6ICTR                                           0980
          CLI   RECORD-1(R8),C','                                   0980
          BE    @RT00980                                            0980
          LR    R8,R3                                               0980
-         ALR   R8,ICTR                                             0980
+         ALR   R8,R6ICTR                                           0980
          CLI   RECORD-1(R8),X'05'                                  0980
          BE    @RT00980                                            0980
          LR    R8,R3                                               0980
-         ALR   R8,ICTR                                             0980
+         ALR   R8,R6ICTR                                           0980
          CLI   RECORD-1(R8),C'/'                                   0980
          BNE   @RF00980                                            0980
-         C     ICTR,LINELNG                                        0980
+         C     R6ICTR,LINELNG                                      0980
          BNL   @RF00980                                            0980
-         ALR   R3,ICTR                                             0980
+         ALR   R3,R6ICTR                                           0980
          CLC   RECORD-1(2,R3),SLSHASTR                             0980
          BNE   @RF00980                                            0980
 @RT00980 DS    0H                                                  0981
 *                     DO;                                          0981
 *                       CYCLE=CON0;                                0982
-         SLR   CYCLE,CYCLE                                         0982
+         SLR   R9CYCLE,R9CYCLE                                     0982
 *                       VALEND=ICTR-CON1;                          0983
-         LR    R3,ICTR                                             0983
+         LR    R3,R6ICTR                                           0983
          BCTR  R3,0                                                0983
          ST    R3,VALEND                                           0983
 *                       CALL SKIPSEP;                              0984
          BAL   R14,SKIPSEP                                         0984
 *                       IF ICTR<=LINELNG THEN                      0985
-         C     ICTR,LINELNG                                        0985
+         C     R6ICTR,LINELNG                                      0985
          BH    @RF00985                                            0985
 *                         DO;       /* IF NO ENDING PAREN COULD BE   */
 *                           IF RECORD(ICTR)^=RTPAREN THEN/* THEN   0987
 *                                      NOTIFY                        */
-         L     R8,ECDAIREC(,ECDAPTR)                               0987
+         L     R8,ECDAIREC(,ECDAPTR7)                              0987
          LR    R3,R8                                               0987
-         ALR   R3,ICTR                                             0987
+         ALR   R3,R6ICTR                                           0987
          CLI   RECORD-1(R3),C')'                                   0987
          BE    @RF00987                                            0987
 *                             DO;   /* USER AND RETURN TO SYNTAX ANY */
@@ -3674,12 +3703,12 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
          ST    R3,MVAR                                             0990
 *                               MVARLEN(1)=ADDR(RECORD(ICTR))-PARMADR+
 *                                   CON1;                          0991
-         LA    R8,RECORD-1(ICTR,R8)                                0991
+         LA    R8,RECORD-1(R6ICTR,R8)                              0991
          SLR   R8,R3                                               0991
          AL    R8,FW01                                             0991
          STC   R8,MVARLEN                                          0991
 *                               NOTEXEC=YES;                       0992
-         OI    NOTEXEC(ECDAPTR),B'01000000'                        0992
+         OI    ECDAFLAG(ECDAPTR7),NOTEXEC                          0992
 *                               CALL MSGRTN;                       0993
          BAL   R14,MSGRTN                                          0993
 *                             END;                                 0994
@@ -3691,15 +3720,15 @@ VALUECHK STM   R14,R5,@SA00008                                     0904
 @RF00980 DS    0H                                                  0998
 *           END;                    /* IF WE DID NOT FIND END OF     */
 @RC00970 DS    0H                                                  0998
-@RC00968 AL    ICTR,FW01                                           0998
-@DE00967 C     ICTR,LINELNG                                        0998
+@RC00968 AL    R6ICTR,FW01                                         0998
+@DE00967 C     R6ICTR,LINELNG                                      0998
          BNH   @DL00967                                            0998
 @DC00967 DS    0H                                                  0999
 *           IF CYCLE=CON1 THEN      /* VALUE THEN ASSUME END AT END  */
-         C     CYCLE,FW01                                          0999
+         C     R9CYCLE,FW01                                        0999
          BNE   @RF00999                                            0999
 *             VALEND=ICTR-CON1;     /* OF RECORD                     */
-         LR    R9,ICTR                                             1000
+         LR    R9,R6ICTR                                           1000
          BCTR  R9,0                                                1000
          ST    R9,VALEND                                           1000
 *         END;                                                     1001
@@ -3739,7 +3768,7 @@ MSGRTN   STM   R14,R12,12(R13)                                     1004
          LA    R8,MSGCSECT(,R6)                                    1006
          ST    R8,LISTPTR(,R6)                                     1006
 *   TMCTPTR=CPPLPTR;                /* ADDRESS OF THE CPPL           */
-         L     R14,CPPLPTR(,ECDAPTR)                               1007
+         L     R14,CPPLPTR(,ECDAPTR7)                              1007
          ST    R14,TMCTPTR(,R6)                                    1007
 *   ECBPTR=ADDR(ECB);               /* DUMMY ECB ADDRESS             */
          LA    R15,ECB                                             1008
@@ -3753,17 +3782,17 @@ MSGRTN   STM   R14,R12,12(R13)                                     1004
 *   MSGID=EXMSGID;                  /* ID OF THE MESSAGE TO BE ISSUED*/
          MVC   MSGID(4,R6),EXMSGID                                 1012
 *   DO MCTR=1 TO DIM(MVAR);         /* INITIALIZE INSERTION VARIABLES*/
-         LA    MCTR,1                                              1013
+         LA    R2MCTR,1                                            1013
 @DL01013 DS    0H                                                  1014
 *     MTINSRT(MCTR)=MVAR(MCTR);     /* MVAR HAS BEEN PREVIOUSLY SET  */
-         LR    R3,MCTR                                             1014
+         LR    R3,R2MCTR                                           1014
          SLA   R3,2                                                1014
          L     R6,MVAR-4(R3)                                       1014
          L     R1,ERRPTR                                           1014
          ST    R6,MTINSRT-4(R3,R1)                                 1014
 *   END;                                                           1015
-         AL    MCTR,FW01                                           1015
-         C     MCTR,FW02                                           1015
+         AL    R2MCTR,FW01                                         1015
+         C     R2MCTR,FW02                                         1015
          BNH   @DL01013                                            1015
 *   RFY                                                            1016
 *     R1 RSTD;                                                     1016
@@ -3812,9 +3841,9 @@ HW69     DC    H'69'
 @SM01544 MVC   SVTDATA(0,SVTELPTR),PSCBUSER-PSCB(R6)
 @SM01546 MVC   SVTDATA(0,SVTELPTR),CSCBPROC(R1)
 @SM01548 MVC   SVTDATA(0,SVTELPTR),PROCNAME(R1)
-@SM01557 MVC   IDPRNME(0,PCLCUR),SNTDATA(SNTELPTR)
-@SM01559 MVC   NADAT(0,PCLCUR),SNTDATA(SNTELPTR)
-@SM01561 MVC   VIDNAME(0,SBFCUR),SNTDATA(SNTELPTR)
+@SM01557 MVC   IDPRNME(0,R2PCLCUR),SNTDATA(SNTELPTR)
+@SM01559 MVC   NADAT(0,R2PCLCUR),SNTDATA(SNTELPTR)
+@SM01561 MVC   VIDNAME(0,R4SBFCUR),SNTDATA(SNTELPTR)
 @SC01563 CLC   SNTDATA(0,UPTPTR1),PARMDAT(R6)
 @SM01567 MVC   SNTDATA(0,SNTELPTR),PARMDAT(R1)
 *   DCL                                                            1030
@@ -3895,6 +3924,8 @@ HW69     DC    H'69'
          IHAASCB
          IEESMCA ,                                              ZP60014
          IKJTCB ,                                               ZP60014
+         IKJRB  ,                               2020-12-07      ZP60014
+         IHACDE ,                               2020-12-07      ZP60014
          IEZJSCB ,                                              ZP60014
          IEFJSSIB ,                                             ZP60014
 *                                                                  1039
@@ -4012,12 +4043,16 @@ IKJCT435 DC    V(IKJCT435)
 @CC01285 DC    C'VALUE FOR KEYWORD    '
 @CC01304 DC    C'POSITIONAL'
 $OSLEVEL DC    C'OS/VS2 3.8 EBB1102'                            ZP60014
+$NOTACTV DC    C'NOT ACTIVE'                         2020-12-07 ZP60014
+$ACTIVE  EQU   *-6,6                                 2020-12-07 ZP60014
 $OUTLINE DC    C'SYSOUTLINE'                                    ZP60014
 $OUTTRAP DC    C'SYSOUTTRAP'                                    ZP60014
 $SYSTERM DC    C'SYSTERMID'                                     ZP60014
 $SYS4SDT DC    C'SYS4SDATE'            SORTABLE DATE (4D-YR)    ZP60014
 $SYS4JDT DC    C'SYS4JDATE'            JULIAN DATE (4D-YR)      ZP60014
 $SYS4IDT DC    C'SYS4IDATE'            ISO-FORMAT DATE (4D-YR)  ZP60014
+$SYSISPF DC    C'SYSISPF '                           2020-12-07 ZP60014
+ISPFLIT  EQU   *-5,5                                 2020-12-07 ZP60014
 IKJEFF02 DC    C'IKJEFF02'
 IKJEFF19 DC    C'IKJEFF19'
 $DATATYP DC    C'DATATYPE'
@@ -4149,6 +4184,8 @@ GROUPONE EQU   (*-NULLVARX)/4          NEW NOT-AUTH VARS FOLLOW ZP60014
          DC    AL3($SYSOPER)                                    ZP60014
          DC    AL1(6)                                           ZP60014
          DC    AL3($SYSJES)                                     ZP60014
+         DC    AL1(7)                                2009-12-07 ZP60014
+         DC    AL3($SYSISPF)                         2009-12-07 ZP60014
 NEWIMMED EQU   (*-NULLVARX)/4          NEW IMMED-EVALS FOLLOW   ZP60014
          DC    AL1(8)                                           ZP60014
          DC    AL3($SYSSTIM)           HH:MM                    ZP60014
@@ -4209,26 +4246,26 @@ R15      EQU   15
 UPTPTR1  EQU   R2
 TOBEADD  EQU   R9
 SVTELPTR EQU   R9
-KEYWAR   EQU   R2
-POSAR    EQU   R8
+R2KEYWAR EQU   R2
+R8POSAR  EQU   R8
 NEWVELEM EQU   R6
 LASTELMT EQU   R6
 LFPARCTR EQU   R2
-SCTR     EQU   R2
-PCTR     EQU   R5
-MCTR     EQU   R2
-ICTR     EQU   R6
-CYCLE    EQU   R9
+R2SCTR   EQU   R2
+R5PCTR   EQU   R5
+R2MCTR   EQU   R2
+R6ICTR   EQU   R6
+R9CYCLE  EQU   R9
 KEYWCHAR EQU   R5
 KEYCHAR  EQU   R3
 PCLBASE  EQU   R9
-POSCHAR  EQU   R4
-PDLCUR   EQU   R3
-SBFCUR   EQU   R4
-PCLCUR   EQU   R2
-PPLPTR   EQU   R8
+R4POSCHR EQU   R4
+R3PDLCUR EQU   R3
+R4SBFCUR EQU   R4
+R2PCLCUR EQU   R2
+R8PPLPTR EQU   R8
 SNTELPTR EQU   R8
-ECDAPTR  EQU   R7
+ECDAPTR7 EQU   R7
 ECDA     EQU   0
 ECDACPPL EQU   ECDA
 ECDAGADD EQU   ECDA+4
@@ -4240,11 +4277,11 @@ ECDACPRE EQU   ECDA+24
 ECDACNXT EQU   ECDA+28
 ECDALNEL EQU   ECDA+40
 ECDAFLAG EQU   ECDA+56
-IMPLICIT EQU   ECDAFLAG
-NOTEXEC  EQU   ECDAFLAG
-SP78CORE EQU   ECDAFLAG
-SP78BLK  EQU   ECDAFLAG
-NESTED   EQU   ECDAFLAG
+IMPLICIT EQU   X'80'
+NOTEXEC  EQU   X'40'
+SP78CORE EQU   X'20'
+SP78BLK  EQU   X'04'
+NESTED   EQU   X'02'
 ECDAGDAT EQU   ECDA+64
 ECDAINME EQU   ECDA+72
 ECDAILNG EQU   ECDAINME
@@ -4254,7 +4291,6 @@ SVTABFST EQU   EXECDATA+4
 GEXECDAT EQU   EXECDATA+8
 @NM00004 EQU   EXECDATA+16
 EXDATFLG EQU   EXECDATA+32
-@NM00005 EQU   EXDATFLG
 COMPROC  EQU   0
 COMPRPTR EQU   COMPROC
 COMPRID  EQU   COMPRPTR
@@ -4269,12 +4305,15 @@ SNTELFST EQU   SNTAB+12
 SNTELEM  EQU   0
 SNTVLPTR EQU   SNTELEM
 SNTFLAGS EQU   SNTELEM+4
-SNTPOSIT EQU   SNTFLAGS
-SNTKEY   EQU   SNTFLAGS
-SNTKEYW  EQU   SNTFLAGS
-SNTNAUTH EQU   SNTFLAGS
-SNTEVAL  EQU   SNTFLAGS
-SNTLAST  EQU   SNTFLAGS
+SNTPOSIT EQU   SNTFLAGS                B'10000000'
+SNTKEY   EQU   SNTFLAGS                B'01000000'
+SNTKEYW  EQU   SNTFLAGS                B'00100000'
+SNTLABEL EQU   SNTFLAGS                B'00010000'  UNREFD
+SNTNOSCN EQU   SNTFLAGS                B'00001000'  UNREFD
+SNTNAUTH EQU   SNTFLAGS                B'00000100'
+SNTEVAL  EQU   SNTFLAGS                B'00000010'
+SNTLAST  EQU   SNTFLAGS                B'00000001'
+SNTGLOB  EQU   SNTFLAGS+1              B'10000000'  UNREFD
 SNTLNG   EQU   SNTELEM+6
 SNTDATA  EQU   SNTELEM+8
 SVTAB    EQU   0
@@ -4399,7 +4438,8 @@ CSMFVAL  EQU   CENVVAL+14                                       ZP60014
 CTERMVAL EQU   CSMFVAL+16                                       ZP60014
 COPERVAL EQU   CTERMVAL+17                                      ZP60014
 CJESVAL  EQU   COPERVAL+16                                      ZP60014
-CSTIMVAL EQU   CJESVAL+14                                       ZP60014
+CISPFVAL EQU   CJESVAL+14                          A 2020-12-07 ZP60014
+CSTIMVAL EQU   CISPFVAL+15                         C 2020-12-07 ZP60014
 CSDATVAL EQU   CSTIMVAL+16                                      ZP60014
 CJDATVAL EQU   CSDATVAL+16                                      ZP60014
 C4DATVAL EQU   CJDATVAL+16                                      ZP60014
@@ -4412,7 +4452,7 @@ CCPUVAL  EQU   CWTRMVAL+16                                      ZP60014
 CSRVVAL  EQU   CCPUVAL+14                                       ZP60014
 CDSNVAL  EQU   CSRVVAL+14                                       ZP60014
 CNRSVAL  EQU   CDSNVAL+14                            2009-08-23 ZP60014
-CLASTVAL EQU   CNRSVAL                 LAST NAME ADDED HERE     ZP60014
+CLASTVAL EQU   CNRSVAL         LAST NAME ADDED HERE  2009-08-23 ZP60014
 LSDPTR   EQU   ECDALSD
 LSDBLKID EQU   LSDANEXT
 LSDADAID EQU   LSDADATA
@@ -4625,16 +4665,16 @@ ATACTEND EQU   EXECDATA+48
 ATACTSTR EQU   EXECDATA+44
 EXDLMPTR EQU   EXECDATA+40
 GEXECCNT EQU   EXECDATA+36
-NOLASTCC EQU   @NM00005+1
-ATINCNTL EQU   @NM00005+1
-ATTNCMD  EQU   @NM00005
-NOMSG    EQU   @NM00005
-CMAIN    EQU   @NM00005
-ERINCNTL EQU   @NM00005
-SYMLST   EQU   @NM00005
-NOFLUSH  EQU   @NM00005
-ERRCMD   EQU   @NM00005
-CONLST   EQU   @NM00005
+NOLASTCC EQU   EXDATFLG+1
+ATINCNTL EQU   EXDATFLG+1
+ATTNCMD  EQU   EXDATFLG
+NOMSG    EQU   EXDATFLG
+CMAIN    EQU   EXDATFLG
+ERINCNTL EQU   EXDATFLG
+SYMLST   EQU   EXDATFLG
+NOFLUSH  EQU   EXDATFLG
+ERRCMD   EQU   EXDATFLG
+CONLST   EQU   EXDATFLG
 RETPTR   EQU   EXECDATA+28
 ERACTEND EQU   EXECDATA+24
 ERACTSTR EQU   EXECDATA+20
@@ -4671,7 +4711,6 @@ ECDASPTR EQU   ECDA+32
 @ENDDATA EQU   *
          END   IKJCT431,(C'PLS-III',0300,87344)
 /*
-//*
 //STEP03  EXEC PGM=IEBGENER
 //SYSPRINT DD  SYSOUT=*
 //SYSUT1   DD  *
@@ -4680,12 +4719,11 @@ ECDASPTR EQU   ECDA+32
 /*
 //SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
 //SYSIN    DD  DUMMY
-//*
 //STEP04  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
 //SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
+//SYSUT1   DD  UNIT=VIO,SPACE=(CYL,10)
+//SYSUT2   DD  UNIT=VIO,SPACE=(CYL,10)
+//SYSUT3   DD  UNIT=VIO,SPACE=(CYL,10)
 //SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
 //         DD  DSN=SYS1.SMPMTS,DISP=SHR
 //         DD  DSN=SYS1.AMODGEN,DISP=SHR
@@ -10548,7 +10586,6 @@ EXINSAVE EQU   EXECDATA+16
 @ENDDATA EQU   *
          END   IKJCT433,(C'PLS-III',0300,88013)
 /*
-//*
 //STEP05  EXEC PGM=IEBGENER
 //SYSPRINT DD  SYSOUT=*
 //SYSUT1   DD  *
@@ -10557,12 +10594,11 @@ EXINSAVE EQU   EXECDATA+16
 /*
 //SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
 //SYSIN    DD  DUMMY
-//*
 //STEP06  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
 //SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
+//SYSUT1   DD  UNIT=VIO,SPACE=(CYL,10)
+//SYSUT2   DD  UNIT=VIO,SPACE=(CYL,10)
+//SYSUT3   DD  UNIT=VIO,SPACE=(CYL,10)
 //SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
 //         DD  DSN=SYS1.SMPMTS,DISP=SHR
 //         DD  DSN=SYS1.AMODGEN,DISP=SHR
@@ -11084,7 +11120,6 @@ PARMPBT0 EQU   PARMCNTL
 @ENDDATA EQU   *
          END   IKJEFT56
 /*
-//*
 //STEP07  EXEC PGM=IEBGENER
 //SYSPRINT DD  SYSOUT=*
 //SYSUT1   DD  *
@@ -11092,29 +11127,13 @@ PARMPBT0 EQU   PARMCNTL
 /*
 //SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
 //SYSIN    DD  DUMMY
-//*
-//STEP08  EXEC SMPREC,WORK='SYSALLDA'
+//STEP08  EXEC SMPREC
 //SMPPTFIN DD  DSN=&&SMPMCS,DISP=(OLD,DELETE)
 //SMPCNTL  DD  *
-  RECEIVE
-          SELECT(ZP60014)
-          .
+  RECEIVE SELECT(ZP60014).
 /*
-//*
-//STEP09CK  EXEC SMPAPP,WORK='SYSALLDA'
+//STEP09  EXEC SMPAPP
 //SMPCNTL  DD  *
-  APPLY
-        SELECT(ZP60014)
-        CHECK
-        .
-/*
-//*
-//STEP09  EXEC SMPAPP,COND=(0,NE),WORK='SYSALLDA'
-//SMPCNTL  DD  *
-  APPLY
-        SELECT(ZP60014)
-        DIS(WRITE)
-        COMPRESS(ALL)
-        .
+  APPLY SELECT(ZP60014) DIS(WRITE).
 /*
 //
