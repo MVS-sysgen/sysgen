@@ -1693,7 +1693,7 @@ class sysgen:
         jobcard = "//{userid}A JOB (1),'ADDUSER',CLASS=S,MSGLEVEL=(1,1),MSGCLASS=A\n"
 
 
-        with open("users.conf", 'r') as users:
+        with open(self.users, 'r') as users:
             for user in users:
                 if "#" in user[0]:
                     # comment skipped
