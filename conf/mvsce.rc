@@ -3,7 +3,7 @@ facility enable HERC_TCPIP_EXTENSION
 facility enable HERC_TCPIP_PROB_STATE
 facility enable herc_370_extension
 IPL 150
-hao tgt HHC00010A Enter input for console 0:0009
+hao tgt input for console 0:0009
 hao cmd /
 hao tgt $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.1
 hao cmd /r 0,noreq
