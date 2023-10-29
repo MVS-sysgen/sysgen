@@ -92,7 +92,20 @@
                                                                         
   DEFINE ALIAS ( -                                                      
         NAME (SYSC) -                                                   
-        RELATE (UCSYSCPK) )                                             
+        RELATE (UCSYSCPK) )
+
+       
+  /* SYSC PACK INSTRUCTIONS DO NOT INCLUDE GCC OR THE CLIB   */ 
+  /* THESE TWO DEFINES FIX THAT - SOF                        */ 
+
+  DEFINE ALIAS ( -                                                      
+        NAME (GCC) -                                                   
+        RELATE (UCSYSCPK) )
+
+                                                                        
+  DEFINE ALIAS ( -                                                      
+        NAME (PDPCLIB) -                                                   
+        RELATE (UCSYSCPK) )
                                                                         
 //*    END OF MVS00 CONTINUATION JOB                                    
 ><                                                                      
