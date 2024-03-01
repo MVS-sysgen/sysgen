@@ -15,10 +15,7 @@ jobs:
     name: MVS 3.8j System Generation
     runs-on: [ubuntu-latest]
     #timeout-minutes: 70
-    container: 
-      image: mainframed767/hercules:4.7.0
-      volumes:
-        - /mvsce:/mvsce
+    container: mainframed767/hercules:4.7.0
     steps:
 
       - name: Checkout
@@ -26,8 +23,10 @@ jobs:
 
       - name: Move MVS/CE sysgen
         run: |
+          mkdir -p /mvsce/
           mv * /mvsce/
         shell: bash
+        
       - name: Set up Python 3
         run: |
           apt-get update
@@ -47,7 +46,30 @@ jobs:
           files: |
             /mvsce/MVSCE/README.md
             /mvsce/MVSCE.release.*.tar
+      - name: Move MVS/CE TAR file
+        run: |
+          mv /mvsce/MVSCE.release.*.tar /mvsce/MVSCE.release.tar
+        shell: bash
+
+      - name: Upload MVS/CE TAR file
+        uses: actions/upload-artifact@v3
+        with:
+          name: MVSCE
+          path: /mvsce/MVSCE.release.tar
+
+  mvsce-docker:
+    name: MVS/CE Cross Platform Docker Upload
+    runs-on: [ubuntu-latest]     
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        sparse-checkout: |
+          Docker
+      - name: Download MVS/CE Tar File
+        uses: actions/download-artifact@v3
+        with:
+          name: MVSCE
+          path: /
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -60,8 +82,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          config: .github/buildkitd.toml
-          file: ./Docker/Dockerfile
+          file: /Docker/Dockerfile
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
