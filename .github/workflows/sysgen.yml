@@ -15,43 +15,27 @@ jobs:
     name: MVS 3.8j System Generation
     runs-on: [ubuntu-latest]
     #timeout-minutes: 70
-    container: mainframed767/hercules:develop
-
+    container: 
+      image: mainframed767/hercules:4.7.0
+      volumes:
+        - /mvsce:/mvsce
     steps:
-
       - name: Checkout
         uses: actions/checkout@v2
-
       - name: Move MVS/CE sysgen
         run: |
-          mkdir -p /mvsce/
+#          mkdir -p /mvsce/
           mv * /mvsce/
         shell: bash
-      
-      - name: Set up Python 3.8
-      #  uses: actions/setup-python@v1
-      #  with:
-      #    python-version: 3.8
+      - name: Set up Python 3
         run: |
           apt-get update
           apt-get -yq install --no-install-recommends python3 python3-pip git
-          
-      - name: Install pip/colorama
-        run: |
-          pip3 install --quiet colorama
-      #- uses: BSFishy/pip-action@v1
-      #  with:
-      #    packages: colorama
 
-      - name: Running sysgen.py
+      - name: Building MVS/CE
         id: sysgen
         working-directory: /mvsce
         run: until ./sysgen.py --release --timeout 500 --version ${GITHUB_SHA} --CONTINUE; do echo "Failed, rerunning"; done
-
-      - name: Printing Debug Log
-        if: ${{ always() && (steps.sysgen.outcome == 'failure') }}
-        working-directory: /mvsce
-        run: cat sysgen.log
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
@@ -62,6 +46,7 @@ jobs:
           files: |
             /mvsce/MVSCE/README.md
             /mvsce/MVSCE.release.*.tar
+    steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
