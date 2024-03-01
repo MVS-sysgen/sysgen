@@ -1,0 +1,10 @@
+## Docker File for MVS/CE
+FROM mainframed767/hercules:4.7.0
+WORKDIR /
+USER root
+COPY /mvsce/MVSCE /MVSCE
+COPY /mvsce/Docker/mvs.sh /
+RUN apt-get update && apt-get -yq install --no-install-recommends socat ca-certificates openssl python3 netbase git && apt-get clean && chmod +x /mvs.sh
+VOLUME ["/config","/dasd","/printers","/punchcards","/logs", "/certs"]
+EXPOSE 3221 3223 3270 3505 3506 8888
+ENTRYPOINT ["./mvs.sh"]
