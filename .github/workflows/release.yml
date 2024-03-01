@@ -12,7 +12,7 @@ jobs:
     name: MVS 3.8j System Generation Release
     runs-on: [ubuntu-latest]
     timeout-minutes: 70
-    container: mainframed767/hercules:develop
+    container: mainframed767/hercules:4.7.0
 
     steps:
 
@@ -56,3 +56,21 @@ jobs:
           files: |
             /mvsce/MVSCE/README.md
             /mvsce/MVSCE.release.*.tar
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          config: .github/buildkitd.toml
+          file: ./Docker/Dockerfile
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: mainframed767/mvsce:${{steps.tag.outputs.tag}}
