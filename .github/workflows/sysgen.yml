@@ -26,7 +26,6 @@ jobs:
 
       - name: Move MVS/CE sysgen
         run: |
-#          mkdir -p /mvsce/
           mv * /mvsce/
         shell: bash
       - name: Set up Python 3
