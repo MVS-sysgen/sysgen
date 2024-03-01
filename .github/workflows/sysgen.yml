@@ -20,8 +20,10 @@ jobs:
       volumes:
         - /mvsce:/mvsce
     steps:
+
       - name: Checkout
         uses: actions/checkout@v2
+
       - name: Move MVS/CE sysgen
         run: |
 #          mkdir -p /mvsce/
