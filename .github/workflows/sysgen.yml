@@ -58,6 +58,7 @@ jobs:
           path: /mvsce/MVSCE.release.tar
 
   mvsce-docker:
+    needs: mvsce-sysgen
     name: MVS/CE Cross Platform Docker Upload
     runs-on: [ubuntu-latest]     
     steps:
