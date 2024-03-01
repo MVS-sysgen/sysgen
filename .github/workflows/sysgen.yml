@@ -15,11 +15,13 @@ jobs:
     name: MVS 3.8j System Generation
     runs-on: [ubuntu-latest]
     #timeout-minutes: 70
-    container: mainframed767/hercules:4.7.0
+    container: 
+      image: mainframed767/hercules:4.7.0
+      options: --user root
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Move MVS/CE sysgen
         run: |
