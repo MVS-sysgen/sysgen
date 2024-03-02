@@ -67,7 +67,7 @@ jobs:
     name: MVS/CE Cross Platform Docker Upload
     runs-on: [ubuntu-latest]     
     steps:
-
+    
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -92,12 +92,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Get Release Version
-      run: |
-        VERSION=${GITHUB_REF_NAME#v}
-        echo Version: $VERSION
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-
+      - name: Get git tag
+        id: tag
+        uses: dawidd6/action-get-tag@v1
+        
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -105,4 +103,4 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: mainframed767/mvsce:${VERSION}
+          tags: mainframed767/mvsce:${{steps.tag.outputs.tag}}
