@@ -74,7 +74,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: MVSCE
-          path: /tmp
+          path: .
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
