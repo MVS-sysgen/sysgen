@@ -4,8 +4,8 @@
 FROM mainframed767/hercules:4.7.0
 WORKDIR /
 USER root
-ADD /tmp/MVSCE.release.tar /
-COPY /Docker/mvs.sh /
+ADD MVSCE.release.tar /
+COPY Docker/mvs.sh /
 RUN apt-get update && apt-get -yq install --no-install-recommends socat ca-certificates openssl python3 netbase git && apt-get clean && chmod +x /mvs.sh
 VOLUME ["/config","/dasd","/printers","/punchcards","/logs", "/certs"]
 EXPOSE 3221 3223 3270 3505 3506 8888
