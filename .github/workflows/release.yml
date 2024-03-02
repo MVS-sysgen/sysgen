@@ -31,14 +31,17 @@ jobs:
           apt-get update
           apt-get -yq install --no-install-recommends python3 python3-pip git
 
-      - name: Get git tag
-        id: tag
-        uses: dawidd6/action-get-tag@v1
+
+      - name: Get Release Version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo Version: $VERSION
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Running sysgen.py
         id: sysgen
         working-directory: /mvsce
-        run: until ./sysgen.py --release --timeout 500 --version ${{steps.tag.outputs.tag}} --CONTINUE; do echo "Failed, rerunning"; done
+        run: until ./sysgen.py --release --timeout 500 --version ${VERSION} --CONTINUE; do echo "Failed, rerunning"; done
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
@@ -67,25 +70,37 @@ jobs:
     name: MVS/CE Cross Platform Docker Upload
     runs-on: [ubuntu-latest]     
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
             Docker
+
       - name: Download MVS/CE Tar File
         uses: actions/download-artifact@v3
         with:
           name: MVSCE
           path: .
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Get Release Version
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        echo Version: $VERSION
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -93,4 +108,4 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: mainframed767/mvsce:${{steps.tag.outputs.tag}}
+          tags: mainframed767/mvsce:${VERSION}
