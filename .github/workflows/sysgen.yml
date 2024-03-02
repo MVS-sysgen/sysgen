@@ -89,6 +89,6 @@ jobs:
         with:
           file: Docker/Dockerfile
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/s390x
           push: true
           tags: mainframed767/mvsce:latest
