@@ -27,6 +27,7 @@ jobs:
         run: |
           mkdir -p /mvsce/
           mv * /mvsce/
+          touch /mvsce/MVSCE.release.tar
         shell: bash
         
       # - name: Set up Python 3
@@ -53,11 +54,11 @@ jobs:
       #     mv /mvsce/MVSCE.release.*.tar /mvsce/MVSCE.release.tar
       #   shell: bash
 
-      # - name: Upload MVS/CE TAR file
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: MVSCE
-      #     path: /mvsce/MVSCE.release.tar
+      - name: Upload MVS/CE TAR file
+        uses: actions/upload-artifact@v3
+        with:
+          name: MVSCE
+          path: /mvsce/MVSCE.release.tar
 
   mvsce-docker:
     needs: mvsce-sysgen
