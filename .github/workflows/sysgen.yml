@@ -29,35 +29,35 @@ jobs:
           mv * /mvsce/
         shell: bash
         
-      - name: Set up Python 3
-        run: |
-          apt-get update
-          apt-get -yq install --no-install-recommends python3 python3-pip git
+      # - name: Set up Python 3
+      #   run: |
+      #     apt-get update
+      #     apt-get -yq install --no-install-recommends python3 python3-pip git
 
-      - name: Building MVS/CE
-        id: sysgen
-        working-directory: /mvsce
-        run: until ./sysgen.py --release --timeout 500 --version ${GITHUB_SHA} --CONTINUE; do echo "Failed, rerunning"; done
+      # - name: Building MVS/CE
+      #   id: sysgen
+      #   working-directory: /mvsce
+      #   run: until ./sysgen.py --release --timeout 500 --version ${GITHUB_SHA} --CONTINUE; do echo "Failed, rerunning"; done
 
-      - uses: "marvinpinto/action-automatic-releases@latest"
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "latest"
-          prerelease: true
-          title: "Latest MVS/CE Sysgen Build"
-          files: |
-            /mvsce/MVSCE/README.md
-            /mvsce/MVSCE.release.*.tar
-      - name: Move MVS/CE TAR file
-        run: |
-          mv /mvsce/MVSCE.release.*.tar /mvsce/MVSCE.release.tar
-        shell: bash
+      # - uses: "marvinpinto/action-automatic-releases@latest"
+      #   with:
+      #     repo_token: "${{ secrets.GITHUB_TOKEN }}"
+      #     automatic_release_tag: "latest"
+      #     prerelease: true
+      #     title: "Latest MVS/CE Sysgen Build"
+      #     files: |
+      #       /mvsce/MVSCE/README.md
+      #       /mvsce/MVSCE.release.*.tar
+      # - name: Move MVS/CE TAR file
+      #   run: |
+      #     mv /mvsce/MVSCE.release.*.tar /mvsce/MVSCE.release.tar
+      #   shell: bash
 
-      - name: Upload MVS/CE TAR file
-        uses: actions/upload-artifact@v3
-        with:
-          name: MVSCE
-          path: /mvsce/MVSCE.release.tar
+      # - name: Upload MVS/CE TAR file
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: MVSCE
+      #     path: /mvsce/MVSCE.release.tar
 
   mvsce-docker:
     needs: mvsce-sysgen
@@ -83,6 +83,12 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: See Whats Going On
+        run: |
+          ls -al ./
+          ls -al /tmp
+          find ./
+        shell: bash
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
