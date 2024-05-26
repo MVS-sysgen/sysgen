@@ -34,7 +34,8 @@ error_check = [
                 'DISASTROUS ERROR',
                 'HHC01023W Waiting for port 3270 to become free for console connections',
                 'disabled wait state 00020000 80000005',
-                'HHC00839E Processor CP00: ipl failed: architecture mode ESA/390, invalid ipl psw 0000000000000'
+                'HHC00839E Processor CP00: ipl failed: architecture mode ESA/390, invalid ipl psw 0000000000000',
+                'PROCESSOR CP00 APPEARS TO BE HUNG!'
               ]
 
 logname='sysgen.log'
@@ -104,7 +105,7 @@ os.chdir(os.path.dirname(sys.argv[0]))
 
 logging.basicConfig(filename=running_folder+logname,
                             filemode='w',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            format='%(asctime)s %(msecs)d %(name)s :: %(levelname)s :: %(funcName)s :: %(message)s',
                             datefmt='%H:%M:%S',
                             level=logging.DEBUG)
 
@@ -356,9 +357,9 @@ class sysgen:
             l = pipe.readline()
             if len(l.strip()) > 0:
                 if STDERR_to_logs.is_set():
-                    logging.debug("[DIAG] {}".format(l.strip()))
+                    logging.debug("[DIAG - STDERR] {}".format(l.strip()))
                 if 'MIPS' in l:
-                    logging.debug("[DIAG] {}".format(l.strip()))
+                    logging.debug("[DIAG - STDERR] {}".format(l.strip()))
                 q.put(l)
 
                 for errors in error_check:
@@ -1516,10 +1517,11 @@ class sysgen:
             restore = "usermod_{:02}_{}".format(backup_num-1,usermods[s-1])
 
         self.print("Step 5. Applying Usermods",color="CYAN")
+        count = 1
         for umod in umods:
             self.set_step("step_05_usermods",umod)
             self.restore_dasd(restore)
-            self.sysgenjobs_ipl("Applying usermod {}: {}".format(umod, umods_desc[umod]))
+            self.sysgenjobs_ipl(f"Applying usermod ({count}/{len(umods)}) {umod}: {umods_desc[umod]}")
             cmd = "devinit 12 usermods/{}.jcl eof trunc {}"
             if umod in EBCDIC_mods:
                 self.send_herc(cmd.format(umod,'ebcdic'))
@@ -1533,6 +1535,7 @@ class sysgen:
             restore = "usermod_{:02}_{}".format(backup_num,umod)
             backup_num += 1
             self.backup_dasd(restore)
+            count += 1
 
         self.backup_dasd("25_USERMODS")
 
@@ -1810,6 +1813,7 @@ class sysgen:
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
 
     def shutdown_mvs(self, cust=False):
+        logging.debug('Shutting down MVS')
         self.send_oper('$p jes2')
         if cust:
             self.wait_for_string('IEF404I JES2 - ENDED - ')
@@ -1936,6 +1940,7 @@ class sysgen:
         if self.skip_steps:
             self.skip_steps = False
         # drain STDERR and STDOUT
+        logging.debug('Draining STDOUT/STDERR')
         while True:
             try:
                 line = self.stdout_q.get(False).strip()
@@ -1948,6 +1953,7 @@ class sysgen:
             except queue.Empty:
                 break
 
+        logging.debug('Reset Herc Event')
         reset_herc_event.set()
 
         if not self.herccmd:
@@ -1977,6 +1983,8 @@ class sysgen:
 
 
     def quit_hercules(self, msg=True):
+
+        logging.debug("Quitting Hercules")
         if msg:
             self.print("Shutting down hercules")
         if not self.hercproc or self.hercproc.poll() is not None:
@@ -1985,7 +1993,7 @@ class sysgen:
         quit_herc_event.set()
         self.send_herc('quit')
         # self.wait_for_string('Hercules shutdown complete', stderr=True)
-        self.wait_for_string('Hercules terminated', stderr=True)
+        self.wait_for_strings(['Hercules terminated','dyngui.dll terminated'], stderr=True)
         if msg:
             self.print('Hercules has exited')
 
@@ -2028,6 +2036,55 @@ class sysgen:
                     else:
                         line = self.stdout_q.get(False).strip()
                     continue
+                logging.debug(f"String: '{string_to_waitfor} found in '{line}'")
+                return
+
+            except queue.Empty:
+                continue
+
+    def wait_for_strings(self, strings_to_waitfor=[], stderr=False, timeout=False):
+        '''
+           Reads stdout queue waiting for expected response, default is
+           to check STDOUT queue, set stderr=True to check stderr queue instead
+           default timeout is 30 minutes
+        '''
+        time_started = time.time()
+
+        if not timeout:
+            timeout = 1800
+
+        if self.timeout:
+            timeout=int(self.timeout)
+
+        logging.debug("Waiting for Strings to appear in hercules log: {}".format(strings_to_waitfor))
+
+        while True:
+            if time.time() > time_started + timeout:
+                if self.substep:
+                    exception = "Step: {} Substep: {} took too long".format(self.step, self.substep)
+                    log = "Step: {} Substep: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
+                else:
+                    exception = "Step: {} Timeout".format(self.step, self.substep)
+                    log = "Step: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
+                logging.debug(log)
+                raise Exception(exception)
+
+            try:
+                if stderr:
+                    line = self.stderr_q.get(False).strip()
+                else:
+                    line = self.stdout_q.get(False).strip()
+
+                while not any(string in line for string in strings_to_waitfor):
+                    
+                    if stderr:
+                        line = self.stderr_q.get(False).strip()
+                    else:
+                        line = self.stdout_q.get(False).strip()
+                    continue
+                
+                logging.debug(f"String: '{strings_to_waitfor} found in '{line}'")
+                
                 return
 
             except queue.Empty:
@@ -2335,6 +2392,8 @@ class sysgen:
             repo,
             folder.format(out_folder, repo.split("/")[-1])
         ]
+
+        logging.debug(f"Git clone {repo} with: {args}")
 
         rc = subprocess.call(args, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
