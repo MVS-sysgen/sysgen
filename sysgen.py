@@ -1819,6 +1819,10 @@ class sysgen:
             self.wait_for_string('IEF404I JES2 - ENDED - ')
         else:
             self.wait_for_string('IEF196I IEF285I   VOL SER NOS= SPOOL0.')
+
+        # WRL Give MVS / JES2 time to catch up
+        time.sleep(5)
+
         self.send_oper('z eod')
         self.wait_for_string('IEE334I HALT     EOD SUCCESSFUL')
         self.send_oper('quiesce')
