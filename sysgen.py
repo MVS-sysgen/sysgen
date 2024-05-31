@@ -1819,6 +1819,10 @@ class sysgen:
             self.wait_for_string('IEF404I JES2 - ENDED - ')
         else:
             self.wait_for_string('IEF196I IEF285I   VOL SER NOS= SPOOL0.')
+
+        # WRL Give MVS / JES2 time to catch up
+        time.sleep(5)
+
         self.send_oper('z eod')
         self.wait_for_string('IEE334I HALT     EOD SUCCESSFUL')
         self.send_oper('quiesce')
@@ -2225,7 +2229,9 @@ class sysgen:
         Path(running_folder+"MVSCE/punchcards").mkdir(parents=True, exist_ok=True)
 
         self.print("Copying scripts to {}".format(Path(running_folder+"MVSCE/SCRIPTS").resolve()))
-        shutil.copytree(Path('SCRIPTS').resolve(), Path(running_folder+"MVSCE/SCRIPTS").resolve())
+
+        # WRL overwrite existing target directory
+        shutil.copytree(Path('SCRIPTS').resolve(), Path(running_folder+"MVSCE/SCRIPTS").resolve(), dirs_exist_ok=True)
 
         up = "| {:9} | {:8}|\n"
 
