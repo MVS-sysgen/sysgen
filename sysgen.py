@@ -648,7 +648,7 @@ class sysgen:
         self.wait_for_string("$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string("IEF166D REPLY Y/N TO EXECUTE/SUPPRESS COMMAND")
-        self.print("Assingning the volume SMP000 to the class of PRIVATE")
+        self.print("Assigning the volume SMP000 to the class of PRIVATE")
         self.send_reply('y')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
 
