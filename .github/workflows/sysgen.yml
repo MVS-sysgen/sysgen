@@ -71,7 +71,7 @@ jobs:
           sparse-checkout: |
             Docker
       - name: Download MVS/CE Tar File
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: MVSCE
           path: .
