@@ -121,6 +121,8 @@ APFPTABL DS    0D                      ALIGNMENT
          DC    C'BREXX   '
          DC    C'REXX    '
          DC    C'RX      '
+         DC    C'RECEIVE '
+         DC    C'TRANSMIT'
          DC    C'        '             TERMINATOR
          END
 ./ ENDUP
