@@ -63,16 +63,19 @@
 //* Issues Vary and Mount commands to place newly initialized DASD    * 
 //* online. IMPORT SYSCPK User Catalog into Master Catalog.           * 
 //********************************************************************* 
-// V (180,190,220,221,222,223,224,225,253),ONLINE                       
-// M 180,VOL=(SL,PUB000),USE=PRIVATE                                    
-// M 190,VOL=(SL,PUB001),USE=PRIVATE                                    
-// M 220,VOL=(SL,SORTW1),USE=PUBLIC                                     
-// M 221,VOL=(SL,SORTW2),USE=PUBLIC                                     
-// M 222,VOL=(SL,SORTW3),USE=PUBLIC                                     
-// M 223,VOL=(SL,SORTW4),USE=PUBLIC                                     
-// M 224,VOL=(SL,SORTW5),USE=PUBLIC                                     
-// M 225,VOL=(SL,SORTW6),USE=PUBLIC                                     
-// M 253,VOL=(SL,SYSCPK),USE=PRIVATE                                    
+// V (180,190,220,221,222,223,224,225,250,251,252,253),ONLINE
+// M 180,VOL=(SL,PUB000),USE=PUBLIC
+// M 190,VOL=(SL,PUB001),USE=PUBLIC
+// M 220,VOL=(SL,SORTW1),USE=PUBLIC
+// M 221,VOL=(SL,SORTW2),USE=PUBLIC
+// M 222,VOL=(SL,SORTW3),USE=PUBLIC
+// M 223,VOL=(SL,SORTW4),USE=PUBLIC
+// M 224,VOL=(SL,SORTW5),USE=PUBLIC
+// M 225,VOL=(SL,SORTW6),USE=PUBLIC
+// M 250,VOL=(SL,SMP000),USE=PUBLIC
+// M 251,VOL=(SL,WORK00),USE=PUBLIC
+// M 252,VOL=(SL,WORK01),USE=PUBLIC
+// M 253,VOL=(SL,SYSCPK),USE=PUBLIC
 //IEFBR14  EXEC PGM=IEFBR14                                             
 //IDCAMS01 EXEC PGM=IDCAMS,REGION=4096K                                 
 //SYSPRINT DD SYSOUT=*                                                  

@@ -2,10 +2,10 @@
 //********************************************************************* 
 //*                                                                   * 
 //* This job presents a MOUNT command to the operator for confirma-   * 
-//* tion that sets the Storage Class to PRIVATE for the volume that   * 
+//* tion that sets the Storage Class to PUBLIC for the volume that    *
 //* is to receive Distribution Library Datasets.                      * 
 //*                                                                   * 
 //********************************************************************* 
-// M 148,VOL=(SL,SMP000),USE=PRIVATE                                    
+// M 148,VOL=(SL,SMP000),USE=PUBLIC                                    
 //S1       EXEC PGM=IEFBR14                                             
 //                                                                      
