@@ -101,7 +101,7 @@ kill_hercules = threading.Event()
 reset_herc_event = threading.Event()
 STDERR_to_logs = threading.Event()
 running_folder = os.path.dirname(os.path.abspath(__file__)) + "/"
-os.chdir(os.path.dirname(sys.argv[0]))
+os.chdir(running_folder)
 
 logging.basicConfig(filename=running_folder+logname,
                             filemode='w',
@@ -347,6 +347,10 @@ class sysgen:
         while True:
 
             l = pipe.readline()
+            if not l:
+                # EOF, hercules has exited and closed the pipe
+                logging.debug("Hercules stdout closed, stdout thread exiting")
+                break
             if len(l.strip()) > 0:
                 if len(l.strip()) > 3 and l[0:2] == '/*' and l[2:4].isnumeric():
                     reply_num = l[2:4]
@@ -368,6 +372,10 @@ class sysgen:
         ''' queue the stderr in a non blocking way'''
         while True:
             l = pipe.readline()
+            if not l:
+                # EOF, hercules has exited and closed the pipe
+                logging.debug("Hercules stderr closed, stderr thread exiting")
+                break
             if len(l.strip()) > 0:
                 if STDERR_to_logs.is_set():
                     logging.debug("[DIAG - STDERR] {}".format(l.strip()))
@@ -375,9 +383,10 @@ class sysgen:
                     logging.debug("[DIAG - STDERR] {}".format(l.strip()))
                 q.put(l)
 
+                if "Creating crash dump" in l:
+                    logging.debug("Hercules crash dump detected during step {}/{}, exiting".format(self.step, self.substep))
+                    os._exit(1)
                 for errors in error_check:
-                    if "Creating crash dump" in l:
-                        os._exit(1)
                     if errors in l:
                         print("Quiting! Irrecoverable Hercules error: {}".format(l.strip()))
                         kill_hercules.set()
@@ -393,9 +402,10 @@ class sysgen:
             if kill_hercules.is_set():
                 hercproc.kill()
                 break
-            continue
+            time.sleep(0.1)
 
-        self.print("ERROR - Hercules Exited Unexpectedly", color="RED")
+        logging.debug("Hercules exited unexpectedly during step {}/{} with rc {}".format(self.step, self.substep, hercproc.returncode))
+        self.print("ERROR - Hercules Exited Unexpectedly during step {}/{}".format(self.step, self.substep), color="RED")
         os._exit(1)
 
     def print_logo(self):
@@ -603,8 +613,6 @@ class sysgen:
         #self.wait_for_string('HHC01603I detach 014A')
         self.quit_hercules(msg=True)
         self.backup_dasd("02_install_smp4")
-        if quit:
-            self.quit_hercules()
 
     def step_03_build_dlibs(self, start=False):
         '''macro function to run the various steps
@@ -887,6 +895,11 @@ class sysgen:
 
     def sysgenjobs_ipl(self, step_text=''):
         self.print(step_text)
+        # the sysgen2 section attaches temp/stage1.het (the scratch tape
+        # SYSGEN01 punches the stage 1 output to), it must exist or the
+        # attach fails
+        if not os.path.exists('temp/stage1.het'):
+            self.hetinit('temp/stage1.het')
         self.reset_hercules()
         self.set_configs('sysgen2')
         #self.wait_for_string("0:0151 CKD")
@@ -1391,37 +1404,46 @@ class sysgen:
         self.quit_hercules(msg=False)
         self.backup_dasd("24_SYSGEN06")
 
+    def hetinit(self, tape_file):
+        '''Creates an empty NL scratch tape'''
+        try:
+            hetinit_query_path = subprocess.check_output(["which", "hetinit"]).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise Exception('hercules program hetinit not found')
+
+        self.print("Creating scratch tape {}".format(tape_file))
+        subprocess.check_call([hetinit_query_path, '-n', '-d', tape_file],
+                              stdout=subprocess.DEVNULL)
+
     def hetget_sysgen01(self,outpath='temp/'):
 
         try:
             hetget_query_path = subprocess.check_output(["which", "hetget"]).strip()
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             raise Exception('hercules program hetget not found')
 
 
         args = [
             hetget_query_path,
-            "-a", 'tape/stage1.het',
+            "-a", 'temp/stage1.het',
             outpath + 'sysgen01.output', '1'
             ]
 
 
-        self.print("Extracting SYSGEN01 job output from tape/stage1.het to {}".format(outpath + 'sysgen01a.output'))
+        self.print("Extracting SYSGEN01 job output from temp/stage1.het to {}".format(outpath + 'sysgen01.output'))
         subprocess.check_call(args, stdout=subprocess.DEVNULL)
 
     def sysgen01_extract(self, outpath="temp/"):
         logging.debug("Extracting JCL from {}sysgen01.output".format(outpath))
         self.print("Extracting JCL from {}sysgen01.output".format(outpath))
         start = ord('a') - 1
+        f = None
         with open(outpath+'sysgen01.output', 'r') as sysgen01_stage1:
 
             for line in sysgen01_stage1:
-                #f.write(line)
                 if 'JOB' in line and line[0:2] == "//":
-                    try:
-                        f.close
-                    except:
-                        pass
+                    if f:
+                        f.close()
                     job = line.split()[0][2:].strip()
                     newname = 'sysgen01{}.jcl'.format(chr(start + int(job[-1])))
                     self.print('Extracting {} to {}{}'.format(job,outpath,newname))
@@ -1437,15 +1459,12 @@ class sysgen:
                     line = '//STEPY      EXEC PGM=IEFBR14,REGION=512K\n'
                 elif 'LABEL=EXPDT=99350' in line:
                     line = line.replace('LABEL=EXPDT=99350','LABEL=EXPDT=00000')
-                try:
+                # lines before the first JOB card are not written anywhere
+                if f:
                     f.write(line)
-                except:
-                    pass
 
-        try:
-            f.close
-        except:
-            pass
+        if f:
+            f.close()
 
 
     def step_05_usermods(self,start=False):
@@ -1850,7 +1869,7 @@ class sysgen:
         #     archive.add('MVSCE/DASD')
         try:
             tar_query_path = subprocess.check_output(["which", "tar"]).strip()
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             raise Exception('tar not found')
 
         outfolder = "{}.tar".format(step)
@@ -1869,7 +1888,8 @@ class sysgen:
             git_query_path = subprocess.check_output(["which", "git"]).strip()
             version = subprocess.check_output([git_query_path, 'rev-parse', '--short', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()
             self.git_hash = subprocess.check_output([git_query_path, 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode('ascii').strip()
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # not in a git repo or git not installed, use the hardcoded version
             version = VERSION
 
         if not self.version:
@@ -1885,7 +1905,7 @@ class sysgen:
 
         try:
             shutil.rmtree(self.path)
-        except:
+        except FileNotFoundError:
             pass
 
         # This was too slow
@@ -1893,7 +1913,7 @@ class sysgen:
         #     archive.extractall()
         try:
             tar_query_path = subprocess.check_output(["which", "tar"]).strip()
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             raise Exception('tar not found')
 
         args = [
@@ -1902,27 +1922,36 @@ class sysgen:
             ]
         subprocess.check_call(args, stdout=subprocess.DEVNULL)
 
-    def check_maxcc(self, jobname, steps_cc={}, printer_file='prt00e.txt'):
+    def check_maxcc(self, jobname, steps_cc=None, printer_file='prt00e.txt'):
         '''Checks job and steps results, raises error
             If the step is in steps_cc, check the step vs the cc in the dictionary
             otherwise checks if step is zero
         '''
         logging.debug("Checking {} job results".format(jobname))
 
+        if steps_cc is None:
+            steps_cc = {}
+
         found_job = False
         failed_step = False
+        error = ''
 
         logmsg = '[MAXCC] Jobname: {:<8} Procname: {:<8} Stepname: {:<8} Exit Code: {:<8}'
 
         with open(printer_file, 'r', errors='ignore') as f:
             for line in f.readlines():
-                if 'IEF142I' in line and jobname in line:
-
-                    found_job = True
+                if 'IEF142I' in line:
 
                     x = line.strip().split()
                     y = x.index('IEF142I')
                     j = x[y:]
+
+                    # compare the jobname field exactly so job names that are
+                    # substrings of other job names do not match
+                    if j[1] != jobname:
+                        continue
+
+                    found_job = True
 
                     log = logmsg.format(j[1],'',j[2],j[10])
                     maxcc=j[10]
@@ -1941,7 +1970,7 @@ class sysgen:
                         expected_cc = '0000'
 
                     if maxcc != expected_cc:
-                        error = "Step {} Condition Code does not match expected condition code: {} vs {} review prt00e.txt for errors".format(stepname,j[-1],expected_cc)
+                        error = "Step {} Condition Code does not match expected condition code: {} vs {} review prt00e.txt for errors".format(stepname,maxcc,expected_cc)
                         logging.debug(error)
                         failed_step = True
 
@@ -1976,8 +2005,8 @@ class sysgen:
 
         if not self.herccmd:
             try:
-                self.hercmd = subprocess.check_output(["which", "hercules"]).strip()
-            except:
+                self.herccmd = subprocess.check_output(["which", "hercules"]).strip()
+            except (subprocess.CalledProcessError, FileNotFoundError):
                 raise Exception('hercules not found')
 
         logging.debug("Launching hercules: {}".format(self.herccmd))
@@ -1993,7 +2022,7 @@ class sysgen:
 
         self.rc = self.hercproc.poll()
         if self.rc is not None:
-            raise("Unable to start hercules")
+            raise Exception("Unable to start hercules, rc: {}".format(self.rc))
         logging.debug("Hercules launched")
         self.set_configs('generic')
         #self.write_logs()
@@ -2015,133 +2044,98 @@ class sysgen:
         if msg:
             self.print('Hercules has exited')
 
+    def get_wait_timeout(self, timeout=False):
+        '''Returns the timeout to use for a wait: an explicit per call
+           timeout wins, otherwise --timeout, otherwise 30 minutes'''
+        if timeout:
+            return int(timeout)
+        if self.timeout:
+            return int(self.timeout)
+        return 1800
+
+    def wait_timed_out(self, time_started, timeout):
+        '''Checks the deadline and raises with step context if exceeded'''
+        if time.time() <= time_started + timeout:
+            return
+        if self.substep:
+            exception = "Step: {} Substep: {} took too long".format(self.step, self.substep)
+            log = "Step: {} Substep: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
+        else:
+            exception = "Step: {} took too long".format(self.step)
+            log = "Step: {} Timeout Exceeded {} seconds".format(self.step, timeout)
+        logging.debug(log)
+        raise Exception(exception)
+
     def wait_for_string(self, string_to_waitfor, stderr=False, timeout=False):
         '''
            Reads stdout queue waiting for expected response, default is
            to check STDOUT queue, set stderr=True to check stderr queue instead
-           default timeout is 30 minutes
+           default timeout is 30 minutes (or --timeout), an explicit
+           timeout argument overrides both
         '''
         time_started = time.time()
-
-        if not timeout:
-            timeout = 1800
-
-        if self.timeout:
-            timeout=int(self.timeout)
+        timeout = self.get_wait_timeout(timeout)
 
         logging.debug("Waiting for string to appear in hercules log: {}".format(string_to_waitfor))
 
+        q = self.stderr_q if stderr else self.stdout_q
+
         while True:
-            if time.time() > time_started + timeout:
-                if self.substep:
-                    exception = "Step: {} Substep: {} took too long".format(self.step, self.substep)
-                    log = "Step: {} Substep: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
-                else:
-                    exception = "Step: {} Timeout".format(self.step, self.substep)
-                    log = "Step: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
-                logging.debug(log)
-                raise Exception(exception)
+            self.wait_timed_out(time_started, timeout)
 
             try:
-                if stderr:
-                    line = self.stderr_q.get(False).strip()
-                else:
-                    line = self.stdout_q.get(False).strip()
-
-                while string_to_waitfor not in line:
-                    if stderr:
-                        line = self.stderr_q.get(False).strip()
-                    else:
-                        line = self.stdout_q.get(False).strip()
-                    continue
-                logging.debug(f"String: '{string_to_waitfor} found in '{line}'")
-                return
-
+                line = q.get(timeout=1).strip()
             except queue.Empty:
                 continue
 
-    def wait_for_strings(self, strings_to_waitfor=[], stderr=False, timeout=False):
+            if string_to_waitfor in line:
+                logging.debug(f"String: '{string_to_waitfor}' found in '{line}'")
+                return
+
+    def wait_for_strings(self, strings_to_waitfor, stderr=False, timeout=False):
         '''
-           Reads stdout queue waiting for expected response, default is
-           to check STDOUT queue, set stderr=True to check stderr queue instead
-           default timeout is 30 minutes
+           Reads stdout queue waiting for any of the expected responses,
+           default is to check STDOUT queue, set stderr=True to check stderr
+           queue instead. Default timeout is 30 minutes (or --timeout), an
+           explicit timeout argument overrides both
         '''
         time_started = time.time()
-
-        if not timeout:
-            timeout = 1800
-
-        if self.timeout:
-            timeout=int(self.timeout)
+        timeout = self.get_wait_timeout(timeout)
 
         logging.debug("Waiting for Strings to appear in hercules log: {}".format(strings_to_waitfor))
 
+        q = self.stderr_q if stderr else self.stdout_q
+
         while True:
-            if time.time() > time_started + timeout:
-                if self.substep:
-                    exception = "Step: {} Substep: {} took too long".format(self.step, self.substep)
-                    log = "Step: {} Substep: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
-                else:
-                    exception = "Step: {} Timeout".format(self.step, self.substep)
-                    log = "Step: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
-                logging.debug(log)
-                raise Exception(exception)
+            self.wait_timed_out(time_started, timeout)
 
             try:
-                if stderr:
-                    line = self.stderr_q.get(False).strip()
-                else:
-                    line = self.stdout_q.get(False).strip()
-
-                while not any(string in line for string in strings_to_waitfor):
-                    
-                    if stderr:
-                        line = self.stderr_q.get(False).strip()
-                    else:
-                        line = self.stdout_q.get(False).strip()
-                    continue
-                
-                logging.debug(f"String: '{strings_to_waitfor} found in '{line}'")
-                
-                return
-
+                line = q.get(timeout=1).strip()
             except queue.Empty:
                 continue
 
+            if any(string in line for string in strings_to_waitfor):
+                logging.debug(f"String: '{strings_to_waitfor}' found in '{line}'")
+                return
+
     def wait_for_psw(self, psw_wait, timeout=False):
-        '''Reads stdout queue waiting for expected response default timeout is 30 minutes'''
+        '''Reads stderr queue waiting for expected PSW, default timeout is
+           30 minutes (or --timeout), an explicit timeout argument overrides both'''
         logging.debug("Waiting for PSW to end with: {}".format(psw_wait))
 
         time_started = time.time()
-
-        if not timeout:
-            timeout = 1800
-
-        if not timeout and self.timeout:
-            timeout=self.timeout
+        timeout = self.get_wait_timeout(timeout)
 
         while True:
-
-            if time.time() > time_started + timeout:
-                if self.substep:
-                    exception = "Step: {} Substep: {} took too long".format(self.step, self.substep)
-                    log = "Step: {} Substep: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
-                else:
-                    exception = "Step: {} Timeout".format(self.step, self.substep)
-                    log = "Step: {} Timeout Exceeded {} seconds".format(self.step, self.substep, timeout)
-                logging.debug(log)
-                raise Exception(exception)
+            self.wait_timed_out(time_started, timeout)
 
             try:
-                psw = self.stderr_q.get(False).strip()
-
-                while psw_wait not in psw:
-                    psw = self.stderr_q.get(False).strip()
-                    continue
-                return
-
+                psw = self.stderr_q.get(timeout=1).strip()
             except queue.Empty:
                 continue
+
+            if psw_wait in psw:
+                return
 
     def step_09_mvp(self):
         self.set_step("step_09_mvp")
@@ -2389,7 +2383,7 @@ class sysgen:
 
         try:
             dasdinit_query_path = subprocess.check_output(["which", "dasdinit"]).strip()
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             raise Exception('hercules program dasdinit not found')
         folder = running_folder+"MVSCE/DASD/{}"
 
@@ -2431,15 +2425,12 @@ class sysgen:
             except OSError:
                 pass
 
-            compress = '-z'
-            if self.no_compress:
-                compress = ''
-
             dasd_type = dasd_dict[dasd_to_create][disk]
             self.print("Creating {} ({}) [{}]".format(disk, dasd_type, folder.format(disk)))
-            args = [
-                dasdinit_query_path,
-                "-a", compress,
+            args = [dasdinit_query_path, "-a"]
+            if not self.no_compress:
+                args.append('-z')
+            args += [
                 folder.format(disk),
                 dasd_type,
                 str(VOLUME) * 6
@@ -2451,20 +2442,28 @@ class sysgen:
     def git_clone(self, repo, out_folder="temp"):
         try:
             git_query_path = subprocess.check_output(["which", "git"]).strip()
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             raise Exception('git not found')
         folder = running_folder+"{}/{}"
+
+        target = folder.format(out_folder, repo.split("/")[-1])
+
+        if os.path.exists(target):
+            logging.debug("git clone target {} already exists, skipping clone".format(target))
+            return
 
         args = [
             git_query_path,
             'clone',
             repo,
-            folder.format(out_folder, repo.split("/")[-1])
+            target
         ]
 
         logging.debug(f"Git clone {repo} with: {args}")
 
-        rc = subprocess.call(args, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        result = subprocess.run(args, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
+        if result.returncode != 0:
+            raise Exception("git clone of {} failed: {}".format(repo, result.stderr.decode().strip()))
 
     def submit_file(self, jclfile, host='127.0.0.1',port=3505):
         logging.debug("[SUBMIT] Submitting {}".format(jclfile))
@@ -2499,7 +2498,7 @@ class sysgen:
             try:
                 # Connect to server and send data
                 sock.connect((host, port))
-                sock.send(jobcard.encode() + jcl)
+                sock.sendall(jobcard.encode() + jcl)
             finally:
                 sock.close()
 
@@ -2513,7 +2512,7 @@ class sysgen:
             try:
                 # Connect to server and send data
                 sock.connect((host, port))
-                sock.send(jcl)
+                sock.sendall(jcl)
             finally:
                 sock.close()
 
@@ -2525,7 +2524,7 @@ class sysgen:
         try:
             # Connect to server and send data
             sock.connect((host, port))
-            sock.send(jcl.encode())
+            sock.sendall(jcl.encode())
         finally:
             sock.close()
 
