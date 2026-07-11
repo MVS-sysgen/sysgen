@@ -232,6 +232,11 @@ class sysgen:
         Path(running_folder+"backup").mkdir(parents=True, exist_ok=True)
         Path(running_folder+"temp").mkdir(parents=True, exist_ok=True)
 
+        # MVP packages write their hercules config to MVSCE_ROOT/conf/local
+        # hercules inherits this environment variable and passes it to MVP
+        # when packages use 'sh MVP/MVP WRITE'
+        os.environ['MVSCE_ROOT'] = str(Path(running_folder+"MVSCE").resolve())
+
         self.print("Reading config file: {}".format(running_folder+config))
         self.read_configs(running_folder+config)
         self.hercproc = False
@@ -293,14 +298,22 @@ class sysgen:
 
             if step == 'step_10_extras':
                 self.step_10_extras()
-                step = "step_11_ispf"
+                step = "step_11_nje38"
 
-            if step == 'step_11_ispf':
-                self.step_11_ispf()
-                step = "step_12_cleanup"
+            if step == 'step_11_nje38':
+                self.step_11_nje38()
+                step = "step_12_ispf"
 
-            if step == 'step_12_cleanup':
-                self.step_12_cleanup()
+            if step == 'step_12_ispf':
+                self.step_12_ispf()
+                step = "step_13_customize"
+
+            if step == 'step_13_customize':
+                self.step_13_customize()
+                step = "step_14_cleanup"
+
+            if step == 'step_14_cleanup':
+                self.step_14_cleanup()
 
         finally:
             s, ss = self.get_step()
@@ -2183,14 +2196,44 @@ class sysgen:
         self.quit_hercules(msg=False)
         self.backup_dasd("34_EXTRAS")
 
-    def step_11_ispf(self):
-        self.set_step("step_11_ispf")
+    def step_11_nje38(self):
+        self.set_step("step_11_nje38")
 
-        self.print("Step 11. Installing Wally ISPF", color="CYAN")
-        # This step installs Wally ISPF and Review Front End
+        self.print("Step 11. Installing NJE38", color="CYAN")
 
         self.restore_dasd("34_EXTRAS")
-        self.custjobs_ipl("Installing Wally ISPF, Review Front End, and NJE38 with MVP", clpa=True)
+        # NJE38 appends its config to MVSCE/conf/local/nje38.cnf and adds an
+        # INCLUDE to custom.cnf, make sure the folder and custom.cnf exist
+        # and remove any nje38.cnf from a previous run
+        Path(running_folder+"MVSCE/conf/local").mkdir(parents=True, exist_ok=True)
+        try:
+            os.remove(running_folder+"MVSCE/conf/local/nje38.cnf")
+            logging.debug("Removed stale MVSCE/conf/local/nje38.cnf")
+        except OSError:
+            pass
+        shutil.copy(Path('conf/local/custom.cnf').resolve(),Path(running_folder+"MVSCE/conf/local/custom.cnf").resolve())
+
+        self.custjobs_ipl("Installing NJE38", clpa=False)
+        rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
+        self.submit_file_binary_post_rakf(
+            jclfile='jcl/nje38.jcl',
+            jobname='NJE38MVP',
+            user=rakf_admin_user,password=rakf_admin_password,
+            desc='NJE38 INSTALL')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("NJE38MVP")
+        self.shutdown_mvs(cust=True)
+        self.quit_hercules(msg=False)
+        self.backup_dasd("35_NJE38")
+
+    def step_12_ispf(self):
+        self.set_step("step_12_ispf")
+
+        self.print("Step 12. Installing Wally ISPF", color="CYAN")
+        # This step installs Wally ISPF and Review Front End
+
+        self.restore_dasd("35_NJE38")
+        self.custjobs_ipl("Installing Wally ISPF and Review Front End with MVP", clpa=False)
         #self.submit_file('jcl/ispf.jcl')
         rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
         self.submit_file_binary_post_rakf(
@@ -2202,11 +2245,31 @@ class sysgen:
         self.check_maxcc("MVPISPF")
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
-        self.backup_dasd("35_ISPF")
+        self.backup_dasd("36_ISPF")
 
-    def step_12_cleanup(self):
-        self.set_step("step_12_cleanup")
-        self.print("Step 12. Finalizing and Cleaning Up", color="CYAN")
+    def step_13_customize(self):
+        self.set_step("step_13_customize")
+
+        self.print("Step 13. Running Customizations", color="CYAN")
+
+        self.restore_dasd("36_ISPF")
+        self.custjobs_ipl("Running customize.jcl", clpa=True)
+        rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
+        self.submit_file_binary_post_rakf(
+            jclfile='jcl/customize.jcl',
+            jobname='CUSTOMIZ',
+            user=rakf_admin_user,password=rakf_admin_password,
+            desc='CUSTOMIZE MVSCE')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("CUSTOMIZ")
+        self.shutdown_mvs(cust=True)
+        self.quit_hercules(msg=False)
+        self.backup_dasd("37_CUSTOM")
+
+
+    def step_14_cleanup(self):
+        self.set_step("step_14_cleanup")
+        self.print("Step 14. Finalizing and Cleaning Up", color="CYAN")
 
         self.finalize()
 
@@ -2223,7 +2286,6 @@ class sysgen:
 
         self.print("Copying hercules config files to {}".format(Path(running_folder+"MVSCE/conf").resolve()))
         shutil.copy(Path('conf/local.cnf').resolve(),Path(running_folder+"MVSCE/conf").resolve())
-        shutil.copy(Path('conf/local/custom.cnf').resolve(),Path(running_folder+"MVSCE/conf/local/custom.cnf").resolve())
         shutil.copy(Path('conf/mvsce.rc').resolve(),Path(running_folder+"MVSCE/conf").resolve())
         
         Path(running_folder+"MVSCE/printers").mkdir(parents=True, exist_ok=True)
@@ -2285,7 +2347,7 @@ class sysgen:
             self.restore_dasd("31_BREXX")
 
         if not self.no_rakf:
-            self.restore_dasd("35_ISPF")
+            self.restore_dasd("37_CUSTOM")
 
         self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True)
         #self.submit_file('jcl/finalize.jcl')
@@ -2300,7 +2362,7 @@ class sysgen:
         self.check_maxcc("FINALIZE")
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
-        self.backup_dasd("36_FINAL")
+        self.backup_dasd("38_FINAL")
 
     def get_rakf_admin(self,rakf_file='temp/rakf_users.txt'):
         rakf_admin_user = ''
@@ -2511,8 +2573,10 @@ def main():
         'step_08_rakf'              : False,
         'step_09_mvp'               : False,
         'step_10_extras'            : False,
-        'step_11_ispf'              : False,
-        'step_12_cleanup'           : False
+        'step_11_nje38'             : False,
+        'step_12_ispf'              : False,
+        'step_13_customize'         : False,
+        'step_14_cleanup'           : False
     }
 
     main_steps = []

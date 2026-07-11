@@ -96,8 +96,10 @@ Running MVS/CE sysgen will:
 - Build a modified Jay Moseley sysgen MVS 3.8J
 - Install BREXX
 - Install RAKF
+- Install NJE38
 - Install RFE
 - Install Wally ISPF
+- Install the packages in `jcl/customize.jcl` with MVP (OPNTERSE, UFSD, FTPD, HTTPD, and MVSMF by default, these are installed but not started)
 - Create the folder MVSCE and store the completed sysgen there
 
 To build MVS/CE use `sysgen.py`. This python script can take many arguments:
@@ -135,6 +137,51 @@ The arguments below are for more granular control of where to start sysgen from.
 
 :warning: By default sysgen will remove the temp and backup folders. If you're doing development work you can use the `--keep-backup` and `--keep-temp` arguments to keep those folders after systen completes allowing you to restart sysgen at any point. 
 
+## Customizing your build with customize.jcl
+
+Near the end of sysgen (step 13, `step_13_customize`) the file `jcl/customize.jcl`
+is submitted to the newly built system. At this point BREXX, RAKF, MVP, NJE38, and
+ISPF are already installed, so this jobstream is the place to add your own
+customizations that you want baked in to the final system.
+
+Note: `jcl/customize.jcl` must **not** contain a JOB card, sysgen.py generates one
+automatically using a RAKF admin user (the commented out job card at the top of the
+file shows what it will look like).
+
+### Installing software with MVP
+
+The most common use of `customize.jcl` is installing extra software using MVP, the
+MVS/CE package manager. Each package is installed with one EXEC statement:
+
+```jcl
+//MVPINST EXEC MVP,INSTALL='FTPD -D'
+```
+
+The `-D` flag enables debug output to the job log and MVS console, which is
+recommended during sysgen so failures are easier to diagnose.
+
+By default `customize.jcl` installs OPNTERSE, UFSD, FTPD, HTTPD, and MVSMF. To
+install additional packages just add more `//MVPINST EXEC MVP,INSTALL='...'` lines,
+one per package:
+
+```jcl
+//MVPINST EXEC MVP,INSTALL='OPNTERSE -D'
+//MVPINST EXEC MVP,INSTALL='UFSD -D'
+//MVPINST EXEC MVP,INSTALL='FTPD -D'
+//MVPINST EXEC MVP,INSTALL='HTTPD -D'
+//MVPINST EXEC MVP,INSTALL='MVSMF -D'
+//MVPINST EXEC MVP,INSTALL='RPF -D'
+```
+
+To see what packages are available check the `MVP/packages` folder in this repo, or
+see the MVP repository: https://github.com/MVS-sysgen/MVP
+
+You are not limited to MVP installs: any JCL steps you want (copying members,
+allocating datasets, applying local mods, etc.) can be added to this jobstream.
+
+:warning: sysgen expects every step in `customize.jcl` to end with a condition code
+of 0000. If any step fails (for example, a typo in a package name) sysgen will stop
+at step 13, and you can fix the JCL and rerun with `-C` (or `--step step_13_customize`).
 
 ## Usernames/Passwords
 
