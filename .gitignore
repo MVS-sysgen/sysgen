@@ -12,3 +12,5 @@ MVP/
 MVP
 p*.txt
 tape/stage1.het
+__pycache__/
+zapp.yaml
