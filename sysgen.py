@@ -710,6 +710,8 @@ class sysgen:
         self.send_herc("devinit 12 jcl/smpjob01.jcl")
         self.wait_for_string("IEF247I SMPJOB01 - 471,570,571,670,671 NOT ACCESSIBLE")
         self.send_herc('devinit 170 tape/zdlib1.het')
+        # wait for the reply prompt so reply_num is current before replying
+        self.wait_for_string("IEF238D SMPJOB01 - REPLY DEVICE NAME OR 'CANCEL'.")
         self.send_reply('170')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
         self.check_maxcc(jobname='SMPJOB01')
@@ -729,6 +731,8 @@ class sysgen:
         self.send_herc("devinit 12 jcl/smpjob02.jcl")
         self.wait_for_string("IEF247I SMPJOB02 - 471,570,571,670,671 NOT ACCESSIBLE")
         self.send_herc('devinit 170 tape/ptfs.het')
+        # wait for the reply prompt so reply_num is current before replying
+        self.wait_for_string("IEF238D SMPJOB02 - REPLY DEVICE NAME OR 'CANCEL'.")
         self.send_reply('170')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
         self.check_maxcc(jobname='SMPJOB02')
@@ -766,6 +770,8 @@ class sysgen:
         self.send_herc("devinit 12 jcl/smpjob04.jcl")
         self.wait_for_string("IEF247I SMPJOB04 - 471,570,571,670,671 NOT ACCESSIBLE")
         self.send_herc("devinit 170 tape/j90009.het")
+        # wait for the reply prompt so reply_num is current before replying
+        self.wait_for_string("IEF238D SMPJOB04 - REPLY DEVICE NAME OR 'CANCEL'.")
         self.send_reply('170')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
         self.check_maxcc(jobname='SMPJOB04')
@@ -895,11 +901,12 @@ class sysgen:
 
     def sysgenjobs_ipl(self, step_text=''):
         self.print(step_text)
-        # the sysgen2 section attaches temp/stage1.het (the scratch tape
-        # SYSGEN01 punches the stage 1 output to), it must exist or the
-        # attach fails
+        # The sysgen2 section attaches temp/stage1.het, so the file must
+        # exist or the attach fails. sysgen01 creates it fresh (it is the
+        # only writer), this is just a safety net so resuming at a later
+        # sysgen step still has a tape to attach.
         if not os.path.exists('temp/stage1.het'):
-            self.hetinit('temp/stage1.het')
+            self.hetinit('temp/stage1.het', 'STAGE1')
         self.reset_hercules()
         self.set_configs('sysgen2')
         #self.wait_for_string("0:0151 CKD")
@@ -972,6 +979,17 @@ class sysgen:
         self.restore_dasd("11_SYSGEN00")
         if self.skip_steps:
             self.print("Step 4. Performing a System Generation - Building MVS 3.8j",color="CYAN")
+
+        # SYSGEN01 punches the stage 1 output to temp/stage1.het, it needs a
+        # fresh standard label STAGE1 volume to write to (a stale or
+        # half-written tape is rejected with IEF503I INCORRECT VOLUME LABEL).
+        # This is the only step that writes the tape, the later sysgen steps
+        # just attach it and read the extracted temp/sysgen01*.jcl instead.
+        try:
+            os.remove('temp/stage1.het')
+        except OSError:
+            pass
+        self.hetinit('temp/stage1.het', 'STAGE1')
 
         self.sysgenjobs_ipl("Building the hardware configuration for MVS 3.8j")
         self.send_herc("devinit 12 jcl/sysgen01.jcl")
@@ -1404,15 +1422,18 @@ class sysgen:
         self.quit_hercules(msg=False)
         self.backup_dasd("24_SYSGEN06")
 
-    def hetinit(self, tape_file):
-        '''Creates an empty NL scratch tape'''
+    def hetinit(self, tape_file, volser):
+        '''Creates an empty standard label (SL) scratch tape with the given
+           volume serial. SYSGEN01 writes the stage 2 deck to this tape and
+           MVS requires it to be labelled (e.g. STAGE1), an unlabelled tape
+           is rejected with IEF503I INCORRECT VOLUME LABEL'''
         try:
             hetinit_query_path = subprocess.check_output(["which", "hetinit"]).strip()
         except (subprocess.CalledProcessError, FileNotFoundError):
             raise Exception('hercules program hetinit not found')
 
-        self.print("Creating scratch tape {}".format(tape_file))
-        subprocess.check_call([hetinit_query_path, '-n', '-d', tape_file],
+        self.print("Creating scratch tape {} (volser {})".format(tape_file, volser))
+        subprocess.check_call([hetinit_query_path, tape_file, volser],
                               stdout=subprocess.DEVNULL)
 
     def hetget_sysgen01(self,outpath='temp/'):
