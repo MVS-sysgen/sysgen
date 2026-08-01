@@ -5,6 +5,8 @@ import os
 import datetime
 import logging
 import subprocess
+import urllib.request
+import json
 import threading
 import queue
 import socket
@@ -1842,16 +1844,62 @@ class sysgen:
             for entry in d.iterdir():
                 if entry.is_file():
                     print(entry)
-        self.submit(subprocess.check_output(['temp/RAKF/generate_release.py','-u',Path('temp/rakf_users.txt').resolve(),'-p',self.profiles]).decode())
+        # The RAKF admin tools (ADDUSER/ALTUSER) are cross-compiled off-platform
+        # by the RAKF GitHub Actions pipeline and published as an XMIT asset on
+        # the rolling 'latest' release. Fetch that prebuilt binary and hand it to
+        # generate_release.py via --xmit so we don't need the cc370 toolchain
+        # here; generate_release.py still hashes our custom users and embeds it.
+        tools_xmit = Path('temp/RAKF/rakf-tools.xmit').resolve()
+        self.github_release_asset("MVS-sysgen/RAKF", "rakf-tools.xmit", tools_xmit)
+
+        # generate_release.py does not emit text: the stream is 80 column EBCDIC
+        # card images carrying the raw SYS1.SECURE.SHADOW records and the tools
+        # XMIT inline behind DD DATA cards. Write it to a file and submit it
+        # untranslated to the EBCDIC reader (device 001A / port 3506) -- the
+        # ASCII reader on 3505 would translate and destroy the binary members.
+        # --recv370 unpacks the admin-tool XMIT with RECV370 out of SYSC.LINKLIB
+        # instead of TSO RECEIVE. RECEIVE/TRANSMIT is not part of base MVS 3.8J;
+        # here it arrives with NJE38 (step 11), which needs MVP (step 9), which
+        # needs RAKF -- so at step 8 the RECEIVE path fails with
+        # 'IKJ56500I COMMAND RECEIVE NOT FOUND'. RECV370 is already on the
+        # system by now; jcl/brexx.jcl uses it in step 7.
+        install_jcl = Path('temp/RAKF/install_rakf.jcl').resolve()
+        subprocess.check_call([
+            'temp/RAKF/generate_release.py',
+            '-u', Path('temp/rakf_users.txt').resolve(),
+            '-p', self.profiles,
+            '-x', str(tools_xmit),
+            '-o', str(install_jcl),
+            '--recv370',
+        ])
+        self.submit_file_binary(install_jcl, port=3506)
         self.print("Installing RAKF Release")
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
-        self.check_maxcc("RAKFINST", steps_cc={'DELETE' : '0008', 'APPLYR' : '0004',  'ZJW00032' : '0004'})
+        self.check_maxcc("RAKFINST", steps_cc={'DELETE' : '0008', 'APPLYR' : '0004',  'ZJW00032' : '0004', 'ZJW00042' : '0004'})
         self.custjobs_ipl("Resetting MVSCE with CLPA to complete install", clpa=True)
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("32_RAKF")
 
-    def custjobs_ipl(self, step_text='', clpa=False):
+    def custjobs_ipl(self, step_text='', clpa=False, cold=True):
+        '''Re-IPL MVS between install steps.
+
+           cold=True replies 'format,cold' to $HASP426 instead of 'noreq',
+           which reformats SPOOL1 rather than warm-starting onto whatever
+           JES2 left behind. A warm start inherits the checkpoint from the
+           previous shutdown, so a step that died -- or whose shutdown job
+           could not authenticate -- leaves an inconsistent spool that
+           surfaces on the *next* IPL as:
+
+               $HASP096 DISASTROUS ERROR AT SYMBOL NQDSTER IN MODULE HASPMISC
+
+           Cold starting makes each step independent of how the previous one
+           ended. It is safe because check_maxcc() reads prt00e.txt, a host
+           file written by the 1403 as JES2 prints, not the spool itself --
+           and every step drains to $HASP099 and checks its return codes
+           before shutting down. What a cold start discards is held output
+           (MSGCLASS=H) from earlier steps, which nothing reads.
+        '''
         self.print(step_text)
         self.reset_hercules()
         self.set_configs('customization2')
@@ -1863,16 +1911,85 @@ class sysgen:
         else:
             self.send_oper()
         self.wait_for_string('$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.1')
-        self.send_reply('noreq')
+        if cold:
+            self.send_reply('format,cold,noreq')
+            # A cold start can raise confirmation prompts before it begins
+            # formatting, and which ones appear depends on the state the
+            # previous shutdown left behind:
+            #
+            #   $HASP479 UNABLE TO OBTAIN CKPT DATA SET LOCK
+            #       the checkpoint lock was never released. Expected after a
+            #       graceful=False shutdown, which skips $P JES2 precisely so
+            #       it does not have to wait for JES2 to tidy up.
+            #
+            #   $HASP436 REPLY Y OR N TO CONFIRM CHECKPOINT RECORD CHANGE
+            #       the checkpoint on disk disagrees with JES2PM00, e.g. a
+            #       changed &CKPTIME.
+            #
+            # Both are answered Y, and neither is guaranteed to appear -- a
+            # checkpoint that is unlocked and already matching goes straight
+            # to formatting. Loop until formatting actually starts so any
+            # order or subset works, bounded so an unexpected repeating
+            # prompt fails instead of spinning.
+            #
+            # reply_num is current by the time a prompt is matched:
+            # queue_stdout sets it as it reads the line, ahead of this thread.
+            prompts = ['$HASP479', '$HASP436']
+            formatting = '$HASP423 SPOOL1 IS BEING FORMATTED'
+            for _ in range(len(prompts) + 1):
+                found = self.wait_for_strings(prompts + [formatting])
+                if found == formatting:
+                    break
+                logging.debug('Answering Y to {} during JES2 cold start'.format(found))
+                self.send_reply('y')
+            else:
+                raise Exception(
+                    "JES2 cold start did not reach '{}' after answering {}".format(
+                        formatting, prompts))
+        else:
+            self.send_reply('noreq')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
 
-    def shutdown_mvs(self, cust=False):
-        logging.debug('Shutting down MVS')
-        self.send_oper('$p jes2')
-        if cust:
-            self.wait_for_string('IEF404I JES2 - ENDED - ')
+    def shutdown_mvs(self, cust=False, graceful=None):
+        '''Shut MVS down.
+
+           graceful=True issues '$p jes2' and waits for JES2 to terminate.
+           That wait is dominated by JES2's final checkpoint write, which is
+           driven by the &CKPTIME timer in SYS1.PARMLIB(JES2PM00) -- so it
+           costs anywhere from 0 to &CKPTIME seconds depending on where in
+           the cycle the command lands, with the CPU sitting in a wait state
+           the whole time.
+
+           graceful=False skips '$p jes2' entirely and goes straight to
+           'z eod' + 'quiesce'. SMF and the system log are still closed
+           properly; what is abandoned is JES2's spool and checkpoint state.
+
+           The default follows `cust`, because that is exactly the split:
+
+             cust=False  the pre-customization steps (2-6), whose next IPL
+                         warm starts -- they must shut JES2 down cleanly.
+             cust=True   the customization steps, which custjobs_ipl now
+                         re-IPLs with 'format,cold'. Their final checkpoint
+                         is reformatted on the very next IPL, so waiting for
+                         it to be written is pure dead time.
+
+           finalize() overrides this with graceful=True: it is the last IPL
+           before the release image is packaged, and conf/mvsce.rc warm
+           starts the shipped system, so that checkpoint has to be clean.
+        '''
+        if graceful is None:
+            graceful = not cust
+
+        logging.debug('Shutting down MVS (graceful={})'.format(graceful))
+
+        if graceful:
+            self.send_oper('$p jes2')
+            if cust:
+                self.wait_for_string('IEF404I JES2 - ENDED - ')
+            else:
+                self.wait_for_string('IEF196I IEF285I   VOL SER NOS= SPOOL0.')
         else:
-            self.wait_for_string('IEF196I IEF285I   VOL SER NOS= SPOOL0.')
+            logging.debug('Skipping $p jes2, next IPL cold starts JES2')
 
         # WRL Give MVS / JES2 time to catch up
         time.sleep(5)
@@ -1947,6 +2064,19 @@ class sysgen:
         '''Checks job and steps results, raises error
             If the step is in steps_cc, check the step vs the cc in the dictionary
             otherwise checks if step is zero
+
+            Both normal completions (IEF142I) and abends (IEF450I) are checked.
+            An abending step never issues an IEF142I, and neither do the steps
+            it skips, so looking only at IEF142I means a job can abend, skip
+            every remaining step, and still pass:
+
+              IEF450I RAKFINST SHADLOAD - ABEND SE82 U0000
+              IEFACTRT SHADLOAD/IEBGENER/.../S-E82/RAKFINST
+              IEFACTRT DELOLD  /IDCAMS  /.../NOXEC/RAKFINST
+
+            That is how a RAKF install with an empty SYS1.SECURE.SHADOW was
+            reported as successful and only surfaced two steps later, as an
+            MVP install failing with IEF722I INVALID PASSWORD GIVEN.
         '''
         logging.debug("Checking {} job results".format(jobname))
 
@@ -1961,6 +2091,29 @@ class sysgen:
 
         with open(printer_file, 'r', errors='ignore') as f:
             for line in f.readlines():
+                # IEF450I reaches the printer file through the JES2 job log,
+                # which carries the job's console messages:
+                #   IEF450I RAKFINST SHADLOAD - ABEND SE82 U0000 - TIME=...
+                # For a proc step the name is split over two fields, so take
+                # everything between the jobname and the '-' as the step.
+                if 'IEF450I' in line:
+                    x = line.strip().split()
+                    j = x[x.index('IEF450I'):]
+                    if len(j) < 3 or j[1] != jobname:
+                        continue
+                    found_job = True
+                    try:
+                        dash = j.index('-')
+                        stepname = '/'.join(j[2:dash])
+                        detail = ' '.join(j[dash + 1:dash + 4])
+                    except ValueError:
+                        stepname, detail = j[2], 'ABEND'
+                    error = ("Step {} abended ({}) review {} for errors"
+                             .format(stepname, detail, printer_file))
+                    logging.debug('[MAXCC] {}'.format(error))
+                    failed_step = True
+                    continue
+
                 if 'IEF142I' in line:
 
                     x = line.strip().split()
@@ -2062,6 +2215,32 @@ class sysgen:
         self.send_herc('quit')
         # self.wait_for_string('Hercules shutdown complete', stderr=True)
         self.wait_for_strings(['Hercules terminated','dyngui.dll terminated'], stderr=True)
+
+        # Those messages are emitted while Hercules is still tearing down --
+        # the HDL unload happens well before the process exits -- so returning
+        # on them alone leaves the sockdev card readers still bound. The next
+        # reset_hercules then starts a Hercules that cannot bind its readers:
+        #
+        #   HHC01034E COMM: error in function bind(): Address already in use
+        #   HHC01463E 0:000C device initialization failed
+        #
+        # MVS still IPLs cleanly with no readers attached, so nothing fails
+        # until the step tries to submit a job and gets ConnectionRefused --
+        # several seconds later and with no obvious link to the real cause.
+        # Wait for the process itself, which is the only authoritative signal
+        # that its sockets are released.
+        try:
+            self.hercproc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            logging.debug("Hercules still running 60s after quit, killing it")
+            self.hercproc.kill()
+            try:
+                self.hercproc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                raise Exception("Hercules would not exit; its card reader "
+                                "sockets may still be bound")
+        logging.debug("Hercules process exited rc={}".format(self.hercproc.returncode))
+
         if msg:
             self.print('Hercules has exited')
 
@@ -2135,9 +2314,10 @@ class sysgen:
             except queue.Empty:
                 continue
 
-            if any(string in line for string in strings_to_waitfor):
-                logging.debug(f"String: '{strings_to_waitfor}' found in '{line}'")
-                return
+            for string in strings_to_waitfor:
+                if string in line:
+                    logging.debug(f"String: '{string}' found in '{line}'")
+                    return string
 
     def wait_for_psw(self, psw_wait, timeout=False):
         '''Reads stderr queue waiting for expected PSW, default timeout is
@@ -2364,7 +2544,12 @@ class sysgen:
         if not self.no_rakf:
             self.restore_dasd("37_CUSTOM")
 
-        self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True)
+        # cold=True is the default, but state it here: this is the last IPL
+        # before the release image is packaged, so SPOOL1 gets formatted and
+        # the shipped system starts life with an empty queue instead of 14
+        # steps of install-job output and a checkpoint describing jobs that
+        # no longer matter.
+        self.custjobs_ipl("Customizing SYS1.PARMLIB(COMMND00)", clpa=True, cold=True)
         #self.submit_file('jcl/finalize.jcl')
 
         rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
@@ -2375,7 +2560,11 @@ class sysgen:
             desc='Finalize MVSCE')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("FINALIZE")
-        self.shutdown_mvs(cust=True)
+        # graceful=True overrides the cust=True default: this is the last
+        # shutdown before the release image is packaged, and the shipped
+        # conf/mvsce.rc warm starts with 'r 0,noreq'. Abandoning JES2 here
+        # would hand every end user a $HASP096 on first boot.
+        self.shutdown_mvs(cust=True, graceful=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("38_FINAL")
 
@@ -2469,8 +2658,22 @@ class sysgen:
 
         target = folder.format(out_folder, repo.split("/")[-1])
 
+        # An existing clone is refreshed rather than reused as-is. With
+        # --keep-temp the tree survives between runs, and silently running a
+        # stale copy means fixes pushed upstream appear not to work at all --
+        # e.g. a generate_release.py that has not yet grown a flag sysgen
+        # passes it, which surfaces as an unrelated argparse error.
         if os.path.exists(target):
-            logging.debug("git clone target {} already exists, skipping clone".format(target))
+            if not os.path.isdir(os.path.join(target, '.git')):
+                raise Exception("{} exists but is not a git clone; remove it and re-run".format(target))
+            logging.debug("git clone target {} exists, pulling".format(target))
+            result = subprocess.run([git_query_path, '-C', target, 'pull', '--ff-only'],
+                                    stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
+            if result.returncode != 0:
+                raise Exception(
+                    "git pull in {} failed: {}\nThe clone is stale and could not be "
+                    "fast-forwarded. Remove it and re-run: rm -rf {}".format(
+                        target, result.stderr.decode().strip(), target))
             return
 
         args = [
@@ -2485,6 +2688,42 @@ class sysgen:
         result = subprocess.run(args, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
         if result.returncode != 0:
             raise Exception("git clone of {} failed: {}".format(repo, result.stderr.decode().strip()))
+
+    def github_release_asset(self, repo, asset, dest, tag="latest"):
+        '''Download a named asset from a github release.
+
+           Resolves the download URL through the releases API instead of
+           guessing at /releases/download/<tag>/<asset>, so that a release
+           which exists but is missing the asset -- e.g. the publishing
+           workflow has not run yet -- reports what the release actually
+           contains rather than a bare HTTP 404.
+        '''
+        api = "https://api.github.com/repos/{}/releases/tags/{}".format(repo, tag)
+        logging.debug("[RELEASE] Looking up asset {} via {}".format(asset, api))
+
+        try:
+            with urllib.request.urlopen(api) as response:
+                release = json.load(response)
+        except Exception as e:
+            raise Exception("Failed to query github release '{}' of {}: {}".format(tag, repo, e))
+
+        assets = {a['name']: a['browser_download_url'] for a in release.get('assets', [])}
+        if asset not in assets:
+            raise Exception(
+                "Release '{}' of {} has no asset named '{}'. That release "
+                "publishes: {}. The workflow that builds '{}' may not have run "
+                "yet.".format(tag, repo, asset,
+                              ", ".join(sorted(assets)) if assets else "(no assets)",
+                              asset))
+
+        self.print("Downloading {} from {} release '{}'".format(asset, repo, tag))
+        try:
+            urllib.request.urlretrieve(assets[asset], dest)
+        except Exception as e:
+            raise Exception("Failed to download {}: {}".format(assets[asset], e))
+
+        logging.debug("[RELEASE] {} -> {} ({} bytes)".format(asset, dest, os.path.getsize(dest)))
+        return dest
 
     def submit_file(self, jclfile, host='127.0.0.1',port=3505):
         logging.debug("[SUBMIT] Submitting {}".format(jclfile))
