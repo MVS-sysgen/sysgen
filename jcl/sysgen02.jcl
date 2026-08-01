@@ -84,7 +84,7 @@
 &BUFSIZE=3664                  BUFFER SIZE (5 PER TRACK ON 3350)        
 &CCOMCHR=$                     OPERATOR COMMAND IDENTIFIER              
 &CHKPT=MVS000                  CHECKPOINT DATASET ON MVS000             
-&CKPTIME=60                    CHECKPOINT EVERY 60 SECONDS              
+&CKPTIME=10                    CHECKPOINT EVERY 10 SECONDS              
 &DMNDSET=NO                    DEMAND SETUP OPTION                      
 &DSNPRFX=SYS1                  DATA SET PREFIX (SPOOL AND CKPT)         
 &ESTIME=0035                   ESTIMATED JOB TIME 35 MINUTES            
