@@ -15,6 +15,9 @@ hao tgt HHC00814I Processor CP00: SIGP Stop
 hao cmd script SCRIPTS/poweroff
 hao tgt HHC00814I Processor CP01: SIGP Stop
 hao cmd script SCRIPTS/poweroff
+# With NUMCPU 1 there is no SIGP Stop: MVS loads wait state CCC after QUIESCE
+hao tgt HHC00809I Processor CP00: disabled wait state 000A0000 00000CCC
+hao cmd script SCRIPTS/poweroff
 hao tgt ([0-9]{2}) IKT010D 
 hao cmd /R $1,FSTOP
 # For information see https://www.ibm.com/docs/en/zos/2.3.0?topic=commands-mvs-system-reference
@@ -27,6 +30,16 @@ pause 2
 * Preventing users from logging on
 /MODIFY TSO,USERMAX=0
 pause 2
+* Stopping the servers: JES2 does not end while a started task runs,
+* and a P for a task that is not running only gets IEE341I.
+* One command per pause: the 3215 console keeps only the last line
+* typed before MVS reads it.
+/P FTPD
+pause 1
+/P HTTPD
+pause 3
+/P UFSD
+pause 3
 * Stop JES2 Initiators
 /$PI
 pause 2
