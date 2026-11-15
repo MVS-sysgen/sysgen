@@ -283,6 +283,9 @@ class sysgen:
         self.set_version()
         self.stderr_q = queue.Queue()
         self.stdout_q = queue.Queue()
+        # lines read ahead (e.g. by wait_reply_taken) that the next
+        # reader of stdout_q must still see, see next_line()
+        self.stdout_pushback = []
 
     def install(self, step, substep):
 
@@ -480,12 +483,60 @@ class sysgen:
         self.hercproc.stdin.flush()
 
     def send_oper(self, command=''):
-        ''' Sends operator/console commands (i.e. prepends /) '''
+        ''' Sends operator/console commands (i.e. prepends /). A reply
+            ('r nn,...') is resent if MVS does not take it, see
+            wait_reply_taken '''
         self.send_herc("/{}".format(command))
+        m = re.match(r'\s*r\s+(\d+)\s*,', command, re.IGNORECASE)
+        if m:
+            self.wait_reply_taken("/{}".format(command), int(m.group(1)))
 
     def send_reply(self, command=''):
         ''' Sends operator/console commands with automated number '''
-        self.send_herc("/r {},{}".format(reply_num,command))
+        self.send_oper("r {},{}".format(reply_num,command))
+
+    def next_line(self, q, timeout):
+        '''Next line from q (stdout lines read ahead come first). Raises
+           queue.Empty after timeout seconds.'''
+        if q is self.stdout_q and self.stdout_pushback:
+            return self.stdout_pushback.pop(0)
+        return q.get(timeout=timeout).strip()
+
+    def wait_reply_taken(self, command, num, retry_after=IPL_REPLY_RETRY,
+                         tries=IPL_REPLY_TRIES):
+        '''After a WTOR reply: waits for MVS's 'IEE600I REPLY TO nn'.
+
+           Sometimes MVS does not take a reply: Hercules logs HHC00013I and
+           echoes the input, but MVS stays in a wait state. MVS answers
+           every reply it takes at once with IEE600I, so without one in
+           retry_after seconds the reply was not taken and is sent again
+           (up to tries in all). The lines read meanwhile are pushed back
+           for the caller's next wait_for_string.
+        '''
+        ack = "IEE600I REPLY TO {:02d}".format(num)
+        seen = []
+        try:
+            for attempt in range(1, tries + 1):
+                started = time.time()
+                while time.time() < started + retry_after:
+                    try:
+                        line = self.next_line(self.stdout_q, timeout=0.5)
+                    except queue.Empty:
+                        continue
+                    seen.append(line)
+                    if ack in line:
+                        return
+                logging.debug("Reply '{}' not taken: no {} for {} seconds "
+                              "(attempt {} of {})".format(
+                                  command, ack, retry_after, attempt, tries))
+                if attempt < tries:
+                    self.print("MVS did not take the reply '{}', sending it "
+                               "again".format(command[1:]))
+                    self.send_herc(command)
+            raise Exception("Step: {} reply '{}' not taken by MVS after {} "
+                            "tries".format(self.step, command[1:], tries))
+        finally:
+            self.stdout_pushback[0:0] = seen
 
     def read_configs(self, config_file=''):
         logging.debug("Reading {}".format(config_file))
@@ -2315,6 +2366,7 @@ class sysgen:
             self.skip_steps = False
         # drain STDERR and STDOUT
         logging.debug('Draining STDOUT/STDERR')
+        self.stdout_pushback.clear()
         while True:
             try:
                 line = self.stdout_q.get(False).strip()
@@ -2437,7 +2489,7 @@ class sysgen:
             self.wait_timed_out(time_started, timeout)
 
             try:
-                line = q.get(timeout=1).strip()
+                line = self.next_line(q, timeout=1)
             except queue.Empty:
                 continue
 
@@ -2464,7 +2516,8 @@ class sysgen:
         time.sleep(delay)
         for attempt in range(1, tries + 1):
             self.send_herc(reply)
-            result = self.wait_for_mvs_output(expect, retry_after)
+            result = self.wait_for_mvs_output(expect, retry_after,
+                                              echo=reply[1:])
             if result == 'found':
                 return
             if result == 'output':
@@ -2478,25 +2531,26 @@ class sysgen:
         raise Exception("Step: {} IPL reply '{}' not taken by MVS after {} "
                         "tries".format(self.step, reply, tries))
 
-    def wait_for_mvs_output(self, expect, silence):
+    def wait_for_mvs_output(self, expect, silence, echo=''):
         '''Waits up to `silence` seconds for the first MVS console line.
 
            Returns 'found' if that line (or a Hercules line before it)
            contains expect, 'output' for any other MVS line, 'silent' if
-           MVS printed nothing. Hercules' own messages (HHCnnnnnx) are not
-           MVS output.
+           MVS printed nothing. Hercules' own messages (HHCnnnnnx) and its
+           echo of the reply (echo) are not MVS output.
         '''
         time_started = time.time()
         while time.time() < time_started + silence:
             try:
-                line = self.stdout_q.get(timeout=0.5).strip()
+                line = self.next_line(self.stdout_q, timeout=0.5)
             except queue.Empty:
                 continue
             if expect in line:
                 logging.debug(f"String: '{expect}' found in '{line}'")
                 return 'found'
-            if not line.startswith('HHC'):
+            if not line.startswith('HHC') and not (echo and line == echo):
                 logging.debug(f"MVS output after IPL reply: '{line}'")
+                self.stdout_pushback.insert(0, line)
                 return 'output'
         return 'silent'
 
@@ -2518,7 +2572,7 @@ class sysgen:
             self.wait_timed_out(time_started, timeout)
 
             try:
-                line = q.get(timeout=1).strip()
+                line = self.next_line(q, timeout=1)
             except queue.Empty:
                 continue
 
@@ -2825,7 +2879,7 @@ class sysgen:
         while True:
             self.wait_timed_out(started, timeout)
             try:
-                line = self.stdout_q.get(timeout=1).strip()
+                line = self.next_line(self.stdout_q, timeout=1)
             except queue.Empty:
                 continue
             lines.append(line)
