@@ -102,6 +102,13 @@ if has_colorama:
 quit_herc_event = threading.Event()
 kill_hercules = threading.Event()
 reset_herc_event = threading.Event()
+
+# IPL reply on the 3215 console (see ipl_reply): wait this long after the
+# prompt before replying, resend the reply if MVS prints nothing for
+# IPL_REPLY_RETRY seconds, give up after IPL_REPLY_TRIES replies.
+IPL_REPLY_DELAY = 1
+IPL_REPLY_RETRY = 15
+IPL_REPLY_TRIES = 3
 STDERR_to_logs = threading.Event()
 running_folder = os.path.dirname(os.path.abspath(__file__)) + "/"
 os.chdir(running_folder)
@@ -609,9 +616,7 @@ class sysgen:
         self.wait_for_string("0:0151 CCKD")
         self.print("Installing SMP 4.44 on the Starter System")
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_oper('r 0,clpa')
-        self.wait_for_string("00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/r 0,clpa', "00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.print("Formatting SPOOL0")
         self.send_oper('r 0,format,noreq')
         self.wait_for_string('$HASP436 REPLY Y OR N TO CONFIRM CHECKPOINT RECORD CHANGE')
@@ -704,9 +709,7 @@ class sysgen:
         self.send_herc('attach 0012    3505    jcl/smpmount.jcl eof')
         self.send_herc("STOPALL")  # Needed for Hercules 4.5?
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_herc('/')
-        self.wait_for_string("$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/', "$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string("IEF166D REPLY Y/N TO EXECUTE/SUPPRESS COMMAND")
         self.print("Assigning the volume SMP000 to the class of PRIVATE")
@@ -865,9 +868,7 @@ class sysgen:
         self.send_herc('detach 0012')
         self.send_herc('attach 0012    3505    jcl/null.jcl eof')
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_herc('/')
-        self.wait_for_string("$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/', "$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
 
@@ -951,9 +952,7 @@ class sysgen:
         self.set_configs('sysgen2')
         #self.wait_for_string("0:0151 CKD")
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_oper('r 0,clpa')
-        self.wait_for_string("00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/r 0,clpa', "00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
         # self.send_oper('$pi2-3')
@@ -973,9 +972,7 @@ class sysgen:
         self.set_configs('sysgen')
         #self.wait_for_string("0:0151 CKD")
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_oper('r 0,clpa')
-        self.wait_for_string("00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/r 0,clpa', "00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
         self.send_oper('$pi2-3')
@@ -2447,6 +2444,61 @@ class sysgen:
             if string_to_waitfor in line:
                 logging.debug(f"String: '{string_to_waitfor}' found in '{line}'")
                 return
+
+    def ipl_reply(self, reply, expect, delay=IPL_REPLY_DELAY,
+                  retry_after=IPL_REPLY_RETRY, tries=IPL_REPLY_TRIES):
+        '''Answers the IPL prompt on the 3215 console and waits for expect.
+
+           Sometimes MVS does not take the reply: Hercules logs HHC00013I
+           (input entered) but MVS stays in a wait state, apparently because
+           the reply came before MVS was really reading the console. So wait
+           `delay` seconds after the prompt, and if MVS then prints nothing
+           at all for `retry_after` seconds, send the reply again (up to
+           `tries` times in all). Only silence triggers a resend: once MVS
+           has printed anything, the reply was taken, and resending e.g.
+           'r 0,clpa' would be an invalid reply.
+
+           reply: the Hercules command, e.g. '/' or '/r 0,clpa'
+        '''
+        self.wait_for_string("input for console 0:001F")
+        time.sleep(delay)
+        for attempt in range(1, tries + 1):
+            self.send_herc(reply)
+            result = self.wait_for_mvs_output(expect, retry_after)
+            if result == 'found':
+                return
+            if result == 'output':
+                self.wait_for_string(expect)
+                return
+            logging.debug("IPL reply '{}' not taken: no MVS output for {} "
+                          "seconds (attempt {} of {})".format(
+                              reply, retry_after, attempt, tries))
+            if attempt < tries:
+                self.print("MVS did not take the IPL reply, sending it again")
+        raise Exception("Step: {} IPL reply '{}' not taken by MVS after {} "
+                        "tries".format(self.step, reply, tries))
+
+    def wait_for_mvs_output(self, expect, silence):
+        '''Waits up to `silence` seconds for the first MVS console line.
+
+           Returns 'found' if that line (or a Hercules line before it)
+           contains expect, 'output' for any other MVS line, 'silent' if
+           MVS printed nothing. Hercules' own messages (HHCnnnnnx) are not
+           MVS output.
+        '''
+        time_started = time.time()
+        while time.time() < time_started + silence:
+            try:
+                line = self.stdout_q.get(timeout=0.5).strip()
+            except queue.Empty:
+                continue
+            if expect in line:
+                logging.debug(f"String: '{expect}' found in '{line}'")
+                return 'found'
+            if not line.startswith('HHC'):
+                logging.debug(f"MVS output after IPL reply: '{line}'")
+                return 'output'
+        return 'silent'
 
     def wait_for_strings(self, strings_to_waitfor, stderr=False, timeout=False):
         '''
