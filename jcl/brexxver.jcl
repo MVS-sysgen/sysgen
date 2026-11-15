@@ -1,0 +1,45 @@
+//BRXXVER  JOB (SYSGEN),'BREXX VERIFY',
+//             CLASS=A,
+//             MSGCLASS=A,
+//             MSGLEVEL=(1,1),
+//             REGION=8192K
+//*
+//* Verify BREXX/370 after the IPL: the three program names run from
+//* the link list (no STEPLIB), and SMP/the libraries agree. sysgen
+//* parses the printer output (BRXVER-<pgm> lines, LISTDS, LIST CDS).
+//*
+//BREXX    EXEC PGM=BREXX,REGION=8192K,PARM='RXRUN'
+//STDIN    DD  DUMMY
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//RXRUN    DD  *
+say 'BRXVER-BREXX' version()
+/*
+//REXX     EXEC PGM=REXX,REGION=8192K,PARM='RXRUN'
+//STDIN    DD  DUMMY
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//RXRUN    DD  *
+say 'BRXVER-REXX' version()
+/*
+//RX       EXEC PGM=RX,REGION=8192K,PARM='RXRUN'
+//STDIN    DD  DUMMY
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//RXRUN    DD  *
+say 'BRXVER-RX' version()
+/*
+//LISTDS   EXEC PGM=IKJEFT01
+//SYSTSPRT DD  SYSOUT=*
+//SYSTSIN  DD  *
+  LISTDS 'BREXX.LINKLIB' MEMBERS
+  LISTDS 'BREXX.RXLIB' MEMBERS
+  LISTDS 'BREXX.SAMPLIB' MEMBERS
+  LISTDS 'BREXX.CURRENT.RXLIB'
+/*
+//SMPLIST  EXEC SMPAPP,WORK='SYSALLDA'
+//SMPCNTL  DD  *
+ LIST CDS SYSMOD(TBRX310 MS00100) .
+ LIST ACDS SYSMOD(TBRX310) .
+/*
+//

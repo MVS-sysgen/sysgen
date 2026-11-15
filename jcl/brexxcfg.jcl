@@ -1,0 +1,59 @@
+//BRXXCFG  JOB (SYSGEN),'BREXX SETUP',
+//             CLASS=A,
+//             MSGCLASS=A,
+//             MSGLEVEL=(1,1),
+//             REGION=4096K
+//*
+//* Site setup for BREXX/370 3.1 (FMID TBRX310), after the SMP install
+//* and after MS00100. Takes effect at the next IPL.
+//*
+//* LNKLST00: BREXX.LINKLIB(MVSRES) before SYS2.LINKLIB (link list
+//* way 1, needs MS00100). The rest is the member as sysgen04 made it;
+//* the original is in SYS1.PARMLIB(LNKLST99).
+//*
+//LNKLST   EXEC PGM=IEBUPDTE,PARM=MOD
+//SYSPRINT DD  SYSOUT=*
+//SYSUT1   DD  DSN=SYS1.PARMLIB,DISP=SHR
+//SYSUT2   DD  DSN=SYS1.PARMLIB,DISP=SHR
+//SYSIN    DD  DATA,DLM='??'
+./ REPL NAME=LNKLST00,LIST=ALL
+./ NUMBER NEW1=10,INCR=10
+SYS1.LINKLIB,               IBM LOAD MODULE LIBRARY
+BREXX.LINKLIB(MVSRES),      BREXX/370 (SMP FMID TBRX310)
+SYS2.LINKLIB,               USER LOAD MODULE LIBRARY
+SYS1.CMDLIB,                IBM TSO COMMAND LIBRARY
+SYS2.CMDLIB                 USER TSO COMMAND LIBRARY
+??
+//*
+//* BREXX.CURRENT.RXLIB is hard-coded in the logon CLIST, the MVP proc,
+//* RAKF and MVP packages. Point it at the SMP-owned BREXX.RXLIB.
+//*
+//ALIASRXL EXEC PGM=IDCAMS
+//SYSPRINT DD  SYSOUT=*
+//SYSIN    DD  *
+  DEFINE ALIAS -
+          (NAME(BREXX.CURRENT.RXLIB) -
+          RELATE(BREXX.RXLIB)) -
+          CATALOG(UCPUB001)
+/*
+//*
+//* RXTSO and RXBATCH from BREXX.PROCLIB (not SMP managed) into
+//* SYS2.PROCLIB, where JES2 finds them.
+//*
+//PROCS    EXEC PGM=IEBCOPY
+//SYSPRINT DD  SYSOUT=*
+//DDIN     DD  DSN=BREXX.PROCLIB,DISP=SHR
+//DDOUT    DD  DSN=SYS2.PROCLIB,DISP=SHR
+//SYSIN    DD  *
+  COPY INDD=DDIN,OUTDD=DDOUT
+  SELECT MEMBER=((RXTSO,,R),(RXBATCH,,R))
+/*
+//*
+//* SYS2.EXEC: system-wide execs, SYSEXEC in the logon CLIST.
+//*
+//SYS2EXEC EXEC PGM=IEFBR14
+//SYSEXEC  DD  DSN=SYS2.EXEC,DISP=(NEW,CATLG),
+//             VOL=SER=MVS000,
+//             UNIT=3350,SPACE=(TRK,(44,14,17)),
+//             DCB=(RECFM=FB,LRECL=80,BLKSIZE=19040)
+//
