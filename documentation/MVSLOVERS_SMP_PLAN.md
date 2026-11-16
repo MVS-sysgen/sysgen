@@ -288,7 +288,7 @@ Inputs: `MVP/` repo, `jcl/customize.jcl`, `README.md`.
 
 - [x] `until ./sysgen.py --CONTINUE; do …; done` from scratch, then Docker image build. *Steps 1–6 on `dd62a74`, 7–14 continued on `84dffc7` (see log).*
 - [x] Acceptance: `LIST CDS` of every FMID, member counts, server smoke tests, logon each user, `RX MVP list`. *Plus SHUTFAST as admin/MVSCE02 and a scripted 3270 ISPF + SDSF session.*
-- [ ] Tag a release. *Proposed `v4.0.0`, waiting for the go-ahead.*
+- [ ] Tag a release. *Will be `v3.1.0`, after one more major upgrade (decided 2026-11-15).*
 
 ---
 
@@ -1033,4 +1033,4 @@ again): kill by PID. A `tail -f` on a tree that was deleted and recloned
 shows the old file; use `tail -F`. The acceptance code is in the session
 scratchpad (`harness.py` + `p9accept.py`, `p9run.sh`, `relay3270.py`).
 
-Next: release tag (proposed `v4.0.0`) after review; the items above.
+Next: one more major upgrade, then tag `v3.1.0`; the items above.
