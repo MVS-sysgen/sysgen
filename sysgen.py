@@ -2292,11 +2292,17 @@ class sysgen:
             outfolder = '{}/{}.tar'.format(path,step)
 
 
+        # Write a new file and rename it: tar -c -f on an existing file
+        # truncates it in place, which also overwrites every hard link to it
+        # (a test tree that hard-links another build's backups), and a
+        # crash would leave half a tar under the real name.
+        tmp = outfolder + '.tmp'
         args = [
             tar_query_path, '-c', '-f',
-            outfolder, folder
+            tmp, folder
             ]
         subprocess.check_call(args, stdout=subprocess.DEVNULL)
+        os.replace(tmp, outfolder)
 
     def set_version(self):
         try:
