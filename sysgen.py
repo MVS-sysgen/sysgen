@@ -504,16 +504,20 @@ class sysgen:
 
     def wait_reply_taken(self, command, num, retry_after=IPL_REPLY_RETRY,
                          tries=IPL_REPLY_TRIES):
-        '''After a WTOR reply: waits for MVS's 'IEE600I REPLY TO nn'.
+        '''After a WTOR reply: resends it if MVS stays silent.
 
            Sometimes MVS does not take a reply: Hercules logs HHC00013I and
-           echoes the input, but MVS stays in a wait state. MVS answers
-           every reply it takes at once with IEE600I, so without one in
-           retry_after seconds the reply was not taken and is sent again
-           (up to tries in all). The lines read meanwhile are pushed back
-           for the caller's next wait_for_string.
+           echoes the input, but MVS prints nothing and stays in a wait
+           state. So if no MVS line at all comes within retry_after
+           seconds, the reply is sent again (up to tries in all). Any MVS
+           line -- IEE600I, an error, or the next message -- means the
+           reply arrived, and it is never resent: not every reply is
+           answered with IEE600I (IEA101A on MVS 3.8 is not), and a second
+           copy of a taken reply answers the next prompt. Hercules' own
+           HHCnnnnnx messages and its echo of the reply do not count. The
+           lines read are pushed back for the caller's next wait.
         '''
-        ack = "IEE600I REPLY TO {:02d}".format(num)
+        echo = command[1:].strip()
         seen = []
         try:
             for attempt in range(1, tries + 1):
@@ -524,17 +528,17 @@ class sysgen:
                     except queue.Empty:
                         continue
                     seen.append(line)
-                    if ack in line:
+                    if not line.startswith('HHC') and line != echo:
                         return
-                logging.debug("Reply '{}' not taken: no {} for {} seconds "
-                              "(attempt {} of {})".format(
-                                  command, ack, retry_after, attempt, tries))
+                logging.debug("Reply '{}' not taken: no MVS output for {} "
+                              "seconds (attempt {} of {})".format(
+                                  command, retry_after, attempt, tries))
                 if attempt < tries:
                     self.print("MVS did not take the reply '{}', sending it "
-                               "again".format(command[1:]))
+                               "again".format(echo))
                     self.send_herc(command)
             raise Exception("Step: {} reply '{}' not taken by MVS after {} "
-                            "tries".format(self.step, command[1:], tries))
+                            "tries".format(self.step, echo, tries))
         finally:
             self.stdout_pushback[0:0] = seen
 
