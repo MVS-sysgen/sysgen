@@ -121,7 +121,7 @@ their substeps; each step writes a backup that the next one restores):
 | Step | What it does |
 |---|---|
 | `step_01_build_starter` .. `step_04_system_generation` | Jay Moseley's starter system, SMP 4.44 + ESY1400 (SMP 04.48), distribution libraries and the system generation |
-| `step_05_usermods` | the usermods in `usermods/` (one substep each), including ZP60038 at REWORK 20261106 for ISPF `VPUT`/`VGET` from REXX |
+| `step_05_usermods` | the usermods in `usermods/`, all on one IPL of the starter system, one job after the other (one substep each; `--substep` restarts from the start of step 5, see `USERMOD_IPL_POINTS`), including ZP60038 at REWORK 20261106 for ISPF `VPUT`/`VGET` from REXX |
 | `step_06_fdz1d02` | FDZ1D02 |
 | `step_07_customization` | MVS000, DYNPROC, date, TSO users, then `brexx`: the TRANSMIT/RECEIVE commands of NJE38 (IPL with CLPA), BREXX/370 with SMP, usermod MS00100 and `BREXX.LINKLIB` in the link list |
 | `step_08_rakf` | RAKF from its git tag, with the users in `users.conf` and the profiles in `profiles.conf` |

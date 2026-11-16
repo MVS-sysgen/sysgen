@@ -1034,3 +1034,59 @@ shows the old file; use `tail -F`. The acceptance code is in the session
 scratchpad (`harness.py` + `p9accept.py`, `p9run.sh`, `relay3270.py`).
 
 Next: one more major upgrade, then tag `v3.1.0`; the items above.
+
+### 2026-11-15 — Step 5 on one IPL (branch `usermods-single-ipl`)
+
+**Change:** `step_05_usermods` restores once, IPLs once and submits the 56
+usermod jobs one after the other (`submit_usermod`: devinit 12, then
+`console_until` `$HASP099`, the job's `$HASP395 <job padded> ENDED` must be
+before it, then `check_maxcc` per job). One shutdown, then 25_USERMODS. No
+`usermod_NN_*` backups any more. `USERMOD_IPL_POINTS` (empty) names usermods
+before which step 5 would shut down, back up `usermod_NN_<prev>` and IPL
+again; `--substep X` restarts from the last such point at or before X, today
+always from `24_SYSGEN06` (the whole step, ~9 min). `library_extents()`
+(dasdls on every image, MVS down) is taken before the IPL and compared after
+the shutdown for SYS1.LINKLIB/CMDLIB/LPALIB/SVCLIB/NUCLEUS; a change fails
+the step.
+
+**Why no IPL point is needed:** the step-5 system is the **starter**
+(`sysgenjobs_ipl` IPLs 150 = START1). The jobs write the target libraries on
+MVSRES through their SMP DDs; no usermod is ever active while step 5 runs,
+in the old step 5 neither (each of its 56 IPLs booted the same starter). So
+ZP60003/ZP60025 (IFOX00), ZP60020/27 (HEWL), the macro mods, JLM0003,
+TNIP800, ZP60038, the JES2/startup mods etc. only matter after step 6's IPL
+of the new MVSRES, which sees exactly the same final state as before. PRE
+chains (ZP60038→ZP60014, ZUM0008→ZUM0007, ZP60031/SYZJ202→TJES801) are SMP
+state only. DYNPROC is step 7.
+
+**Proof** (`../sysgen-umodtest`, from p9's `24_SYSGEN06`):
+- every `check_maxcc` passed (STEP20 RC 4 of ZP60009/TNIP800 as expected);
+- step 5 **8 min 41 s**, was **16 min 11 s** (p9: 16:06:11–16:22:22; one old
+  usermod = IPL 2.6 s + job + shutdown 5.1 s + tar 0.2 s);
+- `LIST CDS/ACDS SYSMOD(all_usermods() + UZ61025)` on old and new: identical
+  (58 USERMOD `REC APP`, UZ61025 `REC APP ACC`); IEHLIST LISTVTOC of
+  LINKLIB/CMDLIB/LPALIB/NUCLEUS/SVCLIB: identical extents and free space
+  (all 1 extent on MVSRES; START1's LINKLIB has 6 extents from its own
+  build, unchanged);
+- steps 6–14 from the new 25_USERMODS: 16 min 33 s, `MVSCE.release.5b98bf8.tar`;
+- Phase 9 acceptance on the new 38_FINAL: every `results.json` key equal to
+  Phase 9 (incl. the known IEF174I after a refused job); 3270 session as in
+  Phase 9 (MVSCE02 SHUTFAST refused, RX MVP LIST, IBMUSER ISPF → SDSF LOG
+  → `/D T` IEE136I, SHUTFAST → IEE334I).
+
+**Gotchas:**
+- `backup_dasd` (`tar -c -f`) **truncated an existing tar in place**, so a
+  test tree with hard-linked backups overwrote the source build's file
+  (p9test `25_USERMODS.tar` got the new state). Fixed: write `<name>.tar.tmp`
+  and `os.replace`. Copy, do not hard-link, backups that a step rewrites.
+- A full `LIST CDS SYSMOD .` (13 383 entries, ~98 000 lines) loses chunks of
+  the printer output at random (different chunks per run); compare targeted
+  LISTs. SMP 4 has no `SYSMODS` keyword (`LIST CDS SYSMOD .` lists all).
+- Jobs submitted on the step-5 system need `//JOBCAT DD
+  DSN=SYS1.VSAM.MASTER.CATALOG` (as every usermod has), else SMPAPP's
+  SYSLIB `DATA SET NOT FOUND`.
+- One long Hercules session leaves more CCKD free space in the images:
+  25_USERMODS 166 MB (was 114), release tar 219 MB (was 190). `cckdcomp`
+  brings 25_USERMODS to 86 MB; not added.
+- The 3270 test terminal is 0400 (0010 is the console); c3270 shows the
+  Hercules logo until the first Enter.
