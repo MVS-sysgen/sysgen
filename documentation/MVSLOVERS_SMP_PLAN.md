@@ -1,6 +1,6 @@
 # Plan: install the mvslovers stack with SMP during sysgen
 
-Status: **Phases 1–8 done** (written 2026-11-13). Work through the phases in order;
+Status: **Phases 1–9 done** (written 2026-11-13; Phase 9 2026-11-15, release tag pending). Work through the phases in order;
 each one is sized for a single context window. At the start of a phase, read
 this file, then the "Inputs" of that phase. At the end, tick its checklist and
 append to the "Phase log" at the bottom so the next window can pick up.
@@ -286,9 +286,9 @@ Inputs: `MVP/` repo, `jcl/customize.jcl`, `README.md`.
 
 ### Phase 9 — Full build and release
 
-- [ ] `until ./sysgen.py --CONTINUE; do …; done` from scratch, then Docker image build.
-- [ ] Acceptance: `LIST CDS` of every FMID, member counts, server smoke tests, logon each user, `RX MVP list`.
-- [ ] Tag a release.
+- [x] `until ./sysgen.py --CONTINUE; do …; done` from scratch, then Docker image build. *Steps 1–6 on `dd62a74`, 7–14 continued on `84dffc7` (see log).*
+- [x] Acceptance: `LIST CDS` of every FMID, member counts, server smoke tests, logon each user, `RX MVP list`. *Plus SHUTFAST as admin/MVSCE02 and a scripted 3270 ISPF + SDSF session.*
+- [ ] Tag a release. *Proposed `v4.0.0`, waiting for the go-ahead.*
 
 ---
 
@@ -938,3 +938,99 @@ pointed at them) **before** a full build: step 9 clones
 CLIST-based finalize; rerun finalize for the final one).
 
 Next: Phase 9.
+
+### 2026-11-15 — Phase 9 done (release tag pending)
+
+**Precondition:** MVP PRs #12 (remove UFSD/FTPD/HTTPD/MVSMF) and #14
+(BREXX 3.1 / RAKF 2.0.0 fixes) merged; MVS-sysgen/MVP `main` = `642cc98`
+contains `ba96b2d` and `c8c653f`. (#13 had been merged into
+`remove-smp-stack` instead of `main`; #14 carried the same commit. Its
+conflict with #11's `WORDS(DEPENDS)` fix was resolved by keeping main's
+line, `STRIP` dropped.)
+
+**sysgen commits** (branch `mvslovers-smp`, not pushed): phases 1–8 as
+`d3df805` (mvslovers module + manifest + tests), `58d5ffd` (BREXX 3.1 via
+SMP), `d483338` (usermods, profiles, customize, finalize), `dae8477`
+(sysgen steps), `a932659` (README + plan); then three found in this phase:
+
+- `2079634`/`dd62a74`/`84dffc7` **console reply resend.** The build hung
+  twice: after the `/` to IEA101A (step 3) and after `r 0,noreq` to
+  `$HASP426`. Hercules logs HHC00013I and echoes the input, MVS prints
+  nothing and sits in a wait state (CP thread idle). Now `ipl_reply()`
+  (the five IEA101A sites: 1 s delay after `HHC00010A`) and every `r nn,`
+  reply via `send_oper`/`send_reply` resend the reply when **no MVS line at
+  all** comes for `IPL_REPLY_RETRY` = 15 s, up to `IPL_REPLY_TRIES` = 3.
+  Hercules' `HHC` lines and its echo of the reply do not count. Lines read
+  meanwhile are pushed back (`next_line`, `stdout_pushback`) for the
+  caller's next wait. **Gotcha (why `dd62a74` was wrong):** waiting for
+  `IEE600I REPLY TO nn` is not safe: MVS 3.8 (step 7, console 0009) answers
+  the IEA101A `r 0,clpa` with NIP messages, not IEE600I, so it was resent,
+  the copy answered `IFB010D` and every later reply hit the wrong prompt
+  (JES2 `$HASP479` checkpoint I/O error). A resend to an already answered
+  WTOR id is rejected by MVS (harmless); a resend during NIP is not.
+
+**Build** (`../sysgen-p9test`, fresh clone, `--release --keep-backup
+--keep-temp --CONTINUE` in `pasta --config-net -t none -u none -T none -U
+none -- unshare --map-user=1000 --map-group=1000`: own netns with internet
+for the GitHub downloads/clones, 8080 free inside; `unshare -rn` has no
+network): steps 1–6 15:43–16:22 on `dd62a74` (one SMPJOB03 `DLBUCL5` RC 16,
+before any resend, retried OK; 5 resends, all to WTORs), then the step 7
+failure above, then `84dffc7` pulled into the tree and `--CONTINUE` from
+`26_FDZ1D02`: steps 7–14 16:26–16:42 with **no resends**, `BUILD OK`.
+Output `MVSCE.release.84dffc7.tar` (190 MB) + `backup/38_FINAL.tar`.
+**Side effect:** the TSO logon screen says `ver: dd62a74` (stamped in an
+early step), the release README `84dffc7`; a from-scratch build (e.g. the
+release CI on the tag) has one version.
+
+**Docker:** `Docker/Dockerfile` (as release.yml) with the release tar as
+`MVSCE.release.tar` → `mvsce:p9test` (619 MB); a container IPLs to
+`IKT005I` in 8 s and listens on 3270/3271/3505/3506/3221/3223/8888.
+
+**Acceptance** (`../sysgen-p9accept`, copy of `38_FINAL`, own IPL: the
+final system starts JES2/NET/TSO itself, so no `$HASP426`, and JES2 prints
+**no `$HASP099` after a job** there; wait for `$HASP250 <job> IS PURGED`):
+- LIST CDS: TBRX310, TUFS152, TFTP134, THTP451, TZMF141, TISF120, TRKF200
+  `REC APP ACC`; MS00100 `REC APP` (LIST ACDS of it ends RC 4, not found:
+  never accepted).
+- Members (LISTCAT of BREXX/UFSD/FTPD/HTTPD/MVSMF/ISF, LISTDS MEMBERS):
+  BREXX.LINKLIB 6, RXLIB 112, SAMPLIB 119, CMDLIB 10, JCL 15, PROCLIB 2;
+  UFSD.LINKLIB 4, FTPD.LINKLIB 1, HTTPD.LINKLIB 5, MVSMF.LINKLIB 1,
+  ISF.LINKLIB 1, ISF.ISFCLST 1, *.SAMPLIB 1–3. Every target library has the
+  count of its distribution library **except `ISF.ISFPLIB` 82 vs
+  `ISF.AISFPLIB` 24** — not chased; check against the sdsf dist.
+- `check_usermods`: 71 usermods applied, EXEC runs BREXX V3R1M0, CLISTs run.
+- 12a smoke test: UFSD/HTTPD/FTPD authorized by SVC, 6 file systems,
+  `/zosmf/info` 1.4.1, `GET /` 200, FTP login of all three users.
+- Batch job as IBMUSER, MVSCE01, MVSCE02 runs; wrong password `IEF722I`.
+- `EXEC MVP,ACTION='LIST'`: 119 packages, none of UFSD FTPD HTTPD MVSMF.
+- 3270 (c3270 4.3 `-scriptport` on a pty inside the netns, driven through a
+  file relay): MVSCE02 logon → `SHUTFAST` = `NOT AUTHORIZED (RAKF FACILITY
+  SVC244)`, nothing started; `RX MVP LIST` works for MVSCE02, none of the
+  four; IBMUSER logon → ISPF → `TSO SDSF` → `LOG` shows the syslog, `/D T`
+  → `IEE136I`; ISPF `X` → `SHUTFAST` → `SHUT001`/`SHUT002` → `$HASP085` →
+  `IEE334I HALT EOD SUCCESSFUL`.
+
+**Found, not fixed:**
+1. **The job after a RAKF-refused job fails.** After a job ends `IEF722I
+   INVALID PASSWORD GIVEN`, the **next** job in the same initiator gets
+   `IEA911E COMPLETE DUMP` + `IEF174I SYSTEM ERROR BEFORE JOB INITIATION`
+   (`$HASP396 TERMINATED`); the one after runs. Reproduced twice (first
+   with MVP LIST as the victim, then with IEFBR14). Not checked whether
+   RAKF 1.2.6 builds do the same; look at `SYS1.DUMP00` (RAKF 2.0.0 RACINIT
+   cleanup in the initiator?).
+2. README Docker section: `-p 2121:21` maps nothing (FTPD is on 2121 in the
+   container, TLS on 3221); 8080 (HTTPD/mvsMF) is neither in the `docker
+   run` example nor `EXPOSE`d in `Docker/Dockerfile*`; it still points to
+   `MVS-sysgen/docker-mvsce` for the Dockerfile, which is now `Docker/`.
+3. `MVSCE/README.md` (release) is the generated stub: release, version,
+   `start_mvs.sh`, users (STC ids correctly left out), link. It says nothing
+   about the SMP stack, `/S UFSD|HTTPD|FTPD`, or that only admins can
+   SHUTDOWN now.
+
+**Harness gotchas:** `pkill -f <pattern>` / `pgrep -f` from a shell whose
+own command line contains the pattern kills that shell (Phase 4 note, hit
+again): kill by PID. A `tail -f` on a tree that was deleted and recloned
+shows the old file; use `tail -F`. The acceptance code is in the session
+scratchpad (`harness.py` + `p9accept.py`, `p9run.sh`, `relay3270.py`).
+
+Next: release tag (proposed `v4.0.0`) after review; the items above.
