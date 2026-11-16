@@ -1018,7 +1018,7 @@ final system starts JES2/NET/TSO itself, so no `$HASP426`, and JES2 prints
    with MVP LIST as the victim, then with IEFBR14). Not checked whether
    RAKF 1.2.6 builds do the same; look at `SYS1.DUMP00` (RAKF 2.0.0 RACINIT
    cleanup in the initiator?).
-2. README Docker section: `-p 2121:21` maps nothing (FTPD is on 2121 in the
+2. *Fixed in `45b9ad8` (ports table, EXPOSE 2121 8080 22000-22200; tested HTTP + EPSV/PASV FTP through the image; PASV clients need `PASVADR`).* README Docker section: `-p 2121:21` maps nothing (FTPD is on 2121 in the
    container, TLS on 3221); 8080 (HTTPD/mvsMF) is neither in the `docker
    run` example nor `EXPOSE`d in `Docker/Dockerfile*`; it still points to
    `MVS-sysgen/docker-mvsce` for the Dockerfile, which is now `Docker/`.
