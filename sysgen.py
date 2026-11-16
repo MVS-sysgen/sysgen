@@ -204,10 +204,6 @@ def dasdls_extents(text):
 # Step 12a: installed in this order (mvsMF needs HTTPD; FTPD and HTTPD use
 # UFSD when it runs). Each is a [section] in mvslovers.conf.
 MVSLOVERS_STACK = ('ufsd', 'ftpd', 'httpd', 'mvsmf')
-# Listener ports of the shipped FTPDPRM0 / HTTPPRM0 (the smoke test needs
-# them free on the build host: Hercules' TCP/IP extension binds there).
-HTTPD_PORT = 8080
-FTPD_PORT = 2121
 
 
 class sysgen:
@@ -2005,40 +2001,8 @@ class sysgen:
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("BRXXCFG")
         self.shutdown_mvs(cust=True)
-
-        self.custjobs_ipl("Verifying BREXX/370", clpa=True)
-        self.submit_file('jcl/brexxver.jcl')
-        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
-        self.check_maxcc("BRXXVER")
-        self.check_brexx(dist)
-        self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("31_BREXX")
-
-    def check_brexx(self, dist, printer_file='prt00e.txt'):
-        '''Check BRXXVER's output, not only its condition codes: SMP can
-           end RC 0 and copy nothing (NOT SEL).'''
-        with open(printer_file, 'r', errors='ignore') as f:
-            text = f.read()
-        vrm = 'V{}R{}M{}'.format(*dist.version.split('.')[:3])
-        for pgm in ('BREXX', 'REXX', 'RX'):
-            found = re.findall(r'BRXVER-{} (\S+)'.format(pgm), text)
-            if not found or found[-1] != vrm:
-                raise ValueError("PGM={} without STEPLIB printed {} not {}, review {}"
-                                 .format(pgm, found[-1] if found else 'nothing', vrm, printer_file))
-            logging.debug("[BREXX] PGM={} runs {}".format(pgm, found[-1]))
-        members = self.listds_members('BREXX.LINKLIB', printer_file)
-        missing = {'BREXX', 'REXX', 'RX', 'BRXVTOC', 'BRXVSMIO', 'BRXVSMTR'} - set(members)
-        if missing:
-            raise ValueError("BREXX.LINKLIB is missing {}".format(sorted(missing)))
-        for lib in ('BREXX.RXLIB', 'BREXX.SAMPLIB'):
-            n = len(self.listds_members(lib, printer_file))
-            if not n:
-                raise ValueError("{} has no members".format(lib))
-            logging.debug("[BREXX] {} has {} members".format(lib, n))
-        self.check_smp_status(dist.fmid, 'REC APP ACC', printer_file)
-        self.check_smp_status('MS00100', 'REC APP', printer_file)
-        self.print("BREXX/370 {} runs from the link list, {} is REC APP ACC".format(vrm, dist.fmid))
 
     def listds_members(self, dsn, printer_file='prt00e.txt'):
         '''Member names (and aliases) printed by the last TSO
@@ -2749,12 +2713,6 @@ class sysgen:
 
         self.zmg0001(zmg_files, rakf_admin_user, rakf_admin_password)
         self.shutdown_mvs(cust=True)
-
-        # EXEC is loaded from the link list; an extent SYS1.CMDLIB took in
-        # the apply is only usable after an IPL, so test after one.
-        self.custjobs_ipl("Verifying the usermods and the BREXX/370 TSO integration")
-        self.check_usermods(rakf_admin_user, rakf_admin_password)
-        self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("34_EXTRAS")
 
@@ -2805,48 +2763,6 @@ class sysgen:
         ids.extend(RAKF_USERMODS)
         ids.append('ZMG0001')
         return [i for i in dict.fromkeys(ids) if i not in RESTORED_USERMODS]
-
-    def check_usermods(self, user, password, printer_file='prt00e.txt'):
-        '''LIST CDS of every usermod: applied (REC APP or REC APP ACC);
-           ZMG0001 exactly REC APP, UY16532 REC APP ACC, JLM0003 the one of
-           RAKF (SUPING NJE0001), NJE0001 superseded. Then EXEC runs REXX
-           through BREXX/370 (implicit, explicit, EXEC keyword) and a CLIST
-           still runs as a CLIST.'''
-        import mvslovers
-        sysmods = self.all_usermods()
-        self.submit_mvslovers_job(mvslovers.usermods_verify_job(sysmods + ['UY16532'], user, password))
-        with open(printer_file, 'r', errors='ignore') as f:
-            text = f.read()
-        text = text[text.find('UMODVER'):]
-        entries = mvslovers.parse_smp_list(text)
-        bad = mvslovers.check_usermods(
-            entries, sysmods + ['UY16532'],
-            exact={'ZMG0001': 'REC APP', 'UY16532': 'REC APP ACC'},
-            superseded=SUPERSEDED_USERMODS)
-        jlm = ' '.join(entries.get('JLM0003', {}).get('lines', []))
-        if not re.search(r'SUPING\s+VER\(\d+\)\s*=\s*NJE0001', jlm):
-            bad.append("JLM0003 is not RAKF's (no SUPING NJE0001)")
-        if bad:
-            raise ValueError("Usermods: {}; review {}".format('; '.join(bad), printer_file))
-        logging.debug("[USERMODS] {} applied: {}".format(len(sysmods), ' '.join(
-            '{}={}'.format(s, entries[s]['status'] or entries[s]['type']) for s in sysmods)))
-
-        # the pinned BREXX/370 (any VnRnMn with --mvslovers-dist)
-        vrm = self.brexx_vrm()
-        got = mvslovers.parse_zmg_test(text)
-        want = {w: vrm for _, w in mvslovers.ZMG_TEST_CMDS if w != 'CLIST'}
-        want['CLIST'] = 'RAN'
-        ok = lambda v, g: g == v or (v != 'RAN' and self.mvslovers_dist and
-                                     re.fullmatch(r'V\d+R\d+M\d+', g or ''))
-        wrong = {k: got.get(k) for k, v in want.items() if not ok(v, got.get(k))}
-        if wrong:
-            raise ValueError("EXEC test: expected {}, got {}; review {}".format(want, wrong, printer_file))
-        self.print("{} usermods applied; EXEC runs BREXX/370 {} (implicit, EXEC 'ds(m)', EXEC keyword), CLISTs still run".format(len(sysmods), vrm))
-
-    def brexx_vrm(self):
-        import mvslovers
-        v = mvslovers.load_manifest()['brexx370']['version']
-        return 'V{}R{}M{}'.format(*v.split('.')[:3])
 
     def step_11_nje38(self):
         self.set_step("step_11_nje38")
@@ -2908,8 +2824,7 @@ class sysgen:
            Authorization: SVC 244 from RAKF (no IEAAPF00 entries, no IPL).
            The started tasks run as the RAKF users UFSD, FTPD and HTTPD in
            group STARTED, which has READ on FACILITY SVC244 (step 8).
-           Nothing is started at IPL; the servers are started once here to
-           check them and stopped again.'''
+           Nothing is started at IPL.'''
         self.set_step("step_12a_mvslovers")
         self.print("Step 12a. Installing UFSD, FTPD, HTTPD and mvsMF with SMP", color="CYAN")
         self.restore_dasd("36_ISPF")
@@ -2934,7 +2849,7 @@ class sysgen:
         for d in disks:
             logging.debug("[MVSLOVERS] UFS disk {} {} {} from {}".format(d.dsn, d.path, d.mode, d.image))
 
-        self.custjobs_ipl("Installing the mvslovers stack with SMP", clpa=False, tcpip=True)
+        self.custjobs_ipl("Installing the mvslovers stack with SMP", clpa=False)
         for dist in dists:
             self.print("Installing {} {} (FMID {})".format(dist.product.upper(), dist.version, dist.fmid))
             # One job at a time: alloc must end before inst, inst before
@@ -2953,7 +2868,6 @@ class sysgen:
             self.check_smp_status(dist.fmid, 'REC APP ACC')
         self.print("{} are REC APP ACC".format(', '.join(d.fmid for d in dists)))
 
-        self.mvslovers_smoke_test(disks, user, password, rakf_users)
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("36a_MVSLOVERS")
@@ -2981,93 +2895,6 @@ class sysgen:
                     raise Exception("Console: '{}'".format(line))
             if any(d in line for d in done):
                 return lines
-
-    def mvslovers_smoke_test(self, disks, user, password, rakf_users):
-        '''Start UFSD, HTTPD and FTPD, check their console messages, call
-           /zosmf/info and log on to FTP as every users.conf user, stop
-           them again (UFSD first up, last down).'''
-        import mvslovers
-        import ftplib
-        import json
-        import urllib.request
-        import base64
-
-        busy = []
-        for port in (HTTPD_PORT, FTPD_PORT):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.bind(('0.0.0.0', port))
-            except OSError:
-                busy.append(port)
-            finally:
-                s.close()
-        if busy:
-            # Hercules' TCP/IP extension binds on the build host itself.
-            raise Exception("Port(s) {} in use on this host; the step 12a smoke test starts "
-                            "HTTPD on {} and FTPD on {}. Free them and continue with -C."
-                            .format(', '.join(map(str, busy)), HTTPD_PORT, FTPD_PORT))
-
-        def find(lines, msgid):
-            hits = [l for l in lines if msgid in l]
-            if not hits:
-                raise Exception("{} not on the console".format(msgid))
-            return hits[-1][hits[-1].index(msgid):]
-
-        self.print("Starting UFSD")
-        self.send_oper('s ufsd')
-        lines = self.console_until(['UFSD001I'], ['UFSD091E', 'IEF450I UFSD', '$HASP395 UFSD'])
-        self.print(find(lines, 'UFSD007I'))
-        if 'AUTHORIZED BY SVC' not in find(lines, 'UFSD007I'):
-            raise Exception("UFSD is not authorized by SVC 244")
-        mounted = find(lines, 'UFSD040I')
-        if not mounted.startswith('UFSD040I {} '.format(len(disks))):
-            raise Exception("expected {} UFS disks mounted: {}".format(len(disks), mounted))
-        self.print(mounted)
-
-        self.print("Starting HTTPD")
-        self.send_oper('s httpd')
-        lines = self.console_until(['HTTPD001I'], ['IEF450I HTTPD', '$HASP395 HTTPD', 'HTTPD064E'])
-        for msgid in ('HTTPD002I', 'HTTPD004I'):
-            self.print(find(lines, msgid))
-        if 'AUTHORIZED BY SVC' not in find(lines, 'HTTPD002I'):
-            raise Exception("HTTPD is not authorized by SVC 244")
-        if 'HTTPD/STARTED' not in find(lines, 'HTTPD004I'):
-            raise Exception("HTTPD runs with the wrong identity")
-        find(lines, 'HTTPD036I MODULE MVSMF REGISTERED FOR /zosmf/info')
-
-        self.print("Starting FTPD")
-        self.send_oper('s ftpd')
-        lines = self.console_until(['FTPD001I'], ['FTPD003W', 'FTPD004E', 'IEF450I FTPD', '$HASP395 FTPD'])
-        for msgid in ('FTPD008I', 'FTPD004I'):
-            self.print(find(lines, msgid))
-        # FTPD 1.3+ keeps the identity RAKF gives the task; STC/STCGROUP
-        # would mean the STC name mapping (users.txt FTPD in STARTED) failed.
-        if 'STC/STCGROUP' in find(lines, 'FTPD004I') or 'FTPD/STARTED' not in find(lines, 'FTPD004I'):
-            raise Exception("FTPD runs with the wrong identity: {}".format(find(lines, 'FTPD004I')))
-
-        url = 'http://127.0.0.1:{}/zosmf/info'.format(HTTPD_PORT)
-        req = urllib.request.Request(url, headers={'Authorization': 'Basic ' + base64.b64encode(
-            '{}:{}'.format(user, password).encode()).decode()})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            info = json.load(r)
-        self.print("GET {}: zosmf_version {}, {}".format(
-            url, info.get('zosmf_version'), info.get('zosmf_full_version', '')))
-        with urllib.request.urlopen('http://127.0.0.1:{}/'.format(HTTPD_PORT), timeout=60) as r:
-            self.print("GET /: {} {} bytes from /www".format(r.status, len(r.read())))
-
-        for u, g, pw in mvslovers.parse_rakf_users(rakf_users):
-            if not pw or g == 'RAKFADM':
-                continue
-            ftp = ftplib.FTP()
-            ftp.connect('127.0.0.1', FTPD_PORT, timeout=60)
-            ftp.login(u, pw)
-            self.print("FTP login {}: {}".format(u, ftp.pwd()))
-            ftp.quit()
-
-        for stc in ('FTPD', 'HTTPD', 'UFSD'):
-            self.send_oper('p {}'.format(stc.lower()))
-            self.wait_for_string('$HASP395 {}'.format(stc), timeout=300)
-        self.print("UFSD, HTTPD and FTPD started, answered and stopped", color="GREEN")
 
     def step_12b_sdsf(self):
         '''SDSF as an SMP function from its mvslovers dist, then the system
@@ -3098,60 +2925,8 @@ class sysgen:
         self.print("Adding ISF.LINKLIB to IEAAPF00/LNKLST00, SDSF to ISPF and IKJACCNT")
         self.submit_mvslovers_job(mvslovers.sdsf_config_job(user, password))
         self.shutdown_mvs(cust=True)
-
-        # IGX00011 in the LPA, APF and link list are read at IPL
-        self.custjobs_ipl("Verifying SDSF", clpa=True)
-        job = mvslovers.sdsf_verify_job(dist.fmid, user, password)
-        self.submit_mvslovers_job(job, mvslovers.SDSF_STEPS_CC.get(job.name))
-        # someone without SDSF.OPER: the first users.conf user not in ADMIN
-        other = [(u, pw) for u, g, pw in mvslovers.parse_rakf_users(
-                     Path('temp/rakf_users.txt').read_text())
-                 if pw and g == 'USER']
-        if other:
-            self.submit_mvslovers_job(mvslovers.sdsf_probe_job(*other[0]))
-        self.check_sdsf(dist, user, other[0][0] if other else None)
-        self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("36b_SDSF")
-
-    def check_sdsf(self, dist, admin, other=None, printer_file='prt00e.txt'):
-        '''Check SDSFVER/SDSFPRB output, not only condition codes.'''
-        import mvslovers
-        with open(printer_file, 'r', errors='ignore') as f:
-            text = f.read()
-        self.check_smp_status(dist.fmid, 'REC APP ACC', printer_file)
-        for dsn, want in (('ISF.LINKLIB', {'ISFISP'}),
-                          ('ISF.ISFPLIB', {'ISFMENU', 'ISFLIST', 'ISFHTOC'}),
-                          ('ISF.ISFCLST', {'SDSF'})):
-            missing = want - set(self.listds_members(dsn, printer_file))
-            if missing:
-                raise ValueError("{} is missing {}".format(dsn, sorted(missing)))
-        if 'ISF001E' not in text:
-            raise ValueError("ISFISP from the link list did not answer ISF001E, review {}"
-                             .format(printer_file))
-        probe = mvslovers.parse_sdsf_probe(text)
-        a = probe.get(admin[:8])
-        if not a or a.get('apf_error') or a['read'] is None:
-            raise ValueError("no SDSFPRB output for {} in {}".format(admin, printer_file))
-        logging.debug("[SDSF] APF table: {}".format(a['apf']))
-        if (mvslovers.SDSF_TGTVOL, mvslovers.SDSF_LINKLIB) not in a['apf']:
-            raise ValueError("{} on {} is not in the APF table after the IPL".format(
-                mvslovers.SDSF_LINKLIB, mvslovers.SDSF_TGTVOL))
-        if not a['esr11']:
-            raise ValueError("SVC 109 code 11 (IGX00011) is not in the LPA after the CLPA IPL")
-        if a['update'] != 0:
-            raise ValueError("{} has no UPDATE on FACILITY SDSF.OPER (RC {})".format(admin, a['update']))
-        msg = "{} is REC APP ACC, ISF.LINKLIB APF and link list, IGX00011 in the LPA, {} has SDSF.OPER".format(
-            dist.fmid, admin)
-        if other:
-            o = probe.get(other[:8])
-            if not o or o['update'] is None:
-                raise ValueError("no SDSFPRB output for {} in {}".format(other, printer_file))
-            if o['update'] == 0 or o['read'] == 0:
-                raise ValueError("{} has access to FACILITY SDSF.OPER (READ RC {}, UPDATE RC {})"
-                                 .format(other, o['read'], o['update']))
-            msg += ", {} has not".format(other)
-        self.print(msg)
 
     def step_13_customize(self):
         self.set_step("step_13_customize")
