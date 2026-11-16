@@ -733,5 +733,52 @@ class UsermodTest(unittest.TestCase):
                                                  'KEYWORD': 'V3R1M0', 'CLIST': 'RAN'})
 
 
+def load_sysgen():
+    '''sysgen.py runs main() on import: exec it without the trailing call.'''
+    p = Path(__file__).resolve().parent.parent / 'sysgen.py'
+    src = p.read_text()
+    g = {'__file__': str(p), '__name__': 'sysgen_test'}
+    exec(compile(src[:src.rindex('\nmain()')], str(p), 'exec'), g)
+    return g
+
+
+class Step5Test(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.g = load_sysgen()
+
+    def test_backup_names(self):
+        g = self.g
+        self.assertEqual(g['usermod_backup_name'](0), '24_SYSGEN06')
+        self.assertEqual(g['usermod_backup_name'](1), 'usermod_01_AY12275')
+        i = g['usermods'].index('ZP60038')
+        self.assertEqual(g['usermod_backup_name'](i), 'usermod_{:02}_ZP60037'.format(i))
+
+    def test_restart_index(self):
+        g = self.g
+        u = g['usermods']
+        self.assertEqual(g['usermod_restart_index'](u.index('ZP60038')), 0)
+        g['USERMOD_IPL_POINTS'] = ('ZP60014', 'ZP60030')
+        try:
+            r = g['usermod_restart_index']
+            self.assertEqual(r(u.index('ZP60013')), 0)
+            self.assertEqual(r(u.index('ZP60014')), u.index('ZP60014'))
+            self.assertEqual(r(u.index('ZP60029')), u.index('ZP60014'))
+            self.assertEqual(r(u.index('SLB0001')), u.index('ZP60030'))
+        finally:
+            g['USERMOD_IPL_POINTS'] = ()
+
+    def test_dasdls_extents(self):
+        out = ('Dsname                                       CREDT ORG RECFM LRECL BLKSZ Key  Trks%Use#Ext 2ndry_alloc\n'
+               'SYS1.LINKLIB                                 26193 PO  U           19069   0   600  90   1 CYL       1\n'
+               'SYS1.MACLIB                                  26193 PO  FB       80 19040   0   900  82   2 TRK      10\n'
+               'VOLSER:  MVSRES    "x"\n')
+        self.assertEqual(self.g['dasdls_extents'](out), {'SYS1.LINKLIB': 1, 'SYS1.MACLIB': 2})
+
+    def test_ipl_points_are_usermods(self):
+        for p in self.g['USERMOD_IPL_POINTS']:
+            self.assertIn(p, self.g['usermods'])
+
+
 if __name__ == '__main__':
     unittest.main()
