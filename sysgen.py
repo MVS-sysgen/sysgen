@@ -10,6 +10,7 @@ import json
 import threading
 import queue
 import socket
+import re
 import time
 import argparse
 from pathlib import Path
@@ -101,6 +102,13 @@ if has_colorama:
 quit_herc_event = threading.Event()
 kill_hercules = threading.Event()
 reset_herc_event = threading.Event()
+
+# IPL reply on the 3215 console (see ipl_reply): wait this long after the
+# prompt before replying, resend the reply if MVS prints nothing for
+# IPL_REPLY_RETRY seconds, give up after IPL_REPLY_TRIES replies.
+IPL_REPLY_DELAY = 1
+IPL_REPLY_RETRY = 15
+IPL_REPLY_TRIES = 3
 STDERR_to_logs = threading.Event()
 running_folder = os.path.dirname(os.path.abspath(__file__)) + "/"
 os.chdir(running_folder)
@@ -130,6 +138,34 @@ POST_RAKF_JOB_CARD = ('''//{JOBNAME} JOB (SYSGEN),'{DESC}',
 //             PASSWORD={PASSWORD},
 //             REGION={REGION}
 ''')
+
+# Expected non-zero step CCs of RAKFINST for the pinned RAKF (mvslovers.conf).
+# RESTORE/RECEIVE 12 belong to RAKF's own JLM0003: its RESTORE S(NJE0001,
+# JLM0003) takes sysgen's JLM0003 (step 5) and TRANSMIT's NJE0001 (step 7)
+# off, the second RESTORE S(JLM0003) then ends HMA2452 (not applied) and
+# its REJECT HMA2462 (not on SMPPTS); the RECEIVE and APPLY that follow
+# install RAKF's JLM0003 (REWORK 20261008, SUP NJE0001) into IKJEFT02.
+RAKF_STEPS_CC = {'DELETE': '0008', 'APPLYR': '0004', 'RAK00013': '0012',
+                 'RAK00014': '0012', 'ZJW00031': '0012', 'ZJW00032': '0004',
+                 'RESTORE': '0012', 'RECEIVE': '0012'}
+# Usermods RAKFINST (RAKF v2.0.0 USERMODS/) applies; JLM0003 replaces
+# sysgen's own JLM0003 (see above).
+RAKF_USERMODS = ('JLM0003', 'RAK0001', 'ZJW0003')
+# Usermods that end up TYPE = SUPERSEDED: NJE0001 (jcl/transmit.jcl, step 7)
+# by RAKF's JLM0003.
+SUPERSEDED_USERMODS = ('NJE0001',)
+# Usermods a job applies and RESTOREs again on purpose: #DYPDMY (DYNPROC,
+# a dummy zap that forces a relink of IEFVH1).
+RESTORED_USERMODS = ('#DYPDMY',)
+
+# Step 12a: installed in this order (mvsMF needs HTTPD; FTPD and HTTPD use
+# UFSD when it runs). Each is a [section] in mvslovers.conf.
+MVSLOVERS_STACK = ('ufsd', 'ftpd', 'httpd', 'mvsmf')
+# Listener ports of the shipped FTPDPRM0 / HTTPPRM0 (the smoke test needs
+# them free on the build host: Hercules' TCP/IP extension binds there).
+HTTPD_PORT = 8080
+FTPD_PORT = 2121
+
 
 class sysgen:
     ''' sysgen class to build hercules '''
@@ -178,6 +214,7 @@ class sysgen:
         self.no_brexx = no_brexx
         self.no_ispf = no_ispf
         self.no_mvp = False
+        self.mvslovers_dist = None
 
         if no_brexx:
             self.no_rakf = True
@@ -246,6 +283,9 @@ class sysgen:
         self.set_version()
         self.stderr_q = queue.Queue()
         self.stdout_q = queue.Queue()
+        # lines read ahead (e.g. by wait_reply_taken) that the next
+        # reader of stdout_q must still see, see next_line()
+        self.stdout_pushback = []
 
     def install(self, step, substep):
 
@@ -308,6 +348,14 @@ class sysgen:
 
             if step == 'step_12_ispf':
                 self.step_12_ispf()
+                step = "step_12a_mvslovers"
+
+            if step == 'step_12a_mvslovers':
+                self.step_12a_mvslovers()
+                step = "step_12b_sdsf"
+
+            if step == 'step_12b_sdsf':
+                self.step_12b_sdsf()
                 step = "step_13_customize"
 
             if step == 'step_13_customize':
@@ -435,12 +483,64 @@ class sysgen:
         self.hercproc.stdin.flush()
 
     def send_oper(self, command=''):
-        ''' Sends operator/console commands (i.e. prepends /) '''
+        ''' Sends operator/console commands (i.e. prepends /). A reply
+            ('r nn,...') is resent if MVS does not take it, see
+            wait_reply_taken '''
         self.send_herc("/{}".format(command))
+        m = re.match(r'\s*r\s+(\d+)\s*,', command, re.IGNORECASE)
+        if m:
+            self.wait_reply_taken("/{}".format(command), int(m.group(1)))
 
     def send_reply(self, command=''):
         ''' Sends operator/console commands with automated number '''
-        self.send_herc("/r {},{}".format(reply_num,command))
+        self.send_oper("r {},{}".format(reply_num,command))
+
+    def next_line(self, q, timeout):
+        '''Next line from q (stdout lines read ahead come first). Raises
+           queue.Empty after timeout seconds.'''
+        if q is self.stdout_q and self.stdout_pushback:
+            return self.stdout_pushback.pop(0)
+        return q.get(timeout=timeout).strip()
+
+    def wait_reply_taken(self, command, num, retry_after=IPL_REPLY_RETRY,
+                         tries=IPL_REPLY_TRIES):
+        '''After a WTOR reply: resends it if MVS stays silent.
+
+           Sometimes MVS does not take a reply: Hercules logs HHC00013I and
+           echoes the input, but MVS prints nothing and stays in a wait
+           state. So if no MVS line at all comes within retry_after
+           seconds, the reply is sent again (up to tries in all). Any MVS
+           line -- IEE600I, an error, or the next message -- means the
+           reply arrived, and it is never resent: not every reply is
+           answered with IEE600I (IEA101A on MVS 3.8 is not), and a second
+           copy of a taken reply answers the next prompt. Hercules' own
+           HHCnnnnnx messages and its echo of the reply do not count. The
+           lines read are pushed back for the caller's next wait.
+        '''
+        echo = command[1:].strip()
+        seen = []
+        try:
+            for attempt in range(1, tries + 1):
+                started = time.time()
+                while time.time() < started + retry_after:
+                    try:
+                        line = self.next_line(self.stdout_q, timeout=0.5)
+                    except queue.Empty:
+                        continue
+                    seen.append(line)
+                    if not line.startswith('HHC') and line != echo:
+                        return
+                logging.debug("Reply '{}' not taken: no MVS output for {} "
+                              "seconds (attempt {} of {})".format(
+                                  command, retry_after, attempt, tries))
+                if attempt < tries:
+                    self.print("MVS did not take the reply '{}', sending it "
+                               "again".format(echo))
+                    self.send_herc(command)
+            raise Exception("Step: {} reply '{}' not taken by MVS after {} "
+                            "tries".format(self.step, echo, tries))
+        finally:
+            self.stdout_pushback[0:0] = seen
 
     def read_configs(self, config_file=''):
         logging.debug("Reading {}".format(config_file))
@@ -571,9 +671,7 @@ class sysgen:
         self.wait_for_string("0:0151 CCKD")
         self.print("Installing SMP 4.44 on the Starter System")
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_oper('r 0,clpa')
-        self.wait_for_string("00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/r 0,clpa', "00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.print("Formatting SPOOL0")
         self.send_oper('r 0,format,noreq')
         self.wait_for_string('$HASP436 REPLY Y OR N TO CONFIRM CHECKPOINT RECORD CHANGE')
@@ -666,9 +764,7 @@ class sysgen:
         self.send_herc('attach 0012    3505    jcl/smpmount.jcl eof')
         self.send_herc("STOPALL")  # Needed for Hercules 4.5?
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_herc('/')
-        self.wait_for_string("$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/', "$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string("IEF166D REPLY Y/N TO EXECUTE/SUPPRESS COMMAND")
         self.print("Assigning the volume SMP000 to the class of PRIVATE")
@@ -827,9 +923,7 @@ class sysgen:
         self.send_herc('detach 0012')
         self.send_herc('attach 0012    3505    jcl/null.jcl eof')
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_herc('/')
-        self.wait_for_string("$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/', "$HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
 
@@ -913,9 +1007,7 @@ class sysgen:
         self.set_configs('sysgen2')
         #self.wait_for_string("0:0151 CKD")
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_oper('r 0,clpa')
-        self.wait_for_string("00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/r 0,clpa', "00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
         # self.send_oper('$pi2-3')
@@ -935,9 +1027,7 @@ class sysgen:
         self.set_configs('sysgen')
         #self.wait_for_string("0:0151 CKD")
         self.send_herc("ipl 150")
-        self.wait_for_string("input for console 0:001F")
-        self.send_oper('r 0,clpa')
-        self.wait_for_string("00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
+        self.ipl_reply('/r 0,clpa', "00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
         self.send_oper('$pi2-3')
@@ -1791,14 +1881,132 @@ class sysgen:
         if self.skip_steps:
             self.print("Step 7. Customizing MVS 3.8j",color="CYAN")
 
-        self.custjobs_ipl("Installing BREXX/370", clpa=True)
-        self.send_herc("devinit 01c xmi/brexx.xmi")
-        self.submit_file('jcl/brexx.jcl')
+        # BREXX/370 3.1 is SMP FMID TBRX310, from the mvslovers dist
+        # (mvslovers.conf pin or --mvslovers-dist). Its install job unpacks
+        # the xmits with TSO RECEIVE, which on MVS/CE comes with NJE38 --
+        # installed much later, by MVP, which needs RAKF, which runs BREXX.
+        # So install the standalone TRANSMIT/RECEIVE first. RECEIVE is APF
+        # authorized through the IKJEFTE2 usermod TRANSMIT applies, which
+        # only takes effect after an IPL with CLPA (before it: RC 8, 'The
+        # RECEIVE command is not APF-authorized').
+        self.custjobs_ipl("Installing TSO TRANSMIT/RECEIVE")
+        self.submit_file('jcl/transmit.jcl')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
-        self.check_maxcc("BRXXINST")
+        self.check_maxcc("TRANSMIT")
+        self.submit_file('jcl/brexxpre.jcl')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("BRXXPRE")
+        self.shutdown_mvs(cust=True)
+
+        self.custjobs_ipl("Installing BREXX/370 with SMP", clpa=True)
+        import mvslovers
+        dist = mvslovers.discover(mvslovers.fetch(
+            'brexx370', dist_dir=self.mvslovers_dist,
+            log=lambda m: logging.debug("[MVSLOVERS] {}".format(m))))
+        self.print("BREXX/370 {} (FMID {})".format(dist.version, dist.fmid))
+        # One job at a time: JES2 may run same-class jobs in parallel and
+        # the alloc job must end before the install job starts.
+        for job in mvslovers.build_jobs(dist, user=None):
+            self.print("Submitting {}".format(job.name))
+            self.submit_binary(job.bytes(), port=3506)
+            self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+            self.check_maxcc(job.name)
+
+        # Link list way 1 (ug-install-linklist-ms): MS00100 lets LNKLST00
+        # name BREXX.LINKLIB(MVSRES), which is cataloged in UCPUB001, not
+        # the master catalog. Both take effect at the next IPL.
+        self.submit_file('usermods/MS00100.jcl')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("MS00100")
+        self.submit_file('jcl/brexxcfg.jcl')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("BRXXCFG")
+        self.shutdown_mvs(cust=True)
+
+        self.custjobs_ipl("Verifying BREXX/370", clpa=True)
+        self.submit_file('jcl/brexxver.jcl')
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc("BRXXVER")
+        self.check_brexx(dist)
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("31_BREXX")
+
+    def check_brexx(self, dist, printer_file='prt00e.txt'):
+        '''Check BRXXVER's output, not only its condition codes: SMP can
+           end RC 0 and copy nothing (NOT SEL).'''
+        with open(printer_file, 'r', errors='ignore') as f:
+            text = f.read()
+        vrm = 'V{}R{}M{}'.format(*dist.version.split('.')[:3])
+        for pgm in ('BREXX', 'REXX', 'RX'):
+            found = re.findall(r'BRXVER-{} (\S+)'.format(pgm), text)
+            if not found or found[-1] != vrm:
+                raise ValueError("PGM={} without STEPLIB printed {} not {}, review {}"
+                                 .format(pgm, found[-1] if found else 'nothing', vrm, printer_file))
+            logging.debug("[BREXX] PGM={} runs {}".format(pgm, found[-1]))
+        members = self.listds_members('BREXX.LINKLIB', printer_file)
+        missing = {'BREXX', 'REXX', 'RX', 'BRXVTOC', 'BRXVSMIO', 'BRXVSMTR'} - set(members)
+        if missing:
+            raise ValueError("BREXX.LINKLIB is missing {}".format(sorted(missing)))
+        for lib in ('BREXX.RXLIB', 'BREXX.SAMPLIB'):
+            n = len(self.listds_members(lib, printer_file))
+            if not n:
+                raise ValueError("{} has no members".format(lib))
+            logging.debug("[BREXX] {} has {} members".format(lib, n))
+        self.check_smp_status(dist.fmid, 'REC APP ACC', printer_file)
+        self.check_smp_status('MS00100', 'REC APP', printer_file)
+        self.print("BREXX/370 {} runs from the link list, {} is REC APP ACC".format(vrm, dist.fmid))
+
+    def listds_members(self, dsn, printer_file='prt00e.txt'):
+        '''Member names (and aliases) printed by the last TSO
+           LISTDS 'dsn' MEMBERS in the printer output.'''
+        with open(printer_file, 'r', errors='ignore') as f:
+            lines = f.read().splitlines()
+        starts = [n for n, l in enumerate(lines)
+                  if l.strip().startswith(dsn) and l.strip().split()[0] == dsn]
+        if not starts:
+            raise ValueError("LISTDS of {} not found in {}".format(dsn, printer_file))
+        members = []
+        in_members = False
+        for l in lines[starts[-1] + 1:]:
+            s = l.strip()
+            if s.startswith('--MEMBERS--'):
+                in_members = True
+                continue
+            if not in_members:
+                continue
+            # the next echoed TSO command (LISTDS 'X' ...) or anything not
+            # a member line ends the list
+            if not s or "'" in s or s == 'READY' \
+                    or not re.match(r'^[A-Z@#$][A-Z0-9@#$]{0,7}(\s|$)', s):
+                break
+            members.append(s.split()[0])
+            members.extend(re.findall(r'[A-Z@#$][A-Z0-9@#$]{0,7}', ' '.join(s.split()[1:])) if 'ALIAS' in s else [])
+        return [m for m in members if m != 'ALIAS']
+
+    def check_smp_status(self, sysmod, status, printer_file='prt00e.txt'):
+        '''The last LIST CDS (not ACDS) entry of sysmod in the printer
+           output must show exactly this STATUS, e.g. 'REC APP ACC'.'''
+        with open(printer_file, 'r', errors='ignore') as f:
+            lines = f.read().splitlines()
+        found = None
+        zone = None
+        for n, l in enumerate(lines):
+            x = l.split()
+            if x[:3] in (['SMPCDS', 'SYSMOD', 'ENTRIES'], ['SMPACDS', 'SYSMOD', 'ENTRIES']):
+                zone = x[0]
+                continue
+            if zone == 'SMPCDS' and len(x) >= 3 and x[0] == sysmod and x[1] == 'TYPE':
+                for nxt in lines[n + 1:n + 4]:
+                    y = nxt.split()
+                    if y and y[0] == 'STATUS':
+                        found = ' '.join(y[2:] if y[1] == '=' else y[1:])
+                        break
+        if found is None:
+            raise ValueError("LIST CDS SYSMOD({}) not found in {}".format(sysmod, printer_file))
+        logging.debug("[SMP] {} STATUS = {}".format(sysmod, found))
+        if found != status:
+            raise ValueError("SMP {} has status '{}', expected '{}'".format(sysmod, found, status))
 
     def step_08_rakf(self):
         self.set_step("step_08_rakf")
@@ -1806,82 +2014,61 @@ class sysgen:
 
         self.skip_steps = False
         self.print("Step 8. Installing RAKF",color="CYAN")
-        user = "MVS-sysgen"
-        repo = "RAKF"
-        self.custjobs_ipl("Getting current RAKF release from github", clpa=True)
-        self.git_clone("https://github.com/MVS-sysgen/RAKF")
-        self.print("Generating temp/RAKF/rakf_install.jcl")
-        with open("temp/rakf_users.txt", 'w') as out_rakf:
-            rakf_line = "{user:7.7}  {group:8.8}{groups:1}{password:8.8} {oper:1}\n"
-            with open(self.users, 'r') as mvsusers:
-                for line in mvsusers.readlines():
-                    if line[0] in ["#","*"]:
-                        logging.debug("Comment skipped: {}".format(line))
-                        # comment skipped
-                        continue
-                    l = line.strip().split()
-                    username = l[0].upper()
-                    password = l[1].upper()
-                    oper = 'N'
-                    groups = ' '
-                    admin = False
-                    group = "USER"
-                    if len(l) > 3 and l[3].upper() == 'OPER':
-                        oper = "Y"
-                    if len(l) > 7 and l[7].upper() == 'ADMIN':
-                        admin = True
-                        groups = "*"
-                        group = "ADMIN"
-                    self.print("Adding RAKF user: {}".format(username))
-                    out_rakf.write(rakf_line.format(user=username,password=password,group=group,groups=groups,oper=oper))
-                    if admin:
-                        out_rakf.write(rakf_line.format(user=username,password=password,group='RAKFADM',groups=groups,oper=oper))
-            if self.username:
-                out_rakf.write(rakf_line.format(user=self.username.upper(),password=self.password.upper(),group="ADMIN",groups="*",oper="Y"))
-                out_rakf.write(rakf_line.format(user=self.username.upper(),password=self.password.upper(),group="RAKFADM",groups="*",oper="Y"))
-        if not Path('temp/RAKF/generate_release.py').is_file():
-            d = Path('temp')
-            for entry in d.iterdir():
-                if entry.is_file():
-                    print(entry)
-        # The RAKF admin tools (ADDUSER/ALTUSER) are cross-compiled off-platform
-        # by the RAKF GitHub Actions pipeline and published as an XMIT asset on
-        # the rolling 'latest' release. Fetch that prebuilt binary and hand it to
-        # generate_release.py via --xmit so we don't need the cc370 toolchain
-        # here; generate_release.py still hashes our custom users and embeds it.
-        tools_xmit = Path('temp/RAKF/rakf-tools.xmit').resolve()
-        self.github_release_asset("MVS-sysgen/RAKF", "rakf-tools.xmit", tools_xmit)
+        import mvslovers
+        rakf = mvslovers.load_manifest()['rakf']
+        self.custjobs_ipl("Getting RAKF {} from github".format(rakf['ref']), clpa=True)
+        # Pinned to the tag in mvslovers.conf ([rakf] ref); --update-mvslovers
+        # moves it. RAKF 2.0.0 ships no prebuilt tools: generate_release.py
+        # emits one EBCDIC job (RAKFINST) that RECEIVEs/APPLYs/ACCEPTs TRKF200
+        # and assembles everything on the target.
+        self.git_clone("https://github.com/{}".format(rakf['repo']), ref=rakf['ref'])
 
-        # generate_release.py does not emit text: the stream is 80 column EBCDIC
-        # card images carrying the raw SYS1.SECURE.SHADOW records and the tools
-        # XMIT inline behind DD DATA cards. Write it to a file and submit it
-        # untranslated to the EBCDIC reader (device 001A / port 3506) -- the
-        # ASCII reader on 3505 would translate and destroy the binary members.
-        # --recv370 unpacks the admin-tool XMIT with RECV370 out of SYSC.LINKLIB
-        # instead of TSO RECEIVE. RECEIVE/TRANSMIT is not part of base MVS 3.8J;
-        # here it arrives with NJE38 (step 11), which needs MVP (step 9), which
-        # needs RAKF -- so at step 8 the RECEIVE path fails with
-        # 'IKJ56500I COMMAND RECEIVE NOT FOUND'. RECV370 is already on the
-        # system by now; jcl/brexx.jcl uses it in step 7.
+        # users.conf -> RAKF 2.0.0 users.txt (Special flag in col 30 for
+        # ADMINs, started task ids FTPD/HTTPD in group STARTED and UFSD in
+        # group UFSROOT, with no password). generate_release.py hashes the passwords into the
+        # SYS1.SECURE.SHADOW records it embeds in the stream.
+        users_txt = Path('temp/rakf_users.txt').resolve()
+        with open(self.users, 'r') as f:
+            text = mvslovers.rakf_users(
+                f.read(), (self.username, self.password) if self.username else None)
+        users_txt.write_text(text)
+        for line in text.splitlines():
+            self.print("Adding RAKF user: {} {}".format(line[0:8].strip(), line[9:17].strip()))
+
+        # profiles.conf + the UFS disk profiles named after the users (group
+        # UFSROOT, the UFSD started task, UPDATE on HTTPD.WEBROOT.UFS and on
+        # each <user>.UFSHOME that step 12a creates)
+        profiles_txt = Path('temp/rakf_profiles.txt').resolve()
+        with open(self.profiles, 'r') as f:
+            profiles_txt.write_text(mvslovers.rakf_profiles(f.read(), text))
+
+        # The stream's PGM=BREXX steps (RAKFCUST sort, VSAMSRAC, VTOCSRAC)
+        # use only EXECIO and string functions, so the unauthorized BREXX 3.1
+        # from the link list (step 7, BREXX.CURRENT.RXLIB alias) runs them.
+        # The job runs before any user exists, so the job card carries no
+        # USER=/PASSWORD= (generate_release.py --userid/--password not used).
         install_jcl = Path('temp/RAKF/install_rakf.jcl').resolve()
         subprocess.check_call([
-            'temp/RAKF/generate_release.py',
-            '-u', Path('temp/rakf_users.txt').resolve(),
-            '-p', self.profiles,
-            '-x', str(tools_xmit),
+            sys.executable, '-I', str(Path('temp/RAKF/generate_release.py').resolve()),
+            '-u', str(users_txt),
+            '-p', str(profiles_txt),
             '-o', str(install_jcl),
-            '--recv370',
         ])
+        # Binary: the shadow records are raw EBCDIC behind a DD DATA card, so
+        # the stream goes untranslated to the EBCDIC reader (3506).
         self.submit_file_binary(install_jcl, port=3506)
         self.print("Installing RAKF Release")
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
-        self.check_maxcc("RAKFINST", steps_cc={'DELETE' : '0008', 'APPLYR' : '0004',  'ZJW00032' : '0004', 'ZJW00042' : '0004'})
+        # Measured on RAKF v2.0.0 (Phase 1 and 4 of MVSLOVERS_SMP_PLAN.md);
+        # re-check when the [rakf] pin moves. The 12s are defensive RESTOREs /
+        # REJECTs of usermods that are not on a fresh system yet.
+        self.check_maxcc("RAKFINST", steps_cc=RAKF_STEPS_CC)
         self.custjobs_ipl("Resetting MVSCE with CLPA to complete install", clpa=True)
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("32_RAKF")
 
-    def custjobs_ipl(self, step_text='', clpa=False, cold=True):
+    def custjobs_ipl(self, step_text='', clpa=False, cold=True, tcpip=False):
         '''Re-IPL MVS between install steps.
 
            cold=True replies 'format,cold' to $HASP426 instead of 'noreq',
@@ -1903,6 +2090,13 @@ class sysgen:
         self.print(step_text)
         self.reset_hercules()
         self.set_configs('customization2')
+        if tcpip:
+            # what the release's conf/mvsce.rc enables, for servers that use
+            # Hercules' TCP/IP instruction (X'75'; S0C1 without it). Must be
+            # before the IPL: HHC00889E Available facilities cannot be
+            # changed once system is IPLed
+            for facility in ('HERC_TCPIP_EXTENSION', 'HERC_TCPIP_PROB_STATE', 'herc_370_extension'):
+                self.send_herc('facility enable {}'.format(facility))
         #self.wait_for_string("0:0151 CKD")
         self.send_herc("ipl 150")
         self.wait_for_string("input for console 0:0009")
@@ -2114,6 +2308,20 @@ class sysgen:
                     failed_step = True
                     continue
 
+                # A JCL error ends the job before or between steps with no
+                # IEF142I/IEF450I for the rest (ZP60041 ran that way, with a
+                # missing SYSLIB data set, and passed):
+                #   IEF453I ZP60041 - JOB FAILED - JCL ERROR - TIME=18.19.13
+                if 'IEF453I' in line:
+                    x = line.strip().split()
+                    j = x[x.index('IEF453I'):]
+                    if len(j) >= 2 and j[1] == jobname:
+                        found_job = True
+                        failed_step = True
+                        error = "Job {} failed with a JCL error, review {}".format(jobname, printer_file)
+                        logging.debug('[MAXCC] {}'.format(error))
+                    continue
+
                 if 'IEF142I' in line:
 
                     x = line.strip().split()
@@ -2162,6 +2370,7 @@ class sysgen:
             self.skip_steps = False
         # drain STDERR and STDOUT
         logging.debug('Draining STDOUT/STDERR')
+        self.stdout_pushback.clear()
         while True:
             try:
                 line = self.stdout_q.get(False).strip()
@@ -2284,13 +2493,70 @@ class sysgen:
             self.wait_timed_out(time_started, timeout)
 
             try:
-                line = q.get(timeout=1).strip()
+                line = self.next_line(q, timeout=1)
             except queue.Empty:
                 continue
 
             if string_to_waitfor in line:
                 logging.debug(f"String: '{string_to_waitfor}' found in '{line}'")
                 return
+
+    def ipl_reply(self, reply, expect, delay=IPL_REPLY_DELAY,
+                  retry_after=IPL_REPLY_RETRY, tries=IPL_REPLY_TRIES):
+        '''Answers the IPL prompt on the 3215 console and waits for expect.
+
+           Sometimes MVS does not take the reply: Hercules logs HHC00013I
+           (input entered) but MVS stays in a wait state, apparently because
+           the reply came before MVS was really reading the console. So wait
+           `delay` seconds after the prompt, and if MVS then prints nothing
+           at all for `retry_after` seconds, send the reply again (up to
+           `tries` times in all). Only silence triggers a resend: once MVS
+           has printed anything, the reply was taken, and resending e.g.
+           'r 0,clpa' would be an invalid reply.
+
+           reply: the Hercules command, e.g. '/' or '/r 0,clpa'
+        '''
+        self.wait_for_string("input for console 0:001F")
+        time.sleep(delay)
+        for attempt in range(1, tries + 1):
+            self.send_herc(reply)
+            result = self.wait_for_mvs_output(expect, retry_after,
+                                              echo=reply[1:])
+            if result == 'found':
+                return
+            if result == 'output':
+                self.wait_for_string(expect)
+                return
+            logging.debug("IPL reply '{}' not taken: no MVS output for {} "
+                          "seconds (attempt {} of {})".format(
+                              reply, retry_after, attempt, tries))
+            if attempt < tries:
+                self.print("MVS did not take the IPL reply, sending it again")
+        raise Exception("Step: {} IPL reply '{}' not taken by MVS after {} "
+                        "tries".format(self.step, reply, tries))
+
+    def wait_for_mvs_output(self, expect, silence, echo=''):
+        '''Waits up to `silence` seconds for the first MVS console line.
+
+           Returns 'found' if that line (or a Hercules line before it)
+           contains expect, 'output' for any other MVS line, 'silent' if
+           MVS printed nothing. Hercules' own messages (HHCnnnnnx) and its
+           echo of the reply (echo) are not MVS output.
+        '''
+        time_started = time.time()
+        while time.time() < time_started + silence:
+            try:
+                line = self.next_line(self.stdout_q, timeout=0.5)
+            except queue.Empty:
+                continue
+            if expect in line:
+                logging.debug(f"String: '{expect}' found in '{line}'")
+                return 'found'
+            if not line.startswith('HHC') and not (echo and line == echo):
+                logging.debug(f"MVS output after IPL reply: '{line}'")
+                self.stdout_pushback.insert(0, line)
+                return 'output'
+        return 'silent'
 
     def wait_for_strings(self, strings_to_waitfor, stderr=False, timeout=False):
         '''
@@ -2310,7 +2576,7 @@ class sysgen:
             self.wait_timed_out(time_started, timeout)
 
             try:
-                line = q.get(timeout=1).strip()
+                line = self.next_line(q, timeout=1)
             except queue.Empty:
                 continue
 
@@ -2367,6 +2633,10 @@ class sysgen:
         # up before it can be installed
 
         self.restore_dasd("33_MVP")
+        import mvslovers
+        # before the IPL, so a failed download stops here
+        zmg_files = mvslovers.fetch_files(
+            'zmg0001', log=lambda m: logging.debug("[MVSLOVERS] {}".format(m)))
         self.custjobs_ipl("Adding support for indirect cataloging using VOLUME(******) (Usermods ZP60041, ZP60042, ZP60043)", clpa=True)
         '''
         //ZP60041  JOB (SYSGEN),'ZP60041 + 42 + 43',
@@ -2387,9 +2657,107 @@ class sysgen:
             region='4096K')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("ZP60041")
+
+        self.zmg0001(zmg_files, rakf_admin_user, rakf_admin_password)
+        self.shutdown_mvs(cust=True)
+
+        # EXEC is loaded from the link list; an extent SYS1.CMDLIB took in
+        # the apply is only usable after an IPL, so test after one.
+        self.custjobs_ipl("Verifying the usermods and the BREXX/370 TSO integration")
+        self.check_usermods(rakf_admin_user, rakf_admin_password)
         self.shutdown_mvs(cust=True)
         self.quit_hercules(msg=False)
         self.backup_dasd("34_EXTRAS")
+
+    def zmg0001(self, files, user, password):
+        '''BREXX/370 TSO integration, usermod ZMG0001 from the brexx370
+           release (mvslovers.conf [zmg0001]): the library USERMOD.ZMG0001
+           goes over the reader in-stream and is RECEIVEd; its jobs assemble
+           IKJCT430/IKJCT437 here. UY16532 is accepted first so that the
+           usermod can be RESTOREd (ZMG01RS) -- e.g. for a newer ZMG0001
+           with a later BREXX/370. ZMG0001 itself is not accepted (cover
+           letter). See mvslovers.zmg0001_jobs.'''
+        import mvslovers
+        self.print("Installing usermod ZMG0001 (BREXX/370 TSO integration)")
+        for job in mvslovers.zmg0001_jobs(files, user, password):
+            self.submit_mvslovers_job(job, mvslovers.ZMG_STEPS_CC.get(job.name))
+            if job.name == 'ZMGXMIT':
+                missing = set(mvslovers.ZMG_MEMBERS) - set(self.listds_members(mvslovers.ZMG_LIBRARY))
+                if missing:
+                    raise ValueError("{} is missing {}".format(mvslovers.ZMG_LIBRARY, sorted(missing)))
+            elif job.name == 'ZMG01CK':
+                self.check_smp_status('UY16532', 'REC APP ACC')
+            elif job.name == 'ZMG01IN':
+                # the apply check must select both modules (MOD ... APPLIED
+                # in its report), not NOT SEL
+                with open('prt00e.txt', 'r', errors='ignore') as f:
+                    text = f.read()
+                text = text[text.find('ZMG01IN'):]
+                for mod in ('IKJCT430', 'IKJCT437'):
+                    if not re.search(r'^\s*MOD\s+{}\s+APPLIED\b'.format(mod), text, re.M):
+                        raise ValueError("ZMG01IN APPLY CHECK did not select {}, review prt00e.txt".format(mod))
+            elif job.name == 'ZMG01AP':
+                with open('prt00e.txt', 'r', errors='ignore') as f:
+                    links = mvslovers.zmg_links(f.read())
+                if set(links) != {'IKJCT430', 'IKJCT437'} or set(links.values()) != {'EXEC'}:
+                    raise ValueError("ZMG01AP linked {}, expected IKJCT430/IKJCT437 into EXEC".format(links))
+        self.print("ZMG0001 applied (IKJCT430, IKJCT437 linked into EXEC)")
+
+    def all_usermods(self):
+        '''Every usermod a build applies, from the ++USERMOD statements of
+           the JCL that sysgen submits, in step order.'''
+        import mvslovers
+        files = (['usermods/{}.jcl'.format(u) for u in usermods] +
+                 ['usermods/DYNPROC.jcl', 'jcl/transmit.jcl', 'usermods/MS00100.jcl',
+                  'jcl/ZP60041.jcl'])
+        ids = []
+        for f in files:
+            ids.extend(mvslovers.usermod_ids(f))
+        ids.extend(RAKF_USERMODS)
+        ids.append('ZMG0001')
+        return [i for i in dict.fromkeys(ids) if i not in RESTORED_USERMODS]
+
+    def check_usermods(self, user, password, printer_file='prt00e.txt'):
+        '''LIST CDS of every usermod: applied (REC APP or REC APP ACC);
+           ZMG0001 exactly REC APP, UY16532 REC APP ACC, JLM0003 the one of
+           RAKF (SUPING NJE0001), NJE0001 superseded. Then EXEC runs REXX
+           through BREXX/370 (implicit, explicit, EXEC keyword) and a CLIST
+           still runs as a CLIST.'''
+        import mvslovers
+        sysmods = self.all_usermods()
+        self.submit_mvslovers_job(mvslovers.usermods_verify_job(sysmods + ['UY16532'], user, password))
+        with open(printer_file, 'r', errors='ignore') as f:
+            text = f.read()
+        text = text[text.find('UMODVER'):]
+        entries = mvslovers.parse_smp_list(text)
+        bad = mvslovers.check_usermods(
+            entries, sysmods + ['UY16532'],
+            exact={'ZMG0001': 'REC APP', 'UY16532': 'REC APP ACC'},
+            superseded=SUPERSEDED_USERMODS)
+        jlm = ' '.join(entries.get('JLM0003', {}).get('lines', []))
+        if not re.search(r'SUPING\s+VER\(\d+\)\s*=\s*NJE0001', jlm):
+            bad.append("JLM0003 is not RAKF's (no SUPING NJE0001)")
+        if bad:
+            raise ValueError("Usermods: {}; review {}".format('; '.join(bad), printer_file))
+        logging.debug("[USERMODS] {} applied: {}".format(len(sysmods), ' '.join(
+            '{}={}'.format(s, entries[s]['status'] or entries[s]['type']) for s in sysmods)))
+
+        # the pinned BREXX/370 (any VnRnMn with --mvslovers-dist)
+        vrm = self.brexx_vrm()
+        got = mvslovers.parse_zmg_test(text)
+        want = {w: vrm for _, w in mvslovers.ZMG_TEST_CMDS if w != 'CLIST'}
+        want['CLIST'] = 'RAN'
+        ok = lambda v, g: g == v or (v != 'RAN' and self.mvslovers_dist and
+                                     re.fullmatch(r'V\d+R\d+M\d+', g or ''))
+        wrong = {k: got.get(k) for k, v in want.items() if not ok(v, got.get(k))}
+        if wrong:
+            raise ValueError("EXEC test: expected {}, got {}; review {}".format(want, wrong, printer_file))
+        self.print("{} usermods applied; EXEC runs BREXX/370 {} (implicit, EXEC 'ds(m)', EXEC keyword), CLISTs still run".format(len(sysmods), vrm))
+
+    def brexx_vrm(self):
+        import mvslovers
+        v = mvslovers.load_manifest()['brexx370']['version']
+        return 'V{}R{}M{}'.format(*v.split('.')[:3])
 
     def step_11_nje38(self):
         self.set_step("step_11_nje38")
@@ -2442,12 +2810,266 @@ class sysgen:
         self.quit_hercules(msg=False)
         self.backup_dasd("36_ISPF")
 
+    def step_12a_mvslovers(self):
+        '''UFSD, FTPD, HTTPD and mvsMF as SMP functions from their mvslovers
+           dists (pinned in mvslovers.conf, or --mvslovers-dist), then the
+           site configuration SMP does not own: procedures, Parmlib members
+           and UFS disks.
+
+           Authorization: SVC 244 from RAKF (no IEAAPF00 entries, no IPL).
+           The started tasks run as the RAKF users UFSD, FTPD and HTTPD in
+           group STARTED, which has READ on FACILITY SVC244 (step 8).
+           Nothing is started at IPL; the servers are started once here to
+           check them and stopped again.'''
+        self.set_step("step_12a_mvslovers")
+        self.print("Step 12a. Installing UFSD, FTPD, HTTPD and mvsMF with SMP", color="CYAN")
+        self.restore_dasd("36_ISPF")
+
+        import mvslovers
+        log = lambda m: logging.debug("[MVSLOVERS] {}".format(m))
+        user, password = self.get_rakf_admin()
+        rakf_users = Path('temp/rakf_users.txt').read_text()
+
+        # Everything on the host first, so a missing download fails before
+        # the IPL.
+        dists = []
+        for product in MVSLOVERS_STACK:
+            dists.append(mvslovers.discover(mvslovers.fetch(
+                product, dist_dir=self.mvslovers_dist, log=log)))
+        httpd = [d for d in dists if d.product == 'httpd'][0]
+        ufsd_utils = mvslovers.fetch_tool('ufsd-utils', log=log)
+        disks = mvslovers.plan_ufs_disks(rakf_users, user,
+                                         httpd.path / mvslovers.WEBROOT_IMAGE,
+                                         Path('temp/ufsdisks').resolve())
+        mvslovers.build_ufs_images(disks, ufsd_utils)
+        for d in disks:
+            logging.debug("[MVSLOVERS] UFS disk {} {} {} from {}".format(d.dsn, d.path, d.mode, d.image))
+
+        self.custjobs_ipl("Installing the mvslovers stack with SMP", clpa=False, tcpip=True)
+        for dist in dists:
+            self.print("Installing {} {} (FMID {})".format(dist.product.upper(), dist.version, dist.fmid))
+            # One job at a time: alloc must end before inst, inst before
+            # accept (dists with no accept job accept inside inst).
+            for job in mvslovers.build_jobs(dist, user, password):
+                self.submit_mvslovers_job(job)
+
+        self.print("Creating {} UFS disks".format(len(disks)))
+        for job in mvslovers.disk_jobs(disks, user, password):
+            self.submit_mvslovers_job(job)
+
+        self.print("Installing procedures and configuration in SYS2.PROCLIB/SYS2.PARMLIB")
+        self.submit_mvslovers_job(mvslovers.site_config_job(disks, user, password))
+        self.submit_mvslovers_job(mvslovers.verify_job([d.fmid for d in dists], user, password))
+        for dist in dists:
+            self.check_smp_status(dist.fmid, 'REC APP ACC')
+        self.print("{} are REC APP ACC".format(', '.join(d.fmid for d in dists)))
+
+        self.mvslovers_smoke_test(disks, user, password, rakf_users)
+        self.shutdown_mvs(cust=True)
+        self.quit_hercules(msg=False)
+        self.backup_dasd("36a_MVSLOVERS")
+
+    def submit_mvslovers_job(self, job, steps_cc=None):
+        self.print("Submitting {}".format(job.name))
+        self.submit_binary(job.bytes(), port=3506)
+        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        self.check_maxcc(job.name, steps_cc=steps_cc)
+
+    def console_until(self, done, fail=(), timeout=300):
+        '''Console lines up to the first one containing a string of done.
+           Raises on a line containing a string of fail, or on timeout.'''
+        lines = []
+        started = time.time()
+        while True:
+            self.wait_timed_out(started, timeout)
+            try:
+                line = self.next_line(self.stdout_q, timeout=1)
+            except queue.Empty:
+                continue
+            lines.append(line)
+            for f in fail:
+                if f in line:
+                    raise Exception("Console: '{}'".format(line))
+            if any(d in line for d in done):
+                return lines
+
+    def mvslovers_smoke_test(self, disks, user, password, rakf_users):
+        '''Start UFSD, HTTPD and FTPD, check their console messages, call
+           /zosmf/info and log on to FTP as every users.conf user, stop
+           them again (UFSD first up, last down).'''
+        import mvslovers
+        import ftplib
+        import json
+        import urllib.request
+        import base64
+
+        busy = []
+        for port in (HTTPD_PORT, FTPD_PORT):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                s.bind(('0.0.0.0', port))
+            except OSError:
+                busy.append(port)
+            finally:
+                s.close()
+        if busy:
+            # Hercules' TCP/IP extension binds on the build host itself.
+            raise Exception("Port(s) {} in use on this host; the step 12a smoke test starts "
+                            "HTTPD on {} and FTPD on {}. Free them and continue with -C."
+                            .format(', '.join(map(str, busy)), HTTPD_PORT, FTPD_PORT))
+
+        def find(lines, msgid):
+            hits = [l for l in lines if msgid in l]
+            if not hits:
+                raise Exception("{} not on the console".format(msgid))
+            return hits[-1][hits[-1].index(msgid):]
+
+        self.print("Starting UFSD")
+        self.send_oper('s ufsd')
+        lines = self.console_until(['UFSD001I'], ['UFSD091E', 'IEF450I UFSD', '$HASP395 UFSD'])
+        self.print(find(lines, 'UFSD007I'))
+        if 'AUTHORIZED BY SVC' not in find(lines, 'UFSD007I'):
+            raise Exception("UFSD is not authorized by SVC 244")
+        mounted = find(lines, 'UFSD040I')
+        if not mounted.startswith('UFSD040I {} '.format(len(disks))):
+            raise Exception("expected {} UFS disks mounted: {}".format(len(disks), mounted))
+        self.print(mounted)
+
+        self.print("Starting HTTPD")
+        self.send_oper('s httpd')
+        lines = self.console_until(['HTTPD001I'], ['IEF450I HTTPD', '$HASP395 HTTPD', 'HTTPD064E'])
+        for msgid in ('HTTPD002I', 'HTTPD004I'):
+            self.print(find(lines, msgid))
+        if 'AUTHORIZED BY SVC' not in find(lines, 'HTTPD002I'):
+            raise Exception("HTTPD is not authorized by SVC 244")
+        if 'HTTPD/STARTED' not in find(lines, 'HTTPD004I'):
+            raise Exception("HTTPD runs with the wrong identity")
+        find(lines, 'HTTPD036I MODULE MVSMF REGISTERED FOR /zosmf/info')
+
+        self.print("Starting FTPD")
+        self.send_oper('s ftpd')
+        lines = self.console_until(['FTPD001I'], ['FTPD003W', 'FTPD004E', 'IEF450I FTPD', '$HASP395 FTPD'])
+        for msgid in ('FTPD008I', 'FTPD004I'):
+            self.print(find(lines, msgid))
+        # FTPD 1.3+ keeps the identity RAKF gives the task; STC/STCGROUP
+        # would mean the STC name mapping (users.txt FTPD in STARTED) failed.
+        if 'STC/STCGROUP' in find(lines, 'FTPD004I') or 'FTPD/STARTED' not in find(lines, 'FTPD004I'):
+            raise Exception("FTPD runs with the wrong identity: {}".format(find(lines, 'FTPD004I')))
+
+        url = 'http://127.0.0.1:{}/zosmf/info'.format(HTTPD_PORT)
+        req = urllib.request.Request(url, headers={'Authorization': 'Basic ' + base64.b64encode(
+            '{}:{}'.format(user, password).encode()).decode()})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            info = json.load(r)
+        self.print("GET {}: zosmf_version {}, {}".format(
+            url, info.get('zosmf_version'), info.get('zosmf_full_version', '')))
+        with urllib.request.urlopen('http://127.0.0.1:{}/'.format(HTTPD_PORT), timeout=60) as r:
+            self.print("GET /: {} {} bytes from /www".format(r.status, len(r.read())))
+
+        for u, g, pw in mvslovers.parse_rakf_users(rakf_users):
+            if not pw or g == 'RAKFADM':
+                continue
+            ftp = ftplib.FTP()
+            ftp.connect('127.0.0.1', FTPD_PORT, timeout=60)
+            ftp.login(u, pw)
+            self.print("FTP login {}: {}".format(u, ftp.pwd()))
+            ftp.quit()
+
+        for stc in ('FTPD', 'HTTPD', 'UFSD'):
+            self.send_oper('p {}'.format(stc.lower()))
+            self.wait_for_string('$HASP395 {}'.format(stc), timeout=300)
+        self.print("UFSD, HTTPD and FTPD started, answered and stopped", color="GREEN")
+
+    def step_12b_sdsf(self):
+        '''SDSF as an SMP function from its mvslovers dist, then the system
+           changes of its installation guide: ISF.LINKLIB APF-authorized
+           (on its volume) and in the link list, the panels in the ISPPLIB
+           ALLOC of SYS1.CMDPROC(ISPF), the CLIST in SYSPROC of IKJACCNT.
+           SMP links SDSF's SVC routine IGX00011 into SYS1.LPALIB, which
+           with the APF and link list entries takes an IPL with CLPA.
+
+           Unlike UFSD, FTPD and HTTPD, SDSF is APF-authorized: it switches
+           on authorization through IGX00011 only around the few places
+           that need it, and RAKF (FACILITY SDSF.OPER, JESSPOOL) decides who
+           may see and do what.'''
+        self.set_step("step_12b_sdsf")
+        self.print("Step 12b. Installing SDSF with SMP", color="CYAN")
+        self.restore_dasd("36a_MVSLOVERS")
+
+        import mvslovers
+        user, password = self.get_rakf_admin()
+        dist = mvslovers.discover(mvslovers.fetch(
+            'sdsf', dist_dir=self.mvslovers_dist,
+            log=lambda m: logging.debug("[MVSLOVERS] {}".format(m))))
+
+        self.custjobs_ipl("Installing SDSF with SMP", clpa=False)
+        self.print("Installing SDSF {} (FMID {})".format(dist.version, dist.fmid))
+        for job in mvslovers.build_jobs(dist, user, password):
+            self.submit_mvslovers_job(job, mvslovers.SDSF_STEPS_CC.get(job.name))
+        self.print("Adding ISF.LINKLIB to IEAAPF00/LNKLST00, SDSF to ISPF and IKJACCNT")
+        self.submit_mvslovers_job(mvslovers.sdsf_config_job(user, password))
+        self.shutdown_mvs(cust=True)
+
+        # IGX00011 in the LPA, APF and link list are read at IPL
+        self.custjobs_ipl("Verifying SDSF", clpa=True)
+        job = mvslovers.sdsf_verify_job(dist.fmid, user, password)
+        self.submit_mvslovers_job(job, mvslovers.SDSF_STEPS_CC.get(job.name))
+        # someone without SDSF.OPER: the first users.conf user not in ADMIN
+        other = [(u, pw) for u, g, pw in mvslovers.parse_rakf_users(
+                     Path('temp/rakf_users.txt').read_text())
+                 if pw and g == 'USER']
+        if other:
+            self.submit_mvslovers_job(mvslovers.sdsf_probe_job(*other[0]))
+        self.check_sdsf(dist, user, other[0][0] if other else None)
+        self.shutdown_mvs(cust=True)
+        self.quit_hercules(msg=False)
+        self.backup_dasd("36b_SDSF")
+
+    def check_sdsf(self, dist, admin, other=None, printer_file='prt00e.txt'):
+        '''Check SDSFVER/SDSFPRB output, not only condition codes.'''
+        import mvslovers
+        with open(printer_file, 'r', errors='ignore') as f:
+            text = f.read()
+        self.check_smp_status(dist.fmid, 'REC APP ACC', printer_file)
+        for dsn, want in (('ISF.LINKLIB', {'ISFISP'}),
+                          ('ISF.ISFPLIB', {'ISFMENU', 'ISFLIST', 'ISFHTOC'}),
+                          ('ISF.ISFCLST', {'SDSF'})):
+            missing = want - set(self.listds_members(dsn, printer_file))
+            if missing:
+                raise ValueError("{} is missing {}".format(dsn, sorted(missing)))
+        if 'ISF001E' not in text:
+            raise ValueError("ISFISP from the link list did not answer ISF001E, review {}"
+                             .format(printer_file))
+        probe = mvslovers.parse_sdsf_probe(text)
+        a = probe.get(admin[:8])
+        if not a or a.get('apf_error') or a['read'] is None:
+            raise ValueError("no SDSFPRB output for {} in {}".format(admin, printer_file))
+        logging.debug("[SDSF] APF table: {}".format(a['apf']))
+        if (mvslovers.SDSF_TGTVOL, mvslovers.SDSF_LINKLIB) not in a['apf']:
+            raise ValueError("{} on {} is not in the APF table after the IPL".format(
+                mvslovers.SDSF_LINKLIB, mvslovers.SDSF_TGTVOL))
+        if not a['esr11']:
+            raise ValueError("SVC 109 code 11 (IGX00011) is not in the LPA after the CLPA IPL")
+        if a['update'] != 0:
+            raise ValueError("{} has no UPDATE on FACILITY SDSF.OPER (RC {})".format(admin, a['update']))
+        msg = "{} is REC APP ACC, ISF.LINKLIB APF and link list, IGX00011 in the LPA, {} has SDSF.OPER".format(
+            dist.fmid, admin)
+        if other:
+            o = probe.get(other[:8])
+            if not o or o['update'] is None:
+                raise ValueError("no SDSFPRB output for {} in {}".format(other, printer_file))
+            if o['update'] == 0 or o['read'] == 0:
+                raise ValueError("{} has access to FACILITY SDSF.OPER (READ RC {}, UPDATE RC {})"
+                                 .format(other, o['read'], o['update']))
+            msg += ", {} has not".format(other)
+        self.print(msg)
+
     def step_13_customize(self):
         self.set_step("step_13_customize")
 
         self.print("Step 13. Running Customizations", color="CYAN")
 
-        self.restore_dasd("36_ISPF")
+        self.restore_dasd("36b_SDSF")
         self.custjobs_ipl("Running customize.jcl", clpa=True)
         rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
         self.submit_file_binary_post_rakf(
@@ -2493,16 +3115,16 @@ class sysgen:
 
         up = "| {:9} | {:8}|\n"
 
+        import mvslovers
         with open("temp/rakf_users.txt", 'r') as rakf_users:
             users = "| Username  | Password |\n|:---------:|:--------:|\n"
             prev = ''
-            for u in rakf_users.readlines():
-                if len(u.split()) > 0: # skip blank lines
-                    un = u.split()[0]
-                    pw = u.strip()[18:-1]
-                    if un != prev:
-                        users += up.format(un,pw)
-                    prev = un
+            for un, gp, pw in mvslovers.parse_rakf_users(rakf_users.read()):
+                # started task ids (UFSD, FTPD, HTTPD) have no password and
+                # cannot log on: not users of the release
+                if un != prev and pw:
+                    users += up.format(un,pw)
+                prev = un
 
         with open("MVSCE/README.md", 'w') as readme:
             readme.write(release_readme.format(codename=CODENAME,version=self.version,users=users))
@@ -2569,18 +3191,17 @@ class sysgen:
         self.backup_dasd("38_FINAL")
 
     def get_rakf_admin(self,rakf_file='temp/rakf_users.txt'):
+        import mvslovers
         rakf_admin_user = ''
         rakf_admin_password = ''
         with open(rakf_file, 'r') as rakf_users:
-            for u in rakf_users.readlines():
-                if len(u.split()) > 0: # skip blank lines
-                    un = u.split()[0]
-                    gp = u.split()[1]
-                    pw = u.strip()[18:-1]
-                    if gp == 'RAKFADM':
-                        rakf_admin_user = un.strip()
-                        rakf_admin_password = pw.strip()
-                        break
+            # by column: RAKF 2.0.0 has Operations/Special flags after the
+            # password, so the old [18:-1] slice returned '     Y'
+            for un, gp, pw in mvslovers.parse_rakf_users(rakf_users.read()):
+                if gp == 'RAKFADM':
+                    rakf_admin_user = un
+                    rakf_admin_password = pw
+                    break
         if not rakf_admin_user:
             raise Exception('Unable to find a RAKFADM user in {}'.format(rakf_file))
         return rakf_admin_user,rakf_admin_password
@@ -2649,7 +3270,13 @@ class sysgen:
             subprocess.check_call(args, stdout=subprocess.DEVNULL)
             VOLUME = chr(ord(VOLUME[0])+1)
 
-    def git_clone(self, repo, out_folder="temp"):
+    def git_clone(self, repo, out_folder="temp", ref=None):
+        '''Clone repo into out_folder (or refresh an existing clone).
+
+           ref: a tag/branch to check out (e.g. the RAKF pin in
+           mvslovers.conf). With a ref an existing clone is fetched and the
+           ref checked out (detached), instead of fast-forwarding HEAD.
+        '''
         try:
             git_query_path = subprocess.check_output(["which", "git"]).strip()
         except (subprocess.CalledProcessError, FileNotFoundError):
@@ -2666,6 +3293,20 @@ class sysgen:
         if os.path.exists(target):
             if not os.path.isdir(os.path.join(target, '.git')):
                 raise Exception("{} exists but is not a git clone; remove it and re-run".format(target))
+            if ref:
+                logging.debug("git clone target {} exists, checking out {}".format(target, ref))
+                # The pin names the repo too: follow it if the clone is of another one.
+                subprocess.run([git_query_path, '-C', target, 'remote', 'set-url', 'origin', repo],
+                               stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                result = subprocess.run([git_query_path, '-C', target, 'fetch', '--tags', '--force', 'origin'],
+                                        stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
+                if result.returncode == 0:
+                    result = subprocess.run([git_query_path, '-C', target, 'checkout', '--force', '--detach', ref],
+                                            stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
+                if result.returncode != 0:
+                    raise Exception("checkout of {} in {} failed: {}\nRemove it and re-run: rm -rf {}".format(
+                        ref, target, result.stderr.decode().strip(), target))
+                return
             logging.debug("git clone target {} exists, pulling".format(target))
             result = subprocess.run([git_query_path, '-C', target, 'pull', '--ff-only'],
                                     stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
@@ -2679,6 +3320,7 @@ class sysgen:
         args = [
             git_query_path,
             'clone',
+        ] + (['--branch', ref] if ref else []) + [
             repo,
             target
         ]
@@ -2776,6 +3418,15 @@ class sysgen:
             finally:
                 sock.close()
 
+    def submit_binary(self, data, host='127.0.0.1', port=3506):
+        '''submits EBCDIC card images untranslated (port 3506 = 001A)'''
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.connect((host, port))
+            sock.sendall(data)
+        finally:
+            sock.close()
+
     def submit(self,jcl, host='127.0.0.1',port=3505):
         '''submits a job (in ASCII) to hercules listener'''
 
@@ -2834,6 +3485,8 @@ def main():
         'step_10_extras'            : False,
         'step_11_nje38'             : False,
         'step_12_ispf'              : False,
+        'step_12a_mvslovers'        : False,
+        'step_12b_sdsf'             : False,
         'step_13_customize'         : False,
         'step_14_cleanup'           : False
     }
@@ -2871,8 +3524,21 @@ def main():
     arg_parser.add_argument("--keep-backup", help="Keep backup folder when sysgen completes", action="store_true")
     arg_parser.add_argument("--keep-temp", help="Keep temp folder when sysgen completes", action="store_true")
     arg_parser.add_argument('-C',"--CONTINUE", help="Restart sysgen from where it failed previously. You must pass previous arguments and append -C to continue", action="store_true")
+    arg_parser.add_argument("--update-mvslovers", nargs='?', const='', default=None, metavar='P1,P2', help="Move the pins in mvslovers.conf to the newest releases (all products, or only the comma separated ones) and exit")
+    arg_parser.add_argument("--mvslovers-dist", help="Directory with already built mvslovers dists to use instead of the pinned releases", default=None)
 
     args = arg_parser.parse_args()
+
+    if args.update_mvslovers is not None:
+        import mvslovers
+        try:
+            mvslovers.update_manifest(products=[p for p in args.update_mvslovers.split(',') if p] or None)
+        except mvslovers.MvsloversError as e:
+            arg_parser.error(str(e))
+        sys.exit()
+
+    if args.mvslovers_dist and not os.path.isdir(args.mvslovers_dist):
+        arg_parser.error("--mvslovers-dist {} is not a directory".format(args.mvslovers_dist))
 
     if args.list:
         print("Listing sysgen steps and substeps")
@@ -2940,6 +3606,7 @@ def main():
                  release=args.release,
                  )
 
+    mvsce.mvslovers_dist = args.mvslovers_dist
     mvsce.install(step, substep)
 
 

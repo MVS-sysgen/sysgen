@@ -34,12 +34,16 @@ docker run -d \
   --name=mvsce \
   -e HUSER=docker \
   -e HPASS=docker \
-  -p 2121:21 \
-  -p 2323:23 \
   -p 3270:3270 \
+  -p 3223:3223 \
+  -p 3271:3271 \
   -p 3505:3505 \
   -p 3506:3506 \
   -p 8888:8888 \
+  -p 2121:2121 \
+  -p 3221:3221 \
+  -p 22000-22200:22000-22200 \
+  -p 8080:8080 \
   -v /opt/docker/mvsce:/config \
   -v /opt/docker/mvsce/printers:/printers \
   -v /opt/docker/mvsce/punchcards:/punchcards \
@@ -52,13 +56,32 @@ docker run -d \
 
 Make sure the directories are correct for your docker volumes and hit enter,
 this will download the latest MVS/CE release and deploy it. You can then
-connect with you 3270 client on port 3270 (or port 2323 for encrypted 
+connect with your 3270 client on port 3270 (or port 3223 for encrypted
 communication).
 
+| Port | Service |
+|---|---|
+| 3270 | TN3270 |
+| 3223 | TN3270 over TLS |
+| 3271 | TN3270 over WebSocket |
+| 3505 / 3506 | card readers (ASCII / EBCDIC) |
+| 8888 | Hercules web console (`HUSER`/`HPASS`) |
+| 2121 | FTPD (after `/S FTPD`) |
+| 3221 | FTPD over TLS |
+| 22000-22200 | FTPD passive data connections |
+| 8080 | HTTPD and mvsMF under `/zosmf` (after `/S UFSD` and `/S HTTPD`) |
 
-More details are available here: https://hub.docker.com/r/mainframed767/mvsce 
+UFSD, HTTPD and FTPD are not started at IPL; start them from the console
+or SDSF (`/S UFSD`, `/S HTTPD`, `/S FTPD`). Passive FTP with EPSV (most
+clients) works as is. A client that uses plain PASV is sent the container's
+own address; for those set `PASVADR` in `SYS2.PARMLIB(FTPDPRM0)` to the
+Docker host's address.
 
-If you wish to build this docker container yourself you can see the Dockerfile here: https://github.com/MVS-sysgen/docker-mvsce
+More details are available here: https://hub.docker.com/r/mainframed767/mvsce
+
+To build the container yourself, use the Dockerfiles in [Docker/](Docker/):
+`docker build -f Docker/Dockerfile.local -t mvsce:local .` runs the whole
+sysgen in the build and needs no release download.
 
 ## Screenshots
 
@@ -91,16 +114,25 @@ Currently only Debian/Ubuntu based systems are supported. If your system require
 
 *depending on your system this could take upward of two hours.* If you want to follow along you can use `tail -F sysgen.log`.
 
-Running MVS/CE sysgen will:
+Running MVS/CE sysgen builds a modified Jay Moseley sysgen of MVS 3.8J and
+installs the software below in these steps (`./sysgen.py -l` lists them with
+their substeps; each step writes a backup that the next one restores):
 
-- Build a modified Jay Moseley sysgen MVS 3.8J
-- Install BREXX
-- Install RAKF
-- Install NJE38
-- Install RFE
-- Install Wally ISPF
-- Install the packages in `jcl/customize.jcl` with MVP (OPNTERSE, UFSD, FTPD, HTTPD, and MVSMF by default, these are installed but not started)
-- Create the folder MVSCE and store the completed sysgen there
+| Step | What it does |
+|---|---|
+| `step_01_build_starter` .. `step_04_system_generation` | Jay Moseley's starter system, SMP 4.44 + ESY1400 (SMP 04.48), distribution libraries and the system generation |
+| `step_05_usermods` | the usermods in `usermods/` (one substep each), including ZP60038 at REWORK 20261106 for ISPF `VPUT`/`VGET` from REXX |
+| `step_06_fdz1d02` | FDZ1D02 |
+| `step_07_customization` | MVS000, DYNPROC, date, TSO users, then `brexx`: the TRANSMIT/RECEIVE commands of NJE38 (IPL with CLPA), BREXX/370 with SMP, usermod MS00100 and `BREXX.LINKLIB` in the link list |
+| `step_08_rakf` | RAKF from its git tag, with the users in `users.conf` and the profiles in `profiles.conf` |
+| `step_09_mvp` | MVP, the package manager |
+| `step_10_extras` | usermods ZP60041/42/43 and ZMG0001 (BREXX/370 TSO integration; PTF UY16532 is accepted first) |
+| `step_11_nje38` | NJE38 with MVP |
+| `step_12_ispf` | Wally ISPF and RFE with MVP |
+| `step_12a_mvslovers` | UFSD, FTPD, HTTPD and mvsMF with SMP, their site configuration and UFS disks, and a start/stop smoke test |
+| `step_12b_sdsf` | SDSF with SMP, APF and link list entries, ISPF/TSO setup (IPL with CLPA) |
+| `step_13_customize` | `jcl/customize.jcl` (OPNTERSE with MVP by default) |
+| `step_14_cleanup` | `jcl/finalize.jcl` (COMMND00, the SHUTDOWN/SHUTFAST commands), then the folder `MVSCE` with the finished system |
 
 To build MVS/CE use `sysgen.py`. This python script can take many arguments:
 
@@ -137,11 +169,91 @@ The arguments below are for more granular control of where to start sysgen from.
 
 :warning: By default sysgen will remove the temp and backup folders. If you're doing development work you can use the `--keep-backup` and `--keep-temp` arguments to keep those folders after systen completes allowing you to restart sysgen at any point. 
 
+## Software installed with SMP
+
+The mvslovers stack is installed with SMP from pinned releases. Versions and
+sha256 sums are in `mvslovers.conf`; `./sysgen.py --update-mvslovers [p1,p2]`
+moves the pins to the newest releases (review the diff and commit it), and
+`--mvslovers-dist DIR` builds with dists of your own instead.
+
+| Product | Version | FMID / SYSMOD | SMP status | Libraries |
+|---|---|---|---|---|
+| [BREXX/370](https://github.com/mvslovers/brexx370) | 3.1.0 | `TBRX310` | REC APP ACC | `BREXX.LINKLIB` (link list, not APF), `BREXX.RXLIB` (also as alias `BREXX.CURRENT.RXLIB`), `BREXX.SAMPLIB`, `BREXX.PROCLIB` |
+| MS00100 (link list for BREXX) | | `MS00100` | REC APP | |
+| ZMG0001 (BREXX/370 TSO integration) | 3.1.0 | `ZMG0001` | REC APP (never accepted) | `USERMOD.ZMG0001` kept on PUB000 |
+| [RAKF](https://github.com/mvslovers/RAKF) | v2.0.0 | `TRKF200` | REC APP ACC | `SYS1.SECURE.CNTL` (users, profiles) |
+| [UFSD](https://github.com/mvslovers/ufsd) | 1.5.2 | `TUFS152` | REC APP ACC | `UFSD.*` |
+| [FTPD](https://github.com/mvslovers/ftpd) | 1.3.4 | `TFTP134` | REC APP ACC | `FTPD.*` |
+| [HTTPD](https://github.com/mvslovers/httpd) | 4.5.1 | `THTP451` | REC APP ACC | `HTTPD.*` |
+| [mvsMF](https://github.com/mvslovers/mvsmf) | 1.4.1 | `TZMF141` | REC APP ACC | `MVSMF.*` (in the HTTPD STEPLIB) |
+| [SDSF](https://github.com/mvslovers/sdsf) | 1.2.0 | `TISF120` | REC APP ACC | `ISF.LINKLIB` (APF, link list), `ISF.ISFPLIB`, `ISF.ISFCLST` |
+
+What this means on the running system:
+
+- **BREXX/370** runs unauthorized. `ADDRESS COMMAND 'CP ...'` needs RAKF
+  `FACILITY DIAG8CMD` READ, and `CONSOLE`, `MTT` and `PRIVILEGE` need
+  `FACILITY SVC244` READ (group ADMIN has both). With ZMG0001, TSO `EXEC`
+  and `%name` run REXX execs through BREXX/370 (members of
+  `SYSUEXEC`/`SYSEXEC`, or with `/* REXX */` on line 1).
+- **UFSD, FTPD, HTTPD, mvsMF** run authorized through RAKF's SVC 244 (no APF
+  entries) and are **not started** at IPL: `/S UFSD`, then `/S HTTPD` (port
+  8080, mvsMF under `/zosmf`) and `/S FTPD` (port 2121). Procedures are in
+  `SYS2.PROCLIB`, configuration in `SYS2.PARMLIB` (`UFSDPRM0`, `FTPDPRM0`,
+  `HTTPPRM0`). UFS disks: `UFSD.ROOT` for `/`, `HTTPD.WEBROOT.UFS` for `/www`,
+  `UFSD.SCRATCH` for `/tmp` and `<USER>.UFSHOME` for `/u/<user>` per
+  `users.conf` user. They are no longer MVP packages.
+- **SDSF**: `TSO SDSF` from ISPF. RAKF `FACILITY SDSF.OPER` (ADMIN UPDATE)
+  allows LOG, PR, INIT and `/` commands; `JESSPOOL` other users' jobs.
+
+### Checking what is installed
+
+SMP knows every product and usermod. As a RAKF admin:
+
+```jcl
+//SMPLIST  JOB (SMP),'LIST',CLASS=A,MSGCLASS=A
+//LIST     EXEC SMPAPP,WORK='SYSALLDA'
+//SMPCNTL  DD  *
+ LIST CDS SYSMOD(TBRX310 MS00100 ZMG0001 TRKF200
+     TUFS152 TFTP134 THTP451 TZMF141 TISF120) .
+ LIST ACDS SYSMOD(TBRX310 TRKF200 TUFS152 TFTP134
+     THTP451 TZMF141 TISF120) .
+/*
+```
+
+Each FMID shows `STATUS = REC APP ACC` in the CDS, ZMG0001 and MS00100
+`REC APP`. Never trust the condition code alone: a `NOT SEL` APPLY ends RC 0
+with nothing copied.
+
+### Upgrading a product
+
+The products are normal SMP functions, so a new release goes on the
+running system the way its install guide describes. In short:
+
+1. **UFSD, FTPD, HTTPD, mvsMF, SDSF, BREXX/370** (dist releases): download the
+   new `<product>-<version>-dist.tar.gz`, upload its `.xmit` files (FTP binary,
+   or the card reader), and run its **inst** job (RECEIVE + APPLY), then its
+   **accept** job if the release has one (older ufsd/httpd releases accept in
+   the inst job). Change the `CHANGE.ME` names to your uploaded data sets.
+   Do not run the alloc job again: the libraries exist. Stop the server
+   first (`/P HTTPD`, ...) and check with `LIST CDS SYSMOD(<new FMID>)`.
+   The site configuration (`SYS2.PROCLIB`, `SYS2.PARMLIB`) is a copy and is
+   not touched; compare it with the new `*.SAMPLIB` members.
+2. **ZMG0001** (with a new BREXX/370 release): remove the old one first with
+   `ZMG01RS` from the old `USERMOD.ZMG0001` (RESTORE; works because
+   UY16532 is accepted; drop its optional `COPY` step, sysgen makes no
+   backup), then RECEIVE the new `ZMG0001.xmit` into `USERMOD.ZMG0001`
+   and run its `$INSTALL` (RECEIVE, APPLY CHECK) and `ZMG01AP` (assemble,
+   APPLY). Do not accept ZMG0001.
+3. **RAKF**: follow the RAKF release notes; it ships its own install stream.
+
+To build a new image with the new levels instead, bump the pins
+(`--update-mvslovers`) and run sysgen.
+
 ## Customizing your build with customize.jcl
 
 Near the end of sysgen (step 13, `step_13_customize`) the file `jcl/customize.jcl`
-is submitted to the newly built system. At this point BREXX, RAKF, MVP, NJE38, and
-ISPF are already installed, so this jobstream is the place to add your own
+is submitted to the newly built system. At this point BREXX, RAKF, MVP, NJE38,
+ISPF, the mvslovers stack and SDSF are already installed, so this jobstream is the place to add your own
 customizations that you want baked in to the final system.
 
 Note: `jcl/customize.jcl` must **not** contain a JOB card, sysgen.py generates one
@@ -154,22 +266,19 @@ The most common use of `customize.jcl` is installing extra software using MVP, t
 MVS/CE package manager. Each package is installed with one EXEC statement:
 
 ```jcl
-//MVPINST EXEC MVP,INSTALL='FTPD -D'
+//MVPINST EXEC MVP,INSTALL='RPF -D'
 ```
 
 The `-D` flag enables debug output to the job log and MVS console, which is
 recommended during sysgen so failures are easier to diagnose.
 
-By default `customize.jcl` installs OPNTERSE, UFSD, FTPD, HTTPD, and MVSMF. To
+By default `customize.jcl` installs OPNTERSE (UFSD, FTPD, HTTPD and mvsMF are
+installed with SMP in step 12a). To
 install additional packages just add more `//MVPINST EXEC MVP,INSTALL='...'` lines,
 one per package:
 
 ```jcl
 //MVPINST EXEC MVP,INSTALL='OPNTERSE -D'
-//MVPINST EXEC MVP,INSTALL='UFSD -D'
-//MVPINST EXEC MVP,INSTALL='FTPD -D'
-//MVPINST EXEC MVP,INSTALL='HTTPD -D'
-//MVPINST EXEC MVP,INSTALL='MVSMF -D'
 //MVPINST EXEC MVP,INSTALL='RPF -D'
 ```
 
@@ -197,10 +306,22 @@ at step 13, and you can fix the JCL and rerun with `-C` (or `--step step_13_cust
 
 You can add a admin user using the `--username` flag. To add more users edit the `users.conf` file.
 
+## Shutting down
+
+From TSO, as a RAKF admin (`FACILITY SVC244` READ): `SHUTDOWN` (warnings
+every minute, shutdown after 5 minutes) or `SHUTFAST` (10 seconds). They
+start the procedure `SYS2.PROCLIB(SHUTDOWN)` as a started task, the same as
+`/S SHUTDOWN` or `/S SHUTDOWN,TYPE='SHUTFAST'` on the console, and return at
+once. The procedure runs the execs of the same names in `SYS2.STCEXEC`.
+`SYS2.JCLLIB(SHUTDOWN)` and `(SHUTFAST)` do the same as a batch job; add
+`USER=`/`PASSWORD=` of an admin to the job card, because a job without a
+user gets no `CONSOLE` or `CP` command from BREXX/370.
+
 ## Changes From Jay Moseley Sysgen
 
 * Added multiple usermods
 * Added RAKF, BREXX, RFE, and ISPF
+* Installs BREXX/370, RAKF, UFSD, FTPD, HTTPD, mvsMF and SDSF with SMP
 * Installed usermod `DYNPROC` which allows for dynamic proclibs
 * Seperated out usermods to their own JCL for better automation control
 * Added `S NET` and changed JES2 startup parms in `sys1.parmlib(COMMND00)`

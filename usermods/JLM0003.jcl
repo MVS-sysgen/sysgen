@@ -10,6 +10,13 @@
 //* Install USERMOD JLM0003 - replace TSO Command Authorization Table *
 //* (IKJEFTE2)                                                        *
 //*********************************************************************
+//* This table lives from step 5 to step 8 only: NJE0001 (TRANSMIT,
+//* step 7) adds RECEIVE/RECV/TRANSMIT/XMIT on top of it, then RAKF's
+//* install (step 8) RESTOREs NJE0001 and this JLM0003 and applies
+//* RAKF's own JLM0003 (USERMODS/JLM0003.jcl, SUP(NJE0001)). That
+//* table has every name below plus the NJE0001 ones and LISTP,
+//* LISTUSER, LU, RPFV, NJE38. Add a name here AND in RAKF's table,
+//* or it is gone after step 8. Step 10 checks JLM0003 is RAKF's.
 //* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 //UPDATE01 EXEC PGM=IEBUPDTE,PARM=NEW
 //SYSPRINT DD  SYSOUT=*

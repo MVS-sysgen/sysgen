@@ -8,9 +8,6 @@
 //*             USER=IBMUSER,
 //*             PASSWORD=SYS1,
 //*             REGION=8192K
-//* This JCL installs ISPF and REVIEW Front End  
-//MVPINST EXEC MVP,INSTALL='UFSD -D'    
-//MVPINST EXEC MVP,INSTALL='FTPD -D'    
-//MVPINST EXEC MVP,INSTALL='HTTPD -D'    
-//MVPINST EXEC MVP,INSTALL='MVSMF -D'   
+//* Extra software installed with MVP. UFSD, FTPD, HTTPD and MVSMF are
+//* installed with SMP in step 12a (step_12a_mvslovers), not here.
 //MVPINST EXEC MVP,INSTALL='OPNTERSE -D'        

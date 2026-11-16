@@ -39,5 +39,5 @@ RUN git clone --depth=1 https://github.com/mainframed/HercConsole.git /tmp/hercc
     chown -R hercules:hercules $HTTPROOT && \
     rm -rf /tmp/hercconsole
 VOLUME ["/config","/dasd","/printers","/punchcards","/logs", "/certs"]
-EXPOSE 3221 3223 3270 3271 3505 3506 8888
+EXPOSE 2121 3221 3223 3270 3271 3505 3506 8080 8888 22000-22200
 ENTRYPOINT ["./mvs.sh"]

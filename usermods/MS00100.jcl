@@ -1,0 +1,106 @@
+//MS00100  JOB (SYSGEN),'MS00100',
+//             CLASS=A,
+//             MSGCLASS=A,
+//             MSGLEVEL=(1,1),
+//             REGION=4096K
+//*
+//* MS00100: allow a volume serial in brackets after a data set name in
+//* LNKLSTxx, e.g. BREXX.LINKLIB(MVSRES); (******) means the system
+//* residence volume. Zaps IEAVNP03, needs TNIP800, takes effect at the
+//* next IPL. Used in step 7 so BREXX.LINKLIB (cataloged in UCPUB001,
+//* not the master catalog) can be in the link list.
+//*
+//* Source: https://prince-webdesign.nl/images/downloads/ms00100.zip
+//*   USERMOD.MS00100(@CVRLET), REWORK(20230906), unchanged.
+//* Original by James Purdy (SPLA file #030, CBT overflow V466 #130),
+//* reworked by Jay Moseley (2020) and Rob Prins (2023, the ******).
+//*
+//* TNIP800 is applied but not accepted on MVS/CE, so MS00100 is
+//* applied only (ACCEPT would end HMA3022 / TNIP800 PRE).
+//*
+//RECEIVE  EXEC SMPREC,WORK='SYSALLDA'
+//SMPPTFIN   DD DATA,DLM='??'
+++USERMOD(MS00100) REWORK(20230906).
+++VER(Z038) FMID(EBB1102) PRE(TNIP800)
+  /*
+   PROBLEM DESCRIPTION(S):
+     DURING NIP PARMLIB LINK LIST CONCATENATION PROCESSING,
+     LIBRARIES INCLUDED MUST BE CATALOGUED IN THE MASTER
+     CATALOG OR THEY WILL NOT BE LOCATED AND THE ENTRY WILL
+     BE IGNORED. THIS MODIFICATION ALLOWS THE INCLUSION OF
+     A VOLUME SERIAL NUMBER IN PARENTHESES IMMEDIATELY AFTER
+     THE LIBRARY NAME WHICH IS USED TO LOCATE THE LIBRARY.
+       EXAMPLE: SYSC.LINKLIB(SYSCPK)
+   COMPONENT: 5752-VS2-EBB1102
+   SPECIAL CONDITIONS:
+     ACTION:
+       AN IPL IS REQUIRED FOLLOWING THE SUCCESSFUL APPLICATION.
+   COMMENTS:
+     REWORKED FROM JAMES PURDY ORIGINAL, SOURCE: SPLA FILE #030,
+     COPY OBTAINED FROM CBT OVERFLOW V466 FILE #130.
+     LAST CHANGE: 2020/05/19 JAY MOSELEY
+   REWORK HISTORY:
+       2020-05-19: JAY MOSELEY: REWORKED FROM ORIGINAL OF
+                                JAMES PURDY.
+       2023-09-06: ROB PRINS:   ALLOW VOLSER (******) IMMEDIATELY
+                                AFTER DATASET NAME TO INDICATE,
+                                THAT THE DATASET IS PRESENT ON
+                                THE SYSTEM RESIDENCE VOLUME.
+   THE FOLLOWING MODULES AND/OR MACROS ARE AFFECTED BY THIS USERMOD:
+     MODULES
+       SYS1.NUCLEUS(IEAVNP03)
+     MACROS
+       <NONE>
+ */.
+++ZAP(IEAVNP03) DISTLIB(AOSC5).
+  NAME         IEAVNP03 IEAVNP03
+  IDRDATA      MS00100
+*                   NP3LCLOC EQU   *
+VER 0CAE 58A0,CCD7           L     @10,LCNAMPTR
+*                            ORG   IEAVNP03+X'CD2'
+*                   NP3LCLXT EQU   *
+VER 0CD2 4180,8033           LA    SCANREG,51(,SCANREG)
+*                            ORG   IEAVNP03+X'CAE'
+REP 0CAE 47F0,D748           B     PATCHLOC
+*                            ORG   IEAVNP03+X'2768'
+*                   PATCHLOC EQU   *
+REP 2768 41F0,0024           LA    @15,36
+*                   SCANLPAR EQU   *
+REP 276C 41AF,8001           LA    @10,1(@15,SCANREG)
+REP 2770 954D,A000           CLI   0(@10),C'('
+REP 2774 4780,D760           BE    FOUND
+REP 2778 46F0,D74C           BCT   @15,SCANLPAR
+REP 277C 47F0,D784           B     NOTFOUND
+*                   FOUND    EQU   *
+REP 2780 955D,A007           CLI   7(@10),C')'
+REP 2784 4770,D784           BNE   NOTFOUND
+REP 2788 D505,A001,D7A2      CLC   1(6,@10),=C'******'
+REP 278E 4770,D78C           BNE   MOVEVOL
+REP 2792 58F0,0010           L     @15,CVTPTR        CVT
+REP 2796 58F0,F030           L     @15,CVTSYSAD      UCB OF SYSRES
+REP 279A D205,A001,F01C      MVC   1(6,@10),UCBVOLID MOVE VOLSER SYSRS
+REP 27A0 47F0,D78C           B     MOVEVOL
+*                   NOTFOUND EQU   *
+REP 27A4 58A0,CCD7           L     @10,LCNAMPTR
+REP 27A8 47F0,BC90           B     NP3LCLOC+4
+*                   MOVEVOL  EQU   *
+REP 27AC D205,802D,A001      MVC   LNKVOLID(6,SCANREG),1(@10)
+REP 27B2 9240,A000           MVI   0(@10),C' '
+REP 27B6 D206,A001,A000      MVC   1(7,@10),0(@10)
+REP 27BC 1FFF                SLR   @15,@15
+REP 27BE 47F0,BCB0           B     NP3LCLXT
+REP 27C2 5C5C,5C5C,5C5C      DC    C'******'
+??
+//SMPCNTL    DD *
+ RECEIVE SELECT(MS00100) .
+/*
+//APPLYCHK EXEC SMPAPP,COND=(0,NE),WORK='SYSALLDA'
+//SMPCNTL    DD *
+ APPLY S(MS00100) CHECK .
+/*
+//APPLY    EXEC SMPAPP,COND=(0,NE),WORK='SYSALLDA'
+//SMPCNTL    DD *
+ APPLY S(MS00100) DIS(WRITE) .
+ LIST CDS SYSMOD(MS00100) .
+/*
+//
