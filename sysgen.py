@@ -158,6 +158,49 @@ SUPERSEDED_USERMODS = ('NJE0001',)
 # a dummy zap that forces a relink of IEFVH1).
 RESTORED_USERMODS = ('#DYPDMY',)
 
+# Step 5 installs every usermod on one running system (one IPL). An entry
+# here is a usermod that needs the changes of the ones before it ACTIVE
+# (IPLed, CLPA) to install: step 5 shuts down before it, writes the backup
+# usermod_NN_<previous id> and IPLs again; --substep restarts from the last
+# such backup at or before the substep. None needs it today: SMP APPLY needs
+# no IPL, the jobs only run IEBGENER/IEBUPDTE/IFOX00/IEWL/HMASMP/IFASMFDP,
+# and the IFOX00 (ZP60003, ZP60025) and linkage editor (ZP60020, ZP60027)
+# zaps go into SYS1.LINKLIB, where the next load picks them up (MVS 3.8j has
+# no LLA, BLDL reads the directory) as long as the library keeps its extents
+# (checked at the end of step 5, see USERMOD_ONE_EXTENT).
+USERMOD_IPL_POINTS = ()
+
+# Link list / IPL-time libraries that must not take a new extent while step
+# 5 runs on one IPL: the link list DEB has the extents of the IPL.
+USERMOD_ONE_EXTENT = ('SYS1.LINKLIB', 'SYS1.CMDLIB', 'SYS1.LPALIB',
+                      'SYS1.SVCLIB', 'SYS1.NUCLEUS')
+
+
+def usermod_backup_name(i):
+    '''The backup that holds the system before usermods[i]: 24_SYSGEN06,
+       or usermod_NN_<id> after the NN-th usermod (the old step-5 names).'''
+    if i == 0:
+        return "24_SYSGEN06"
+    return "usermod_{:02}_{}".format(i, usermods[i - 1])
+
+
+def usermod_restart_index(i):
+    '''Index step 5 restarts from for a --substep at usermods[i]: the last
+       IPL point at or before it (0 = from 24_SYSGEN06).'''
+    return max([0] + [usermods.index(p) for p in USERMOD_IPL_POINTS
+                      if usermods.index(p) <= i])
+
+
+def dasdls_extents(text):
+    '''{dsname: number of extents} from `dasdls -info` output, whose rows end
+       "... Trks %Use #Ext <CYL|TRK|BLK> <2ndry>".'''
+    ext = {}
+    for line in text.splitlines():
+        x = line.split()
+        if len(x) >= 5 and x[-2] in ('CYL', 'TRK', 'BLK') and x[-3].isdigit():
+            ext[x[0]] = int(x[-3])
+    return ext
+
 # Step 12a: installed in this order (mvsMF needs HTTPD; FTPD and HTTPD use
 # UFSD when it runs). Each is a [section] in mvslovers.conf.
 MVSLOVERS_STACK = ('ufsd', 'ftpd', 'httpd', 'mvsmf')
@@ -1653,40 +1696,70 @@ class sysgen:
         expected_cc = {"STEP20": "0004"}
 
 
-        s = usermods.index(start)
+        # Restart: go back to the last IPL point at or before `start` (its
+        # backup, or 24_SYSGEN06) and run every job from there.
+        s = usermod_restart_index(usermods.index(start))
+        restore = usermod_backup_name(s)
         umods = usermods[s:]
-        backup_num = 1 + s
-
-        if backup_num == 1:
-            restore = "24_SYSGEN06"
-        else:
-            restore = "usermod_{:02}_{}".format(backup_num-1,usermods[s-1])
 
         self.print("Step 5. Applying Usermods",color="CYAN")
-        count = 1
-        for umod in umods:
+        self.restore_dasd(restore)
+        self.sysgenjobs_ipl("Starting MVS to apply {} usermods".format(len(umods)))
+        for count, umod in enumerate(umods, 1):
+            n = usermods.index(umod)
+            if count > 1 and umod in USERMOD_IPL_POINTS:
+                self.shutdown_mvs()
+                self.quit_hercules(msg=False)
+                self.backup_dasd(usermod_backup_name(n))
+                self.sysgenjobs_ipl("IPL before {}".format(umod))
             self.set_step("step_05_usermods",umod)
-            self.restore_dasd(restore)
-            self.sysgenjobs_ipl(f"Applying usermod ({count}/{len(umods)}) {umod}: {umods_desc[umod]}")
-            cmd = "devinit 12 usermods/{}.jcl eof trunc {}"
-            if umod in EBCDIC_mods:
-                self.send_herc(cmd.format(umod,'ebcdic'))
-            else:
-                self.send_herc(cmd.format(umod,'ascii'))
-            self.send_herc()
-            self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
-            self.check_maxcc(jobname=umod, steps_cc=expected_cc)
-            self.shutdown_mvs()
-            self.quit_hercules(msg=False)
-            restore = "usermod_{:02}_{}".format(backup_num,umod)
-            backup_num += 1
-            self.backup_dasd(restore)
-            count += 1
+            self.print(f"Applying usermod ({count}/{len(umods)}) {umod}: {umods_desc[umod]}")
+            self.submit_usermod(umod, 'ebcdic' if umod in EBCDIC_mods else 'ascii',
+                                steps_cc=expected_cc)
+        self.shutdown_mvs()
+        self.quit_hercules(msg=False)
+        self.check_usermod_extents()
 
         self.backup_dasd("25_USERMODS")
 
         self.print("Applying Usermods Complete",color="GREEN")
 
+
+    def submit_usermod(self, umod, codepage, steps_cc=None):
+        '''Submits usermods/<umod>.jcl through the reader at 12 on the running
+           system and waits until JES2 is idle again ($HASP099: the job ended
+           and its output is printed), then check_maxcc. The next job only
+           goes in after that, so JES2 never runs two usermod jobs at once.'''
+        self.send_herc("devinit 12 usermods/{}.jcl eof trunc {}".format(umod, codepage))
+        self.send_herc()
+        lines = self.console_until(["$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE"],
+                                   timeout=self.get_wait_timeout())
+        ended = "$HASP395 {:<8} ENDED".format(umod)
+        if not any(ended in l for l in lines):
+            raise Exception("{}: $HASP099 without '{}' before it, job did not run "
+                            "(or ran out of order)".format(umod, ended))
+        self.check_maxcc(jobname=umod, steps_cc=steps_cc)
+
+    def check_usermod_extents(self):
+        '''Step 5 runs on one IPL, so the link list libraries must still have
+           one extent (dasdls on the shut down DASD images).'''
+        try:
+            dasdls = subprocess.check_output(["which", "dasdls"]).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise Exception('hercules program dasdls not found')
+        ext = {}
+        for img in sorted(self.path.glob('*.33[35]0')):
+            out = subprocess.run([dasdls, '-info', str(img)], capture_output=True,
+                                 text=True, errors='ignore').stdout
+            ext.update(dasdls_extents(out))
+        for ds in USERMOD_ONE_EXTENT:
+            if ds not in ext:
+                raise Exception("{} not found on {}".format(ds, self.path))
+            logging.debug("Extents: {} {}".format(ds, ext[ds]))
+            if ext[ds] != 1:
+                raise Exception("{} has {} extents after step 5: a usermod job after the "
+                                "new extent may have loaded from the old link list; compress "
+                                "it or add an IPL point (USERMOD_IPL_POINTS)".format(ds, ext[ds]))
 
     def step_06_fdz1d02(self):
         self.set_step("step_06_fdz1d02")
