@@ -7,6 +7,9 @@ on:
     branches:
       - main
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
@@ -34,6 +37,7 @@ jobs:
         working-directory: /mvsce
         run: until ./sysgen.py --release --timeout 500 --version ${GITHUB_SHA} --CONTINUE; do echo "Failed, rerunning"; done
       - name: Create pre-release
+        if: github.event_name != 'pull_request'
         uses: ncipollo/release-action@v1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
@@ -55,6 +59,7 @@ jobs:
 
   mvsce-docker:
     needs: mvsce-sysgen
+    if: github.event_name != 'pull_request'
     name: MVS/CE Cross Platform Docker Upload
     runs-on: [ubuntu-latest]
     steps:
