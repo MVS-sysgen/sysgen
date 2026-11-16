@@ -158,22 +158,22 @@ SUPERSEDED_USERMODS = ('NJE0001',)
 # a dummy zap that forces a relink of IEFVH1).
 RESTORED_USERMODS = ('#DYPDMY',)
 
-# Step 5 installs every usermod on one running system (one IPL). An entry
-# here is a usermod that needs the changes of the ones before it ACTIVE
-# (IPLed, CLPA) to install: step 5 shuts down before it, writes the backup
-# usermod_NN_<previous id> and IPLs again; --substep restarts from the last
-# such backup at or before the substep. None needs it today: SMP APPLY needs
-# no IPL, the jobs only run IEBGENER/IEBUPDTE/IFOX00/IEWL/HMASMP/IFASMFDP,
-# and the IFOX00 (ZP60003, ZP60025) and linkage editor (ZP60020, ZP60027)
-# zaps go into SYS1.LINKLIB, where the next load picks them up (MVS 3.8j has
-# no LLA, BLDL reads the directory) as long as the library keeps its extents
-# (checked at the end of step 5, see USERMOD_ONE_EXTENT).
+# Step 5 installs every usermod on one running system (one IPL). That
+# system is the starter (IPL 150 = START1); the jobs only write the target
+# libraries on MVSRES etc. through their SMP DDs, so no usermod is ever active
+# while step 5 runs (it was not in the old one-IPL-per-usermod step 5 either:
+# every IPL booted the same starter). An entry here is a usermod before which
+# step 5 shuts down, writes the backup usermod_NN_<previous id> and IPLs
+# again; --substep restarts from the last such backup at or before the
+# substep. None is needed today.
 USERMOD_IPL_POINTS = ()
 
-# Link list / IPL-time libraries that must not take a new extent while step
-# 5 runs on one IPL: the link list DEB has the extents of the IPL.
-USERMOD_ONE_EXTENT = ('SYS1.LINKLIB', 'SYS1.CMDLIB', 'SYS1.LPALIB',
-                      'SYS1.SVCLIB', 'SYS1.NUCLEUS')
+# Libraries whose extents must not change while step 5 runs on one IPL: the
+# link list DEB of the running system has the extents of the IPL, and
+# a target library with a new extent should be noticed too. Checked with
+# dasdls on every volume, before the IPL and after the shutdown.
+USERMOD_EXTENT_LIBS = ('SYS1.LINKLIB', 'SYS1.CMDLIB', 'SYS1.LPALIB',
+                       'SYS1.SVCLIB', 'SYS1.NUCLEUS')
 
 
 def usermod_backup_name(i):
@@ -1704,6 +1704,7 @@ class sysgen:
 
         self.print("Step 5. Applying Usermods",color="CYAN")
         self.restore_dasd(restore)
+        extents = self.library_extents()
         self.sysgenjobs_ipl("Starting MVS to apply {} usermods".format(len(umods)))
         for count, umod in enumerate(umods, 1):
             n = usermods.index(umod)
@@ -1711,6 +1712,7 @@ class sysgen:
                 self.shutdown_mvs()
                 self.quit_hercules(msg=False)
                 self.backup_dasd(usermod_backup_name(n))
+                self.check_usermod_extents(extents)
                 self.sysgenjobs_ipl("IPL before {}".format(umod))
             self.set_step("step_05_usermods",umod)
             self.print(f"Applying usermod ({count}/{len(umods)}) {umod}: {umods_desc[umod]}")
@@ -1718,7 +1720,7 @@ class sysgen:
                                 steps_cc=expected_cc)
         self.shutdown_mvs()
         self.quit_hercules(msg=False)
-        self.check_usermod_extents()
+        self.check_usermod_extents(extents)
 
         self.backup_dasd("25_USERMODS")
 
@@ -1740,9 +1742,9 @@ class sysgen:
                             "(or ran out of order)".format(umod, ended))
         self.check_maxcc(jobname=umod, steps_cc=steps_cc)
 
-    def check_usermod_extents(self):
-        '''Step 5 runs on one IPL, so the link list libraries must still have
-           one extent (dasdls on the shut down DASD images).'''
+    def library_extents(self):
+        '''{(volume image, dsname): extents} of USERMOD_EXTENT_LIBS on every
+           DASD image (dasdls; MVS must be down).'''
         try:
             dasdls = subprocess.check_output(["which", "dasdls"]).strip()
         except (subprocess.CalledProcessError, FileNotFoundError):
@@ -1751,15 +1753,23 @@ class sysgen:
         for img in sorted(self.path.glob('*.33[35]0')):
             out = subprocess.run([dasdls, '-info', str(img)], capture_output=True,
                                  text=True, errors='ignore').stdout
-            ext.update(dasdls_extents(out))
-        for ds in USERMOD_ONE_EXTENT:
-            if ds not in ext:
-                raise Exception("{} not found on {}".format(ds, self.path))
-            logging.debug("Extents: {} {}".format(ds, ext[ds]))
-            if ext[ds] != 1:
-                raise Exception("{} has {} extents after step 5: a usermod job after the "
-                                "new extent may have loaded from the old link list; compress "
-                                "it or add an IPL point (USERMOD_IPL_POINTS)".format(ds, ext[ds]))
+            for ds, n in dasdls_extents(out).items():
+                if ds in USERMOD_EXTENT_LIBS:
+                    ext[(img.name, ds)] = n
+        logging.debug("Library extents: {}".format(ext))
+        return ext
+
+    def check_usermod_extents(self, before):
+        '''Fails step 5 when a library of USERMOD_EXTENT_LIBS has other
+           extents than before the IPL.'''
+        after = self.library_extents()
+        changed = ['{} on {}: {} -> {}'.format(ds, img, before.get((img, ds)), after.get((img, ds)))
+                   for img, ds in sorted(set(before) | set(after))
+                   if before.get((img, ds)) != after.get((img, ds))]
+        if changed:
+            raise Exception("Extents changed during step 5 (one IPL): {}. Compress the "
+                            "library (IEBCOPY) or add an IPL point (USERMOD_IPL_POINTS)"
+                            .format('; '.join(changed)))
 
     def step_06_fdz1d02(self):
         self.set_step("step_06_fdz1d02")
