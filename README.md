@@ -34,12 +34,16 @@ docker run -d \
   --name=mvsce \
   -e HUSER=docker \
   -e HPASS=docker \
-  -p 2121:21 \
-  -p 2323:23 \
   -p 3270:3270 \
+  -p 3223:3223 \
+  -p 3271:3271 \
   -p 3505:3505 \
   -p 3506:3506 \
   -p 8888:8888 \
+  -p 2121:2121 \
+  -p 3221:3221 \
+  -p 22000-22200:22000-22200 \
+  -p 8080:8080 \
   -v /opt/docker/mvsce:/config \
   -v /opt/docker/mvsce/printers:/printers \
   -v /opt/docker/mvsce/punchcards:/punchcards \
@@ -52,13 +56,32 @@ docker run -d \
 
 Make sure the directories are correct for your docker volumes and hit enter,
 this will download the latest MVS/CE release and deploy it. You can then
-connect with you 3270 client on port 3270 (or port 2323 for encrypted 
+connect with your 3270 client on port 3270 (or port 3223 for encrypted
 communication).
 
+| Port | Service |
+|---|---|
+| 3270 | TN3270 |
+| 3223 | TN3270 over TLS |
+| 3271 | TN3270 over WebSocket |
+| 3505 / 3506 | card readers (ASCII / EBCDIC) |
+| 8888 | Hercules web console (`HUSER`/`HPASS`) |
+| 2121 | FTPD (after `/S FTPD`) |
+| 3221 | FTPD over TLS |
+| 22000-22200 | FTPD passive data connections |
+| 8080 | HTTPD and mvsMF under `/zosmf` (after `/S UFSD` and `/S HTTPD`) |
 
-More details are available here: https://hub.docker.com/r/mainframed767/mvsce 
+UFSD, HTTPD and FTPD are not started at IPL; start them from the console
+or SDSF (`/S UFSD`, `/S HTTPD`, `/S FTPD`). Passive FTP with EPSV (most
+clients) works as is. A client that uses plain PASV is sent the container's
+own address; for those set `PASVADR` in `SYS2.PARMLIB(FTPDPRM0)` to the
+Docker host's address.
 
-If you wish to build this docker container yourself you can see the Dockerfile here: https://github.com/MVS-sysgen/docker-mvsce
+More details are available here: https://hub.docker.com/r/mainframed767/mvsce
+
+To build the container yourself, use the Dockerfiles in [Docker/](Docker/):
+`docker build -f Docker/Dockerfile.local -t mvsce:local .` runs the whole
+sysgen in the build and needs no release download.
 
 ## Screenshots
 
