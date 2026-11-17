@@ -510,8 +510,8 @@ WRITE *                                         -
                                     *
 WRITE ******************************************-
 *************************************
-WRITE Run RX MVP LIST to see a list of installable packages
-WRITE Run RX MVP for list of commands
+WRITE Run 'MVP LIST' to see a list of installable packages
+WRITE Run 'MVP' for list of commands
 REVINIT
 ./ ADD NAME=TSOLOGON
         PROC 0
