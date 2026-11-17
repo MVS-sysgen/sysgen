@@ -255,19 +255,20 @@ class RakfUsersTest(unittest.TestCase):
     def test_columns(self):
         lines = m.rakf_users(self.CONF).splitlines()
         self.assertEqual(lines[:3], [
-            'IBMUSER  ADMIN   *SYS1     Y Y',
-            'IBMUSER  RAKFADM  SYS1     Y Y',
-            'MVSCE02  USER    *PASS4U   N N'])
-        # RAKF 2.0.0 shipped users.txt layout: oper col 28, special col 30
-        self.assertEqual(lines[0][27] + lines[0][29], 'YY')
-        self.assertEqual(lines[3:], ['UFSD     UFSROOT *         N N',
-                                     'FTPD     STARTED *         N N',
-                                     'HTTPD    STARTED *         N N'])
+            'IBMUSER 1ADMIN   *SYS1     Y Y',
+            'IBMUSER 2RAKFADM',
+            'MVSCE02 1USER    *PASS4U   N N'])
+        # RAKF 2.1.0 users.txt layout: record type col 9, oper col 28,
+        # special col 30
+        self.assertEqual(lines[0][8] + lines[0][27] + lines[0][29], '1YY')
+        self.assertEqual(lines[3:], ['UFSD    1UFSROOT *         N N',
+                                     'FTPD    1STARTED *         N N',
+                                     'HTTPD   1STARTED *         N N'])
 
     def test_extra_admin(self):
         lines = m.rakf_users(self.CONF, ('herc01', 'cul8tr')).splitlines()
-        self.assertIn('HERC01   ADMIN   *CUL8TR   Y Y', lines)
-        self.assertIn('HERC01   RAKFADM  CUL8TR   Y Y', lines)
+        self.assertIn('HERC01  1ADMIN   *CUL8TR   Y Y', lines)
+        self.assertIn('HERC01  2RAKFADM', lines)
 
     def test_rejects(self):
         for bad in ('TOOLONGU X a b c d e f\n', 'FTPD X a b c d e f\n',
@@ -282,7 +283,7 @@ class RealDistTest(unittest.TestCase):
     def test_manifest_pins_all(self):
         man = m.load_manifest()
         self.assertEqual(sorted(m.dist_products(man)), sorted(PRODUCTS))
-        self.assertEqual(man['rakf']['ref'], 'v2.0.0')
+        self.assertEqual(man['rakf']['ref'], 'v2.1.0')
 
     def test_products(self):
         man = m.load_manifest()
@@ -340,10 +341,10 @@ def parse_netdata(data):
     return out
 
 
-RAKF_TXT = ('IBMUSER  ADMIN   *SYS1     Y Y\n'
-            'IBMUSER  RAKFADM  SYS1     Y Y\n'
-            'MVSCE02  USER    *PASS4U   N N\n'
-            'UFSD     UFSROOT *         N N\n')
+RAKF_TXT = ('IBMUSER 1ADMIN   *SYS1     Y Y\n'
+            'IBMUSER 2RAKFADM\n'
+            'MVSCE02 1USER    *PASS4U   N N\n'
+            'UFSD    1UFSROOT *         N N\n')
 
 
 class NetdataTest(unittest.TestCase):
@@ -441,6 +442,8 @@ class UfsDiskTest(unittest.TestCase):
     def test_parse_rakf_users(self):
         self.assertEqual(m.parse_rakf_users(RAKF_TXT)[0], ('IBMUSER', 'ADMIN', 'SYS1'))
         self.assertEqual(m.parse_rakf_users(RAKF_TXT)[3], ('UFSD', 'UFSROOT', ''))
+        # type 2 line: the password of the user's type 1 line (get_rakf_admin)
+        self.assertEqual(m.parse_rakf_users(RAKF_TXT)[1], ('IBMUSER', 'RAKFADM', 'SYS1'))
 
 
 class RakfProfilesTest(unittest.TestCase):

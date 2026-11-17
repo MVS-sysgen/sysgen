@@ -1552,26 +1552,29 @@ def parse_sdsf_probe(text):
 #   STARTED  FTPD, HTTPD: only READ on FACILITY SVC244 (profiles.conf)
 #   UFSROOT  UFSD: SVC244 READ plus UPDATE on the UFS disk datasets that are
 #            not under its own HLQ (rakf_profiles); nothing else has that
-# No password: generate_release.py writes no shadow record for a blank
+# No password: generate_release.py stores an empty credential for a blank
 # password, so nobody can log on as these ids (they RACINIT without one).
 STC_USERS = {'UFSD': 'UFSROOT', 'FTPD': 'STARTED', 'HTTPD': 'STARTED'}
 UFS_GROUP = 'UFSROOT'
 
 
-def _rakf_line(user, group, first, password, oper, special):
-    # cols 1-8 userid, 10-17 group, 18 '*' on the first of several entries,
-    # 19-26 password (hashed into SYS1.SECURE.SHADOW, then blanked),
-    # 28 Operations, 30 Special (RAKF 2.0.0: needed for ADDUSER/LISTUSER/...)
-    return '{:8.8} {:8.8}{}{:8.8} {} {}'.format(
-        user, group, '*' if first else ' ', password, oper, special).rstrip()
+def _rakf_line(user, group, first, password='', oper='N', special='N'):
+    # RAKF 2.1.0 users.txt: cols 1-8 userid, 9 record type, 10-17 group.
+    # Type 1 (one per user): 18 '*', 19-26 password (hashed into cols
+    # 32-71 of SYS1.SECURE.CNTL(USERS)), 28 Operations, 30 Special
+    # (needed for ADDUSER/LISTUSER/...). Type 2: an additional group only.
+    if not first:
+        return '{:8.8}2{:8.8}'.format(user, group).rstrip()
+    return '{:8.8}1{:8.8}*{:8.8} {} {}'.format(
+        user, group, password, oper, special).rstrip()
 
 
 def rakf_users(users_text, extra_admin=None, stc_users=STC_USERS):
-    '''users.conf text -> RAKF 2.0.0 users.txt text (input of generate_release.py -u).
+    '''users.conf text -> RAKF 2.1.0 users.txt text (input of generate_release.py -u).
 
        users.conf: user password logonproc OPER|NOOPER acct JCL mount ADMIN|NOADMIN.
-       An ADMIN gets ADMIN + RAKFADM entries and Special Y; others group USER.
-       extra_admin: (user, password) of sysgen's -u/-p admin, if any.'''
+       An ADMIN gets ADMIN (type 1) + RAKFADM (type 2) and Special Y; others
+       group USER. extra_admin: (user, password) of sysgen's -u/-p admin, if any.'''
     out, seen = [], set()
 
     def add(user, password, oper, admin):
@@ -1583,7 +1586,7 @@ def rakf_users(users_text, extra_admin=None, stc_users=STC_USERS):
         seen.add(user)
         if admin:
             out.append(_rakf_line(user, 'ADMIN', True, password, oper, 'Y'))
-            out.append(_rakf_line(user, 'RAKFADM', False, password, oper, 'Y'))
+            out.append(_rakf_line(user, 'RAKFADM', False))
         else:
             out.append(_rakf_line(user, 'USER', True, password, oper, 'N'))
 
@@ -1630,15 +1633,15 @@ def rakf_profiles(profiles_text, users_text):
 
 
 def parse_rakf_users(text):
-    '''RAKF 2.0.0 users.txt text (as rakf_users() writes it) -> list of
-       (user, group, password) by column, one per line. Started task ids
-       have a blank password.'''
-    out = []
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        out.append((line[0:8].strip(), line[9:17].strip(), line[18:26].strip()))
-    return out
+    '''RAKF 2.1.0 users.txt text (as rakf_users() writes it) -> list of
+       (user, group, password) by column, one per line. A type 2 line
+       (additional group) carries no password: it gets the one of the
+       user's type 1 line, so get_rakf_admin can take the RAKFADM line's.
+       Started task ids have a blank password.'''
+    lines = [l for l in text.splitlines() if l.strip()]
+    pw = {l[0:8].strip(): l[18:26].strip() for l in lines if l[8:9] == '1'}
+    return [(l[0:8].strip(), l[9:17].strip(), pw.get(l[0:8].strip(), ''))
+            for l in lines]
 
 
 # ---------------------------------------------------------------- update pins

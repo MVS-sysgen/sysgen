@@ -2107,15 +2107,16 @@ class sysgen:
         rakf = mvslovers.load_manifest()['rakf']
         self.custjobs_ipl("Getting RAKF {} from github".format(rakf['ref']), clpa=True)
         # Pinned to the tag in mvslovers.conf ([rakf] ref); --update-mvslovers
-        # moves it. RAKF 2.0.0 ships no prebuilt tools: generate_release.py
-        # emits one EBCDIC job (RAKFINST) that RECEIVEs/APPLYs/ACCEPTs TRKF200
+        # moves it. RAKF 2.x ships no prebuilt tools: generate_release.py
+        # emits one EBCDIC job (RAKFINST) that RECEIVEs/APPLYs/ACCEPTs TRKF210
         # and assembles everything on the target.
         self.git_clone("https://github.com/{}".format(rakf['repo']), ref=rakf['ref'])
 
-        # users.conf -> RAKF 2.0.0 users.txt (Special flag in col 30 for
-        # ADMINs, started task ids FTPD/HTTPD in group STARTED and UFSD in
-        # group UFSROOT, with no password). generate_release.py hashes the passwords into the
-        # SYS1.SECURE.SHADOW records it embeds in the stream.
+        # users.conf -> RAKF 2.1.0 users.txt (record type in col 9, Special
+        # flag in col 30 for ADMINs, started task ids FTPD/HTTPD in group
+        # STARTED and UFSD in group UFSROOT, with no password).
+        # generate_release.py hashes the passwords into the
+        # SYS1.SECURE.CNTL(USERS) records it embeds in the stream.
         users_txt = Path('temp/rakf_users.txt').resolve()
         with open(self.users, 'r') as f:
             text = mvslovers.rakf_users(
@@ -2147,16 +2148,25 @@ class sysgen:
         # no EOF: RAKFPWUP at IPL then reads whatever was left on the track
         # (IEC020I 001-4, RAKF0001 USERID TABLE INVALID OR MISSING, IEF174I,
         # JES2 never starts). Seen at random in CI (v4.0.0 release).
-        # Write an EOF right after RAKFCUST allocates it, before SHADLOAD:
-        # a separate job after RAKFINST can't, RACINDVT has set the RACF
-        # indicator by then and OPEN abends E82 until RAKF is active.
+        # Write an EOF right after RAKFCUST allocates it (before the next
+        # step): a separate job after RAKFINST can't, RACINDVT has set the
+        # RACF indicator by then and OPEN abends E82 until RAKF is active.
         # Drop this once the RAKF install writes the EOF itself.
         cards = install_jcl.read_bytes()
-        shadload = '//SHADLOAD EXEC'.encode('cp037')
-        at = next((i for i in range(0, len(cards), 80)
-                   if cards[i:i + len(shadload)] == shadload), None)
+        card = [cards[i:i + 80].decode('cp037', 'replace')
+                for i in range(0, len(cards), 80)]
+        # The last allocation: SAMPLIB(INITPWUP), loaded earlier in the
+        # stream as in-stream data, has the same DD card.
+        alloc = next((n for n in range(len(card) - 1, -1, -1)
+                      if card[n].startswith('//') and 'DISP=(,CATLG)' in card[n]
+                      and 'DSN=SYS1.SECURE.PWUP' in card[n]), None)
+        at = None if alloc is None else next(
+            (n * 80 for n, c in enumerate(card[alloc + 1:], alloc + 1)
+             if c.startswith('//') and not c.startswith('//*')
+             and ' EXEC ' in c), None)
         if at is None:
-            raise ValueError("RAKF install stream has no SHADLOAD step to put PWUPEOF before")
+            raise ValueError("RAKF install stream: no SYS1.SECURE.PWUP allocation "
+                             "followed by a step to put PWUPEOF before")
         eof = b''.join(l.ljust(80).encode('cp037')
                        for l in PWUP_EOF_STEP.splitlines())
         install_jcl.write_bytes(cards[:at] + eof + cards[at:])
