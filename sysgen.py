@@ -147,6 +147,14 @@ POST_RAKF_JOB_CARD = ('''//{JOBNAME} JOB (SYSGEN),'{DESC}',
 //             REGION={REGION}
 ''')
 
+# Step inserted into RAKFINST that writes an EOF to SYS1.SECURE.PWUP (see
+# step_08_rakf)
+PWUP_EOF_STEP = """//PWUPEOF  EXEC PGM=IEBGENER
+//SYSPRINT DD SYSOUT=*
+//SYSIN    DD DUMMY
+//SYSUT1   DD DUMMY,DCB=(RECFM=F,LRECL=18,BLKSIZE=18)
+//SYSUT2   DD DISP=OLD,DSN=SYS1.SECURE.PWUP"""
+
 # Expected non-zero step CCs of RAKFINST for the pinned RAKF (mvslovers.conf).
 # RESTORE/RECEIVE 12 belong to RAKF's own JLM0003: its RESTORE S(NJE0001,
 # JLM0003) takes sysgen's JLM0003 (step 5) and TRANSMIT's NJE0001 (step 7)
@@ -2135,6 +2143,23 @@ class sysgen:
             '-p', str(profiles_txt),
             '-o', str(install_jcl),
         ])
+        # RAKF 2.0.0 allocates SYS1.SECURE.PWUP with IEFBR14, which writes
+        # no EOF: RAKFPWUP at IPL then reads whatever was left on the track
+        # (IEC020I 001-4, RAKF0001 USERID TABLE INVALID OR MISSING, IEF174I,
+        # JES2 never starts). Seen at random in CI (v4.0.0 release).
+        # Write an EOF right after RAKFCUST allocates it, before SHADLOAD:
+        # a separate job after RAKFINST can't, RACINDVT has set the RACF
+        # indicator by then and OPEN abends E82 until RAKF is active.
+        # Drop this once the RAKF install writes the EOF itself.
+        cards = install_jcl.read_bytes()
+        shadload = '//SHADLOAD EXEC'.encode('cp037')
+        at = next((i for i in range(0, len(cards), 80)
+                   if cards[i:i + len(shadload)] == shadload), None)
+        if at is None:
+            raise ValueError("RAKF install stream has no SHADLOAD step to put PWUPEOF before")
+        eof = b''.join(l.ljust(80).encode('cp037')
+                       for l in PWUP_EOF_STEP.splitlines())
+        install_jcl.write_bytes(cards[:at] + eof + cards[at:])
         # Binary: the shadow records are raw EBCDIC behind a DD DATA card, so
         # the stream goes untranslated to the EBCDIC reader (3506).
         self.submit_file_binary(install_jcl, port=3506)
