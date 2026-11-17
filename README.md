@@ -121,12 +121,12 @@ their substeps; each step writes a backup that the next one restores):
 | Step | What it does |
 |---|---|
 | `step_01_build_starter` .. `step_04_system_generation` | Jay Moseley's starter system, SMP 4.44 + ESY1400 (SMP 04.48), distribution libraries and the system generation |
-| `step_05_usermods` | the usermods in `usermods/`, all on one IPL of the starter system, one job after the other (one substep each; `--substep` restarts from the start of step 5, see `USERMOD_IPL_POINTS`), including ZP60038 at REWORK 20261106 for ISPF `VPUT`/`VGET` from REXX |
+| `step_05_usermods` | the usermods in `usermods/`, all on one IPL of the starter system, one job after the other (one substep each; `--substep` restarts from the start of step 5, see `USERMOD_IPL_POINTS`), including ZP60038 at REWORK 20261106 for ISPF `VPUT`/`VGET` from REXX, and from Jay Moseley's installMVS V8: MS00100 (link list data sets by volume, so `SYSC.LINKLIB(SYSCPK)` is in LNKLST00 from the first IPL), M096220 (its IEAVNP12 fix is also in ZP60042, which supersedes it in step 10), RP00001/RP00002/RP00003 (3375/3380/3390 support, with the J90012 tape in step 3), SLB0003 (no ABEND22F at IPL under Hercules), ZP60024, ZUM0015 and ZP60009 at REWORK 20221126 |
 | `step_06_fdz1d02` | FDZ1D02 |
-| `step_07_customization` | MVS000, DYNPROC, date, TSO users, then `brexx`: the TRANSMIT/RECEIVE commands of NJE38 (IPL with CLPA), BREXX/370 with SMP, usermod MS00100 and `BREXX.LINKLIB` in the link list |
+| `step_07_customization` | MVS000, DYNPROC, date, TSO users, then `brexx`: the TRANSMIT/RECEIVE commands of NJE38 (IPL with CLPA), BREXX/370 with SMP and `BREXX.LINKLIB` in the link list (MS00100 is applied in step 5) |
 | `step_08_rakf` | RAKF from its git tag, with the users in `users.conf` and the profiles in `profiles.conf` |
 | `step_09_mvp` | MVP, the package manager |
-| `step_10_extras` | usermods ZP60041/42/43 and ZMG0001 (BREXX/370 TSO integration; PTF UY16532 is accepted first) |
+| `step_10_extras` | usermods ZP60041/42/43 (ZP60042 includes the M096220 fix and supersedes it) and ZMG0001 (BREXX/370 TSO integration; PTF UY16532 is accepted first) |
 | `step_11_nje38` | NJE38 with MVP |
 | `step_12_ispf` | Wally ISPF and RFE with MVP |
 | `step_12a_mvslovers` | UFSD, FTPD, HTTPD and mvsMF with SMP, their site configuration and UFS disks, and a start/stop smoke test |
@@ -323,6 +323,9 @@ user gets no `CONSOLE` or `CP` command from BREXX/370.
 * Added RAKF, BREXX, RFE, and ISPF
 * Installs BREXX/370, RAKF, UFSD, FTPD, HTTPD, mvsMF and SDSF with SMP
 * Installed usermod `DYNPROC` which allows for dynamic proclibs
+* Updated to Jay Moseley's installMVS V8 where it adds to the build: J90012 (Rob Prins' 2024
+  3375/3380/3390 updates), the SMP4P44 starter system PARMLIB step, the IEBGENER relink in
+  SMPJOB07, the V8 usermods listed under step 5 and SYSCPK 01.44 with `SYSC.LINKLIB` in the link list
 * Seperated out usermods to their own JCL for better automation control
 * Added `S NET` and changed JES2 startup parms in `sys1.parmlib(COMMND00)`
 * Automated startup using HAO hercules
@@ -334,7 +337,7 @@ to see the hundred of other changes since the initial release.
 
 ## Info
 
-This repo is heavily based on Jay Moseley sysgen. His writeup is a wonderful resource and you should read the site here: http://www.jaymoseley.com/hercules/installMVS/iMVSintroV7.htm
+This repo is heavily based on Jay Moseley sysgen. His writeup is a wonderful resource and you should read the site here: https://www.jaymoseley.com/hercules/installMVS/iMVSintroV8.htm
 
 A lot of the information contained on this repo is directly from his sysgen walkthrough.
 

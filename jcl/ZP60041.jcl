@@ -9474,6 +9474,7 @@ UCB      DSECT                                                          00675000
 ++USERMOD(ZP60042)              /* ADD INDIRECT CATALOGING */  .
 ++VER(Z038) FMID(EDM1102)
   PRE(UZ50553,UZ72608)
+  SUP(M096220)
  /*
    PROBLEM DESCRIPTION:
      THERE IS NO WAY TO CATALOG A DATA SET ON "THE CURRENT SYSRES".
@@ -9510,6 +9511,18 @@ UCB      DSECT                                                          00675000
 
      REWORK HISTORY:
        2021-11-05: INITIAL AVAILABILITY.
+       2026-11-16: MVS/CE: IEAVNP12 INCLUDES THE FIX OF USERMOD
+                   M096220 (REWORK 20090625) AND SUPERSEDES IT.
+
+     M096220 (APPLIED IN SYSGEN STEP 5, FROM JAY MOSELEY'S INSTALLMVS
+       V8) ZAPS IEAVNP12: NIP LOCATE SUBROUTINE GETTRNM COMPUTED THE
+       RBA OF THE TRUE NAME CI WITH THE INDEX COMPONENT CI SIZE
+       INSTEAD OF THE DATA COMPONENT CI SIZE. ON 3350 BOTH ARE THE
+       SAME; WITH THE MASTER CATALOG ON 3375/3380/3390 THEY DIFFER,
+       LOCATE OF SYS1.LINKLIB FAILS (IEA326I) AND NIP ENDS IN WAIT
+       00A. THIS USERMOD REPLACES ALL OF IEAVNP12, WHICH WOULD UNDO
+       THE ZAP, SO THE SAME CHANGE IS MADE IN THE SOURCE BELOW (SEE
+       M096220 IN GETTRNM) AND THIS USERMOD SUPERSEDES M096220.
 
      THE FOLLOWING MODULES AND/OR MACROS ARE AFFECTED BY THIS USERMOD:
      MODULES:
@@ -13353,7 +13366,9 @@ NOINST  EQU *                          BR POINT                         00124100
          AL    R5,IXHBRBA-IDAIXH(,R7)                           DSK1308 00124800
          ST    R5,BUFCDDDD-IDABUFC(,R10)                        DSK1308 00124900
 *         HLDRBA=BUFCDDDD;                                         0573 00125000
-         ST    R5,HLDRBA                                        DSK1308 00125100
+*         HLDRBA=IXHBRBA;    /* M096220: SAVE BASE RBA ONLY        */   M0962201
+         L     R15,IXHBRBA-IDAIXH(,R7)  BASE RBA OF THE DATA CA         M0962202
+         ST    R15,HLDRBA               (NOT IX*INDEX CISIZE+BASE)      M0962203
 *       END;                                                       0574 00125200
 *     RFY                                                          0575 00125300
 *       RETCODE UNRSTD;                                            0575 00125400
@@ -13371,8 +13386,14 @@ NOINST  EQU *                          BR POINT                         00124100
          L     R9,AMBIOMB-IDAAMB(,R7)                           DSK1308 00126600
          L     R10,IOMBUFC-IOMB(,R9)                            DSK1308 00126700
 *   BUFCDDDD=HLDRBA;                /* COMPUTE RBA OF NEXT REC       */ 00126800
-         L     R9,HLDRBA                                        DSK1308 00126900
-         ST    R9,BUFCDDDD-IDABUFC(,R10)                        DSK1308 00127000
+*   M096220: BUFCDDDD=IX*AMDCINV(DATA)+HLDRBA; THE TRUE NAME CI RBA     M0962204
+*   USES THE DATA COMPONENT CI SIZE (INDEX AND DATA CI SIZES DIFFER     M0962205
+*   FOR A CATALOG ON 3375/3380/3390), IX FROM THE SEQUENCE SET ENTRY    M0962206
+         L     R15,AMBDSB-IDAAMB(,R7)   DATA COMPONENT AMDSB            M0962207
+         L     R1,IX5                   CI NUMBER FROM INDEX ENTRY      M0962208
+         M     R0,AMDCINV-IDAAMDSB(,R15) TIMES DATA CI SIZE             M0962209
+         AL    R1,HLDRBA                PLUS BASE RBA OF THE DATA CA    M0962210
+         ST    R1,BUFCDDDD-IDABUFC(,R10)                                M0962211
 *   CALL RDRBA;                     /* RD BY RBA                     */ 00127100
          BAL   R14,RDRBA                                        DSK1308 00127200
 *   RFY                                                            0581 00127300

@@ -1,4 +1,4 @@
-//ZP60009  JOB (SYSGEN),'J05 M24: ZP60009',
+//ZP60009  JOB (SYSGEN),'ZP60009',
 //             CLASS=A,
 //             MSGCLASS=A,
 //             MSGLEVEL=(1,1),
@@ -6,281 +6,18 @@
 /*JOBPARM LINES=100
 //JOBCAT   DD  DSN=SYS1.VSAM.MASTER.CATALOG,DISP=SHR
 //*
-//*  ADD NOEDIT SUPPORT FOR TPUT AND TPG TO TSO/VTAM.
+//*********************************************************************
+//* INSTALL USERMOD ZP60009 - ADD NOEDIT SUPPORT FOR TPUT AND TGET TO *
+//* TSO/VTAM (REWORK 20221126)                                        *
+//*                                                                   *
+//* FROM JAY MOSELEY'S INSTALLMVS V8 TAPE/USERMODS.HET                *
+//*********************************************************************
 //*
-//STEP01  EXEC PGM=IEBGENER
+//SOURCE   EXEC PGM=IEBUPDTE,PARM=NEW
 //SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-++USERMOD(ZP60009)   REWORK(20190422)                      .
-++VER(Z038) FMID(ETV0108)
-  PRE(UZ35180,UZ26905,UZ67122,UZ22286,UZ55134,UZ28255,
-      UZ71054,UZ54020,UZ68882,UZ57385,UZ28016)
- /*
-   PROBLEM DESCRIPTION:
-     THE NOEDIT OPERAND OF TPUT AND TPG IS NOT HONOURED BY TSO/VTAM.
-       THE TIOC COMMON SVC 93 ROUTINE IGC0009C CORRECTLY DETECTS THE
-       REQUEST OF NOEDIT FOR TPUT AND TPG REQUESTS, BUT THIS IS NOT
-       HANDLED PROPERLY BY TSO/VTAM.
-     THE GTTERM MACRO FUNCTION IS NOT SUPPORTED BY TSO/VTAM.
-       WHEN A TSO APPLICATION ISSUES THE GTTERM MACRO RC=4 RESULTS.
-       AN APPLICATION CANNOT DETERMINE IF THE READ PARTITION (QUERY)
-       FUNCTION IS SUPPORTED.  ALSO, THE ALTERNATE SCREEN SIZE CANNOT
-       BE DETERMINED.
-     3270 HOUSEKEEPING IS LIMITED TO MODEL-1 AND MODEL-2 SCREEN SIZES.
-       TSO WILL ONLY PERFORM LINE MODE 3270 SCREEN HOUSEKEEPING FOR
-       MODEL-1 (12 BY 40) AND MODEL-2 (24 BY 80) SCREEN SIZES.  THE
-       ALTERNATE SCREEN SIZE OF A TERMINAL CANNOT BE PROPERLY EXPLOITED
-       BY TSO LINE MODE, NOR BY TSO FULLSCREEN APPLICATIONS.
-     THE NOEDIT OPERAND OF STFSMODE IS NOT SUPPORTED BY TSO/VTAM.
-       NOEDIT INPUT MODE IS SET BY SPECIFYING NOEDIT=YES ON A
-       'STFSMODE ON' MACRO.  THIS IS NOT SUPPORTED BY TSO.  WITHOUT
-       THIS ABILITY ANY X'1E' IN INPUT DATA (INCLUDING A QUERY
-       RESPONSE, OR AN SBA ORDER FROM A SCREEN WITH MORE THAN 4096
-       LOCATIONS) WILL BE INTERPRETED AS A FIELD MARK CHARACTER AND
-       CAUSE THE DATA FOLLOWING IT TO BE HELD OVER UNTIL THE NEXT TGET
-       MACRO IS ISSUED.
-
-       THIS USERMOD CHANGES SEVERAL TSO/VTAM MODULES.
-
-       THE TSO/VTAM SVC 93 ROUTER IS CHANGED TO NOT REJECT REQUESTS
-       WITH NOEDIT SPECIFIED.
-
-       THE TSO/VTAM TPUT HANDLER IS CHANGED TO NOT TRUNCATE TRAILING
-       BLANKS FROM NOEDIT REQUESTS.  A PREVIOUSLY RESERVED BIT IS
-       USED TO FLAG NOEDIT REQUESTS, WHICH ARE ALSO FLAGGED AS
-       FULLSCREEN REQUESTS BY THE TPUT AND TPG MACROS (AND NOW ALSO
-       BY THIS MODULE).
-
-       THE TSO/VTAM TGET HANDLER IS CHANGED TO BACK OUT THE FIX FOR
-       APAR OZ60978 SHIPPED IN PTF UZ57385 TO REGRESS FUNCTIONALITY
-       TO THE UZ55134 LEVEL SO THAT TPUT MACROS ISSUED AFTER TGET
-       MACROS WITH THE NOWAIT OPERAND ARE NOT QUEUED UNTIL THERE IS
-       SOME INPUT, BUT SENT TO THE SCREEN ASYNCHRONOUSLY.  THIS HAS
-       THE EFFECT OF REINTRODUCING THE PROBLEM WHERE A TGET NOWAIT
-       DOES NOT FORCE THE KEYBOARD TO BECOME UNLOCKED, BUT THIS CAN
-       BE CIRCUMVENTED BY THE APPLICATION SETTING THE X'02' BIT IN
-       THE WCC WHEN APPROPRIATE.
-
-       THE TSO/VTAM TGET HANDLER IS ALSO CHANGED TO ADD THE TGET MACRO
-       RETURN CODES 24 AND 28 WHICH MAY BE GIVEN WHEN NOEDIT INPUT
-       MODE IS IN EFFECT, THEREBY IMPROVING COMPATIBILITY WITH TSO/E.
-
-       THE TSO/VTAM INITIALIZATION ROUTINE FOR THE TSO INPUT MANAGER
-       AND TSO OUTPUT MANAGER HAS BEEN CHANGED TO NOT REGARD TERMINALS
-       WITH BUFFER SIZES LARGER THAN 1920 BYTES AS MODEL-1 TERMINALS.
-       THIS WILL HELP AVOID LINE MODE SCREEN HANDLING ERRORS AFTER
-       LOGON RECONNECT PROCESSING.
-
-       THE TSO/VTAM LOGON RECONNECT ROUTINE HAS BEEN CHANGED TO
-       INCLUDE THE PRIMARY AND ALTERNATE SCREEN DIMENSIONS IN THE
-       DATA PERTAINING TO THE NEW TERMINAL PROPAGATED TO CONTROL
-       BLOCKS WHEN A LOGON RECONNECT IS PERFORMED, THUS ALLOWING TSO
-       APPLICATIONS TO DETECT DYNAMIC CHANGES TO THE SCREEN SIZE.
-
-       THE TSO/VTAM 3270 TERMINAL SCREEN MANAGER IS ALTERED TO SKIP
-       ANY DATA TRANSLATION FOR NOEDIT TPUTS.  FURTHER, IN KEEPING
-       WITH 3270 ARCHITECTURE DATA INTEGRITY FOR DISPLAYABLE CODE
-       POINTS (WHERE ALL CODE POINTS IN THE RANGE X'40' TO X'FE'
-       ARE CONSIDERED "DISPLAYABLE", AND REGARDLESS OF THE TERMINAL'S
-       ABILITY TO DISPLAY THE CHARACTER, WHEN SUCH A CODE POINT IS
-       WRITTEN TO THE TERMINAL, IT CAN BE READ BACK UNALTERED) ALL
-       TPUTS TO 3270 EBCDIC TERMINALS WILL NO LONGER ALTER ANY DATA
-       CODE POINTS IN THE X'40' TO X'FE' RANGE.  (THE X'40' CODE POINT
-       IS RESERVED FOR A BLANK IN ALL SINGLE-BYTE CHARACTER SETS.)
-
-       THE TSO/VTAM 3270 TERMINAL SCREEN MANAGER IS ALSO ALTERED TO
-       SUPPORT DIFFERENT PRIMARY AND ALTERNATE SCREEN SIZES OF ANY
-       SIZE SUBJECT TO THE 3270 ARCHITECTURE LIMITATIONS, AND ALSO
-       THAT THE ALTERNATE SCREEN SIZE NEVER HAS FEWER COLUMNS NOR
-       FEWER LINES THAN THE PRIMARY SCREEN SIZE.  TSO/VTAM LINE MODE
-       HOUSEKEEPING WILL NOW USE 14-BIT ADDRESSING FOR ALL BUFFER
-       LOCATIONS GREATER THAN 4095, BUT WILL STILL USE 12-BIT
-       ADDRESSING FOR LOCATIONS FROM 0 TO 4095 INCLUSIVE.  THIS
-       CHANGE HAS THE EFFECT OF INCREASING THE MAXIMUM TSO/VTAM 3270
-       SCREEN SIZE SUPPORTED FROM 4096 LOCATIONS TO 16384 LOCATIONS.
-
-       THE TSO/VTAM 3270 TERMINAL SCREEN MANAGER NOW HANDLES TPUT
-       FULLSCR DIFFERENTLY TO THE EXTENT THAT A STANDARD WRITE (X'F1')
-       WITH A NO-OP WCC (X'40') WILL NOT FORCE THE INCLUSION OF AN
-       INSERT CURSOR ORDER AS THE TPUT MAY BE SENDING AN ASYNCHRONOUS
-       PARTIAL SCREEN UPDATE WHICH DOES NOT OVERWRITE AN ACTIVE INPUT
-       AREA WHERE SOME TEXT MAY BE BEING TYPED IN.
-
-       THE TSO/VTAM 3270 INPUT DATA HANDLER HAS BEEN ALTERED TO NOT
-       PROCESS FIELD MARK CHARACTERS INPUT WHEN NOEDIT MODE IS IN
-       EFFECT.  FURTHER, THE ACTUAL NUMBER OF COLUMNS AND LINES ON
-       THE SCREEN IS USED IN LINE COUNT CALCULATIONS.
-
-       THE TSO/VTAM SVC 94 ROUTER IS ALTERED TO PASS CONTROL TO A NEW
-       CSECT FOR TSO TERMINAL CONTROL FUNCTION 17 (GTTERM).  A TSO
-       APPLICATION CAN NOW ISSUE A GTTERM MACRO TO DETERMINE IF THE
-       QUERY BIT IS ON, AND CAN GET THE DIMENSIONS OF THE PRIMARY AND
-       ALTERNATE SCREEN SIZES.  NOEDIT TPUT/TPG MACROS CAN BE USED
-       TO ISSUE WRITE STRUCTURED FIELD COMMANDS TO GAIN ACCESS TO
-       VARIOUS 3270 EXTENSIONS INCLUDING GRAPHICS.  QUERY SUPPORT IS
-       NOT NEEDED FOR A READ BUFFER COMMAND WHICH CAN NOW ALSO BE
-       ISSUED VIA A NOEDIT TPUT/TPG MACRO.  GTTERM RETURN CODES AND
-       OUTPUT IS COMPATIBLE WITH TSO/E, EXCEPT THAT THE TERMID OUTPUT
-       AREA IS CURRENTLY LIMITED TO 8 BYTES.
-
-       THE TERMINAL CONTROL MACRO ROUTINE FOR THE STFSMODE MACRO HAS
-       BEEN CHANGED TO SUPPORT THE NOEDIT OPERAND, AND RESHOW KEY CODES
-       CAN NOW BE IN THE RANGE OF FROM 1 TO 24 INCLUSIVE (REPRESENTING
-       THE VALID PFK NUMBERS).
-
-       THE TERMINAL CONTROL MACRO ROUTINE FOR THE STLINENO MACRO HAS
-       BEEN CHANGED TO SUPPORT THE SPECIFICATION OF ANY VALID LINE
-       NUMBER THAT EXISTS ON THE SCREEN.  IT HAS ALSO BEEN CHANGED TO
-       SUPPORT NOEDIT INPUT MODE.
-
-       THE TERMINAL CONTROL MACRO ROUTINE FOR THE STSIZE MACRO HAS
-       BEEN CHANGED TO INDICATE THAT ANY REQUESTED SCREEN SIZE WHICH
-       MATCHES EITHER THE PRIMARY OR ALTERNATE SIZE OF THE SCREEN IS
-       CONSIDERED A STANDARD SIZE, EVEN IF IT IS NOT THE SIZE OF A
-       MODEL-1 OR MODEL-2 SCREEN.  THIS IS DONE WITH A RETURN CODE
-       OF ZERO INSTEAD OF A RETURN CODE OF 12 WHICH INDICATES A
-       NON-STANDARD SCREEN SIZE.  (THE FLAGGING OF NON-STANDARD
-       SCREEN SIZES IS INTENDED TO WARN OF THE POSSIBILITY OF
-       SCREEN CONTROL ERRORS.)
-
-       THE MAPPING MACRO FOR THE TSO/VTAM WORK AREA IKTTVWA IS
-       UPDATED TO ADD BIT TVWAALTS WHICH IS SET WHEN THE TSO/VTAM
-       SCREEN MANAGER SETS THE SCREEN TO ITS ALTERNATE SIZE.
-       (THE MAPPING OF THIS BIT IS INCOMPATIBLE WITH TSO/E.)
-
-       THE STFSMODE TERMINAL CONTROL MACRO FOR TSO FULLSCREEN
-       APPLICATIONS HAS BEEN UPDATED TO ADD THE NOEDIT OPERAND,
-       WHICH CAN BE ASSIGNED THE VALUE OF YES OR NO.  NO IS THE
-       DEFAULT.  NOEDIT=YES IS USED TO ALLOW BYTES WITH A VALUE OF
-       X'1E' TO BE RETURNED TO AN APPLICATION AS INPUT DATA
-       FROM THE TERMINAL WITHOUT EACH SUCH BYTE BEING PROCESSED AS
-       A FIELD MARK.
-
-   SPECIAL CONDITIONS:
-     ACTION:
-       A "CLPA" MUST BE PERFORMED AT IPL TIME FOR THIS SYSMOD TO
-       BECOME ACTIVE.
-
-   COMMENTS:
-     PRYCROFT SIX P/L PUBLIC DOMAIN USERMOD FOR MVS 3.8 NUMBER 9.
-
-     REWORK HISTORY:
-       2003-02-01: INITIAL RELEASE.
-       2003-03-05: KBD (UN)LOCK ASYNC MSGS DURING NOEDIT TPUTS.
-       2003-03-30: DO NOT FORCE IC IF WRT WITH NO-OP WCC.
-       2005-08-14: DO NOT FORCE LINE-WRAP AFTER COLUMN 80.
-       2009-06-01: USE SCREEN SIZES AND QUERY BIT FROM SNA BIND.
-       2009-11-07: CHANGE IKTIIOM AND ADD IKTLOGR ZAPS FOR RECONNECT.
-       2012-04-28: IMPROVE THE INTEROPERABILITY OF TPUT NOEDIT (WITH
-                   "UNLOCK KEYBOARD" SET IN THE WCC) AND TGET NOWAIT
-                   TO MATCH THAT OF TPUT FULLSCR AND TGET NOWAIT.
-       2019-04-22: CHANGE IKTVTGET SO THAT TGET NOWAIT REQUESTS DO
-                   NOT INHIBIT WRITES TO THE TERMINAL UNTIL SOME
-                   INBOUND DATA IS FIRST RECEIVED FROM THE TERMINAL.
-                   REMOVE DEBUG CODE AND FLAGS FROM IKT3270O CSECT.
-                   REMOVE FLSCRTAB EDITING OF TPUT FULLSCR DATA.
-
-     TSO/VTAM IS A VTAM APPLICATION.  THIS SYSMOD DOES NOT IMPLY
-     THAT VTAM CAN CORRECTLY PROCESS THE DATA THAT CAN NOW BE
-     GENERATED BY TSO APPLICATIONS, EVEN IF THE DATA CONSISTS OF
-     A PERFECTLY VALID 3270 DATA STREAM.
-
-     EVT0108 LOCAL NON-SNA SUPPORT IS PROVIDED BY USERMOD ZP60008.
-
-     USERMOD ZP60032 UPGRADES THE GTTERM MACRO TO BE ABLE TO EXPLOIT
-     NEW FUNCTION DELIVERED IN THIS SYSMOD.
-
-     THE FOLLOWING MODULES AND/OR MACROS ARE AFFECTED BY THIS USERMOD:
-     MODULES:
-       IKT0009C
-       IKTVTPUT
-       IKTIIOM
-       IKTLOGR
-       IKTVTGET
-       IKT3270O
-       IKT0009D
-       IKTXLOG
-       IKT3270I
-       IKT09412
-       IKT09413
-       IKT0940A
-     MACROS:
-       IKTTVWA
-       STFSMODE
- */.
-++ZAP(IKT0009C) DISTLIB(AOST3).
- NAME IKT0009C
- IDRDATA ZP60009
-VER 00C6 4870,5060           LH    R7,XSAPRMTJ
-VER 00CA 1277                LTR   R7,R7
-VER 00CC 4780,C0C6           BZ
-VER 00E4 4870,5060           LH    R7,XSAPRMTJ
-VER 00E8 1277                LTR   R7,R7
-VER 00EA 4780,C1AE           BZ
-REP 00CC 47D0                BNP
-REP 00EA 47D0                BNP
-++ZAP(IKTVTPUT) DISTLIB(AOST3).
- NAME IKTVTPUT
- IDRDATA ZP60009
-VER 0016 05C0                BALR  R12,0
-VER 0258 5010,D050           ST    R1,OPFLAGS
-VER 02DA 5010,D050           ST    R1,OPFLAGS
-VER 043E 50E0,506C  DATAEDIT ST    R14,XSASAVEA
-VER 0442 9103,5064           TM    XSAOPTNS,XSAEDITO
-VER 0446 4770,C472           BNZ   @RT00307
-VER 044A 9640,5068  NEXTINST OI    XSAFLAG,XSADMOVE
-VER 0508 0000,0000  *        PATCH AREA
-VER 050C 0000,0000  *        PATCH AREA
-VER 0510 0000,0000  *        PATCH AREA
-VER 0514 0000,0000  *        PATCH AREA
-VER 0518 0000,0000  *        PATCH AREA
-VER 051C 0000,0000  *        PATCH AREA
-VER 0520 0000       *        PATCH AREA
-VER 0522 0000,0000  *        PATCH AREA
-VER 0526 0000       *        PATCH AREA
-REP 0258 45E0,C500           BAL   R14,PATCH2
-REP 02DA 45E0,C500           BAL   R14,PATCH2
-REP 0446 47F0,C4F0           B     PATCH1
-REP 0508 4770,C472  PATCH1   BNZ   @RT00307
-REP 050C 9180,5060           TM    XSAPRMTJ,XSANOED
-REP 0510 4710,C472           BO    @RT00307
-REP 0514 47F0,C432           B     NEXTINST
-REP 0518 5010,D050  PATCH2   ST    R1,OPFLAGS
-REP 051C 9180,5060           TM    XSAPRMTJ,XSANOED
-REP 0520 07EE                BNOR  R14
-REP 0522 9634,D051           OI    OPOPTNS,OPEDIT+OPNOED
-REP 0526 07FE                BR    R14
-++ZAP(IKTIIOM) DISTLIB(AOST4).
- NAME IKTIIOM
- IDRDATA ZP60009
-VER 03C4 D501,804A,64D4      CLC   TSBXTMBF,=H'1920'
-VER 03CA 4770,63BE           BNE   MODEL1
-VER 03CE 9250,C008           MVI   TSBLNSZ,80
-VER 03D2 9218,C028           MVI   TSBLNNO,24
-VER 03D6 47F0,63EA           B     SIZESET
-REP 03CA 4740,63BE           BL    MODEL1
-++ZAP(IKTLOGR) DISTLIB(AOST4).
- NAME IKTLOGR
- IDRDATA ZP60009
-VER 0150 D207,B068,A068      MVC   TSBTRMID(8,TSBBASE),TSBTRMID(@10)
-REP 0150 D20B,B064,A064      MVC   TSBPRMR(12,TSBBASE),TSBPRMR(@10)
-++MOD(IKTVTGET) DISTLIB(AOST3).
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(NEW,PASS),UNIT=SYSALLDA,
-//             SPACE=(CYL,3),
-//             DCB=(DSORG=PS,RECFM=FB,LRECL=80,BLKSIZE=4080)
-//SYSIN    DD  DUMMY
-//*
-//STEP02  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT)'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
+//SYSUT2   DD  DISP=SHR,DSN=SYS1.UMODSRC
+//SYSIN    DD  DATA,DLM='??'
+./ ADD NAME=IKTVTGET
          TITLE '*** IKTVTGET: TSO/VTAM TGET ROUTINE ***                *
                         '
 *
@@ -292,7 +29,7 @@ IKTVTGET CSECT ,                                                   0001
          B     @PROLOG                                             0001
          DC    AL1(33)                                        ZP60009-C
          DC    C'IKTVTGET  82.141'                                 0001
-         DC    C' ZP60009 2019.109'                           ZP60009-A
+         DC    C' ZP60009 2022.330'                           ZP60009-A
          DROP  R15
          USING PSA,0                                          ZP60009-A
 @PROLOG  BALR  R12,0                                               0001
@@ -390,23 +127,23 @@ IKTVTGET CSECT ,                                                   0001
          CLI   TSBXTMTP-TSBX(R4),2                                 0141
          BE    @RF00141                                            0141
 *               DO;                 /* NOT A 3767 TERMINAL   @ZM20749*/
-*                 IF TVWAPGN='1'B|  /* IS PAGING ON?         @YM03259*/
-*                     TVWAKBDL='1'B|/* KEYBOARD LOCKED?      @YM03259*/
-*                     TVWAATTN>0|   /* ATTENTION?            @ZM20749*/
+*                 IF TVWAPGN='1'B? /* IS PAGING ON?         @YM03259*/
+*                     TVWAKBDL='1'B?* KEYBOARD LOCKED?      @YM03259*/
+*                     TVWAATTN>0?  /* ATTENTION?            @ZM20749*/
 *                     TVWAAIGN='1'B /* ATTENTION IGNORED?    @ZM20749*/
 *                   THEN            /* PAGING OR KEYBOARD LOCKED   0143
 *                                                            @YM03259*/
-         TM    TVWAFLG2,TVWAPGN                                    0143
-         BO    @RT00143                                            0143
-         TM    TVWAFLG4,TVWAKBDL                                   0143
-         BO    @RT00143                                            0143
-         CLI   TVWAATTN,0                                          0143
-         BH    @RT00143                                            0143
-         TM    TVWAFLG3,TVWAAIGN                                   0143
-         BO    @RT00143                                       ZP60009-C
-         TM    XSAOPTNS-RBBASIC(R5),XSANOWT                   ZP60009-A
-         BO    @RF00143                                       ZP60009-A
+         TM    TVWAFLG2,TVWAPGN        IS PAGING ON?               0143
+         BO    @RT00143                YES                         0143
+         TM    TVWAFLG4,TVWAKBDL       KEYBOARD LOCKED?            0143
+         BO    @RT00143                YES                         0143
+         CLI   TVWAATTN,0              ATTENTION(S) WITH STAX?     0143
+         BH    @RT00143                YES                         0143
+         TM    TVWAFLG3,TVWAAIGN       ATTENTION IGNORED?          0143
+         BNO   @RF00143                NO                          0143
 @RT00143 DS    0H                                                  0144
+         TM    XSAOPTNS-RBBASIC(R5),XSANOWT  TGET NOWAIT?     ZP60009-A
+         BO    @RF00143                YES, SKIP UNLOCK REQ   ZP60009-A
 *                   TVWAULK='1'B;   /* REQUEST TO UNLOCK KEYBOARD  0144
 *                                                            @YM03259*/
          OI    TVWAFLG1,TVWAULK                                    0144
@@ -416,32 +153,32 @@ IKTVTGET CSECT ,                                                   0001
 @RF00143 DS    0H                                                  0146
 *                 IF TVWATIS='0'B&  /* IS TOM NOT SCHEDULED? @YM03259*/
 *                     TVWATAS='0'B& /* AVAILABLE AND         @YM03259*/
-*                     (TVWAKBDL='1'B|/* IS THE KEYBOARD LOCKED?    0146
+*                     (TVWAKBDL='1'B?* IS THE KEYBOARD LOCKED?    0146
 *                                                            @ZM20749*/
-*                     TVWAATTN>0|   /* ATTENTION?            @ZM20749*/
+*                     TVWAATTN>0?  /* ATTENTION?            @ZM20749*/
 *                     TVWAAIGN='1'B)/* ATTENTION IGNORED?    @ZM20749*/
 *                   THEN            /* YES                           */
-         TM    TVWAFLG1,TVWATIS                                    0146
-         BNZ   @RF00141                                            0146
+         TM    TVWAFLG1,TVWATIS        IS TOM SCHEDULED?           0146
+         BNZ   @RF00141                YES, ALREADY DONE           0146
          L     R4,TSBEXTNT
          L     R4,TSBXSRB-TSBX(,R4)
          LTR   R4,R4                   ANY SRB FOR TOM PRESENT?
-         BZ    @RF00141                NO
-         TM    XSAOPTNS-RBBASIC(R5),XSANOWT                   ZP60009-A
-         BNO   NOWAITOK                NOT A TGET NOWAIT      ZP60009-A
-         TM    TVWAFLG1,TVWAULK        OTHER STUFF GOING ON?  ZP60009-A
-         BO    NOWAITOK                YES, IGNORE NOWAIT     ZP60009-A
-         NI    TVWAFLG1,255-TVWATAS    NO, SCHEDULE A TOM SRB ZP60009-A
-         OI    TVWAFLG4,TVWAKBDL       TELL TPUT K/B LOCKED   ZP60009-A
-NOWAITOK DS    0H                      NOWAIT DIVERGENCE END  ZP60009-A
-         TM    TVWAFLG1,TVWATAS                                    0146
-         BNZ   @RF00141                                            0146
-         TM    TVWAFLG4,TVWAKBDL                                   0146
-         BO    @RT00146                                            0146
-         CLI   TVWAATTN,0                                          0146
-         BH    @RT00146                                            0146
-         TM    TVWAFLG3,TVWAAIGN                                   0146
-         BNO   @RF00141                                            0146
+         BZ    @RF00141                NO, CAN'T SCHEDULE IT
+         TM    XSAOPTNS-RBBASIC(R5),XSANOWT     TGET NOWAIT?  ZP60009-A
+         BNO   PATCH4OK                NO                     ZP60009-A
+         TM    TVWAFLG4,TVWADOOQ       OUTPUT DATA QUEUED?    ZP60009-A
+         BNO   PATCH4OK                NO                     ZP60009-A
+         NI    TVWAFLG1,255-TVWATAS    ALLOW TOM SCHED HERE   ZP60009-A
+         OI    TVWAFLG4,TVWAKBDL       SAY K/B IS LOCKED      ZP60009-A
+PATCH4OK DS    0H                                             ZP60009-A
+         TM    TVWAFLG1,TVWATAS        TOM AVAILABLE TO SCHEDULE?  0146
+         BNZ   @RF00141                NO                          0146
+         TM    TVWAFLG4,TVWAKBDL       IS THE KEYBOARD LOCKED?     0146
+         BO    @RT00146                YES, NEEDS UNLOCKING        0146
+         CLI   TVWAATTN,0              ATTENTION(S) WITH STAX?     0146
+         BH    @RT00146                YES                         0146
+         TM    TVWAFLG3,TVWAAIGN       ATTENTION IGNORED?          0146
+         BNO   @RF00141                NO, NO NEED FOR K/B UNLOCK  0146
 @RT00146 DS    0H                                                  0147
 *                   DO;             /* SET UP SCHEDULING OF TOM      */
          BAL   R14,SCHEDTOM                                   UZ57385-C
@@ -543,7 +280,7 @@ NOWAITOK DS    0H                      NOWAIT DIVERGENCE END  ZP60009-A
 *                       THEN        /* TOM IS RUNNING        @YM03259*/
          TM    TVWAFLG5,TVWATIR                                    0178
          BNO   @RF00178                                            0178
-*                       IF TSBXTMTP=IDS|TSBXTMTP=TNDS/*      @G58AK3A*/
+*                       IF TSBXTMTP=IDS?SBXTMTP=TNDS/*      @G58AK3A*/
 *                         THEN      /* 3270 OR NDS           @YM03601*/
          L     R4,TSBEXTNT                                         0179
          CLI   TSBXTMTP-TSBX(R4),1                                 0179
@@ -736,7 +473,7 @@ REDISPCH DS    0H                                                  0215
          L     R15,IKTGETXT                                        0226
          BALR  R14,R15                                             0226
 *             ELSE                                                 0227
-*               IF IPTRMTYP=IDS|IPTRMTYP=TNDS THEN/* CALL          0227
+*               IF IPTRMTYP=IDS?PTRMTYP=TNDS THEN/* CALL          0227
 *                                      EDIT@G58AK3A                  */
          B     @RC00225                                            0227
 @RF00225 CLI   IPTRMTYP(R13),1                                     0227
@@ -903,8 +640,9 @@ REDISPCH DS    0H                                                  0215
 *                     XSARC=0;      /* ALL DATA MOVED SUCCESSFULLY   */
          MVI   XSARC-RBBASIC(R5),X'00'                             0271
          TM    TSBFLG5,TSBNEDIT        IN NOEDIT MODE?        ZP60009-A
-         BNO   *+8                     NO                     ZP60009-A
+         BNO   PATCH2OK                NO                     ZP60009-A
          MVI   XSARC-RBBASIC(R5),X'18' YES, RC=00 -> RC=24    ZP60009-A
+PATCH2OK DS    0H                                             ZP60009-A
          NI    TVWAFLG8,255-TVWATGNO                          UZ57385-A
 *                     IF TCBTCT^=0 THEN/* TEST FOR SMF RUNNING       */
          L     R4,XSATCBA-1-RBBASIC(,R5)                           0272
@@ -979,8 +717,9 @@ REDISPCH DS    0H                                                  0215
 *                                      FIT IN CALLER'S BUFFER        */
          MVI   XSARC-RBBASIC(R5),X'0C'                             0288
          TM    TSBFLG5,TSBNEDIT        IN NOEDIT MODE?        ZP60009-A
-         BNO   *+8                     NO                     ZP60009-A
+         BNO   PATCH3OK                NO                     ZP60009-A
          MVI   XSARC-RBBASIC(R5),X'1C' YES, RC=12 -> RC=28    ZP60009-A
+PATCH3OK DS    0H                                             ZP60009-A
          NI    TVWAFLG8,255-TVWATGNO                          UZ57385-A
 *                 IF TCBTCT^=0 THEN /* TEST FOR SMF RUNNING          */
          L     R4,XSATCBA-1-RBBASIC(,R5)                           0289
@@ -1455,7 +1194,7 @@ CONTIN1  DS    0H                                                  0397
 @RF00398 LH    R4,IPBFSZ(,R13)                                     0407
          LTR   R4,R4                                               0407
          BNP   @RF00407                                            0407
-*         DO UNTIL REG3^=0|IPBFSZ=0;                               0408
+*         DO UNTIL REG3^=0?PBFSZ=0;                               0408
 @DL00408 DS    0H                                                  0409
 *           REG3=MIN(IPBFSZ,256);   /* 'TRT' UP TO 256 CHARS         */
          LH    R3,IPBFSZ(,R13)                                     0409
@@ -1902,7 +1641,7 @@ CONTIN3  DS    0H                                                  0488
 @RF00489 LH    R4,IPBFSZ(,R13)                                     0498
          LTR   R4,R4                                               0498
          BNP   @RF00498                                            0498
-*         DO UNTIL REG3^=0|IPBFSZ=0;                               0499
+*         DO UNTIL REG3^=0?PBFSZ=0;                               0499
 @DL00499 DS    0H                                                  0500
 *           REG3=MIN(IPBFSZ,256);   /* 'TRT' UP TO 256 CHARS         */
          LH    R3,IPBFSZ(,R13)                                     0500
@@ -2174,26 +1913,2764 @@ CONTINUE EQU   SUCCESS
 @RF00233 EQU   @RC00229
 @ENDDATA EQU   *
          END   IKTVTGET,(C'PLS1824',0702,82141)
-/*
-//*
-//STEP03  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKTVTGET('ZP60009')
-++MOD(IKT3270O) DISTLIB(AOST3).
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP04  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT)'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
+./ ADD NAME=IKTXLOG
+         TITLE 'EXTENDED LOGON ROUTINE'
+*
+*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
+*
+* $01=ZP60009,ETV0108,11MAR2024,GP@P6: SUPPORT GTTERM 'CODEPG'.    @01A
+*
+*   /*****************************************************************/
+*   /*                                                               */
+*   /*   FIRSTLY PERFORM THE IBM SUPPLIED LOGIC                      */
+*   /*                                                               */
+*   /*****************************************************************/
+IKTXLOG  CSECT
+         USING IKTXLOG,R15
+         B     @PROLOG
+         DC    AL1(24)                                             @01C
+         DC    CL24'IKTXLOG ZP60009 20240311'                      @01C
+         DROP  R15
+@PROLOG  STM   R14,R12,12(R13)
+         LR    R12,R15
+         USING IKTXLOG,R12
+*
+*   INBUF=TVWAVST                  INSERT ADDRESS OF LOGON BUFFER
+*                                      IN PARAMETER
+         USING PSA,0
+         L     R15,0(,R1)          POINT TO PARAMETER
+         L     R14,PSAAOLD
+         USING ASCB,R14
+         L     R3,ASCBTSB
+         DROP  R14
+         USING TSB,R3
+         L     R4,TSBEXTNT
+         USING TSBX,R4
+         L     R5,TSBXTVWA
+         USING TVWA,R5
+         L     R0,TVWAVST
+         ST    R0,0(,R15)          STORE ADDRESS INTO INBUF
+*   /*****************************************************************/
+*   /*                                                               */
+*   /*   SECONDLY PERFORM THE LOGIC ADDED BY USERMOD ZP60009         */
+*   /*                                                               */
+*   /*   THIS EXTRA LOGIC IS ONLY FOR 3270 TERMINALS AND HAS         */
+*   /*   BEEN ADDED TO FACILITATE ACCESS TO 3270 EXTENSIONS BY       */
+*   /*   TSO APPLICATIONS.  THE PURPOSE OF THIS EXTRA LOGIC IS       */
+*   /*   TO ASCERTAIN (A) THE PRIMARY AND ALTERNATE SCREEN SIZES     */
+*   /*   AND (B) IF THE TERMINAL IS QUERYABLE.                       */
+*   /*                                                               */
+*   /*   THE RESULTS ARE STORED IN THE TSB, AND MADE AVAILABLE       */
+*   /*   TO ISSUERS OF THE GTTERM MACRO.                             */
+*   /*                                                               */
+*   /*   FOR SNA 3270 SESSIONS THE SCREEN DIMENSIONS ARE INITIALLY   */
+*   /*   COPIED FROM THE BIND, AND IF THE QUERY BIT IN THE BIND      */
+*   /*   IS NOT SET, NO FURTHER ACTION IS TAKEN.                     */
+*   /*                                                               */
+*   /*   FOR NON-SNA SESSIONS, AND SNA SESSIONS WITH THE QUERY       */
+*   /*   BIT SET IN THE BIND, THE FOLLOWING PROCESSING OCCURS.       */
+*   /*                                                               */
+*   /*   THE FIRST TPUT OF THE TSO SESSION IS ISSUED HERE.           */
+*   /*   A FULLSCREEN TPUT IS USED TO CLEAR THE TERMINAL AID AND     */
+*   /*   ENSURE THAT NO INPUT DATA IS PENDING FROM THE TERMINAL      */
+*   /*   BUFFER.  FULLSCREEN MODE IS NOT TURNED ON TO AVOID THE      */
+*   /*   REQUIREMENT OF AN ADDITIONAL INPUT FROM THE TERMINAL        */
+*   /*   OPERATOR CAUSED BY VTAM PAGE PROTECTION ('***').  AS        */
+*   /*   A RESULT, NOEDIT INPUT MODE IS ACTIVATED BY DIRECTLY        */
+*   /*   SETTING THE FLAG, AND NOT BY AN STFSMODE MACRO.             */
+*   /*                                                               */
+*   /*   A NOEDIT TPUT IS THEN USED TO ISSUE THE QUERY TO THE        */
+*   /*   TERMINAL.  A TGET MACRO IS USED TO GET THE RESPONSE.        */
+*   /*   ABNORMAL TGET RETURN CODES TERMINATE THE QUERY PROCESS.     */
+*   /*   IF THE RETURN CODE IS NORMAL NON-QUERY RESPONSES ARE        */
+*   /*   DISCARDED AND THE TGET REISSUED.  THE IMPLICIT            @01C
+*   /*   PARTITION SUB-FIELD OF THE QUERY RESPONSE IS EXAMINED,      */
+*   /*   FROM WHICH THE PRIMARY AND ALTERNATE SCREEN SIZES ARE       */
+*   /*   DISCOVERED.                                                 */
+*   /*                                                               */
+*   /*   THE SYMBOL SET SUB-FIELD IS ALSO EXAMINED TO EXTRACT      @01A
+*   /*   THE TERMINALS'S CGCSGID WHICH IS STORED IN A PREVIOUSLY   @01A
+*   /*   UNUSED FIELD DEFINED HERE AS TSBXCSID WHICH IS THE        @01A
+*   /*   LAST 4 BYTES OF THE TSBX.  THIS VALUE CAN BE SUPPLIED     @01A
+*   /*   TO ISSUERS OF THE GTTERM MACRO THAT HAVE THE TERMID       @01A
+*   /*   PARAMETER SPECIFY A 39-BYTE AREA THAT CONTAINS THE        @01A
+*   /*   LITERAL 'CODEPG' IN ITS FIRST 6 BYTES.                    @01A
+*   /*                                                               */
+*   /*   UPON SUCCESSFULLY PROCESSING THE QUERY RESPONSE, THIS       */
+*   /*   ROUTINE:                                                    */
+*   /*   (1) REGISTERS THE PRIMARY AND ALTERNATE SCREEN SIZES        */
+*   /*       IN THE TERMINAL STATUS BLOCK.                           */
+*   /*   (2) SETS THE CURRENT SCREEN SIZE TO THE ALTERNATE SCREEN    */
+*   /*       SIZE IF THE ALTERNATE SCREEN SIZE HAS AT LEAST 24       */
+*   /*       LINES AND 80 COLUMNS.                                   */
+*   /*   (3) SETS THE FLAG TO INSTRUCT THE TSO/VTAM 3270 SCREEN      */
+*   /*       MANAGER TO RECHECK THE SCREEN DIMENSIONS IF THE         */
+*   /*       SCREEN SIZE WAS SET.                                    */
+*   /*   (4) SETS THE QUERY BIT ON.                                  */
+*   /*   (5) ISSUES THE STLINENO LINE=1,MODE=OFF MACRO WHICH WILL    */
+*   /*   (5.1) SET THE NEXT OUTPUT LINE FOR THE FIRST SCREEN LINE.   */
+*   /*   (5.2) SET THE FLAG TO INSTRUCT THE TSO/VTAM 3270 SCREEN     */
+*   /*         MANAGER TO FORMAT THE SCREEN FOR LINE MODE.           */
+*   /*   (5.3) KEEP FULLSCREEN MODE OFF AND TURN OFF NOEDIT INPUT    */
+*   /*         MODE.                                                 */
+*   /*   (6) SETS THE KEYBOARD LOCKED FLAG SO A SUBSEQUENT UNLOCK    */
+*   /*       REQUEST WILL NOT BE GENERATED.                          */
+*   /*   (7) RESETS THE UNLOCK REQUESTED FLAG SO LOGON MESSAGES      */
+*   /*       CAN BE OUTPUT WITHOUT BEING QUEUED BEHIND AN EXTRA      */
+*   /*       TERMINAL INPUT REQUEST.                                 */
+*   /*                                                               */
+*   /*****************************************************************/
+*
+*   DETERMINE IF USING A 3270 DISPLAY
+*
+         TM    TSBSTAT,TSBINUSE+TSBDSPLY+TSB3270
+         BNO   FASTEXIT            NOT EXPECTED TERMINAL TYPE
+         TM    TSBSTAT,TSBDISC     TERMINAL DISCONNECTED?
+         BO    FASTEXIT            YES, CANNOT TALK TO TERMINAL
+         CLI   TSBLNNO,0           WOULD GTSIZE SAY ZERO LINES?
+         BE    FASTEXIT            YES, TERMINAL IS NOT A SCREEN
+*
+*   DETERMINE IF SNA SESSION
+*
+         ICM   R0,15,TSBXBIND+8    SNA BIND PRESENT?
+         BZ    QUERYTRM            NO, ALWAYS QUERY IF NON-SNA
+*
+*   SET SCREEN DIMENSIONS FROM SNA BIND
+*
+         MVC   TSBPRMR(4),TSBXBIND+19
+*
+*   DETERMINE IF SNA TERMINAL IS QUERYABLE
+*
+         TM    TSBXBIND+14,X'80'   QUERY BIT SET?
+         BNO   FASTEXIT            NO, DO NOT QUERY TERMINAL
+*
+*   ACQUIRE WORKING STORAGE
+*
+QUERYTRM L     R0,@SIZDATD
+         GETMAIN R,LV=(0)
+         ST    R13,4(,R1)          CHAIN SAVE AREAS
+         ST    R1,8(,R13)
+         LR    R13,R1
+         USING @DATD,R13
+*
+*   ISSUE QUERY
+*
+         MVC   TPGPL,TPG           INITIALISE TPG PLIST
+         OI    TSBFLG5,TSBNEDIT    ENSURE INPUT NOT EDITED
+         LA    R1,RESETAID         RESET THE TERMINAL AID
+         LA    R0,L'RESETAID             BEFORE ISSUING THE
+         ICM   R1,8,=X'0B'               READ PARTITION
+         TPUT  (1),(0),R           TPUT FULLSCR,WAIT,HOLD
+         TCLEARQ INPUT             FLUSH ANY TYPE-AHEAD TEXT
+         TPG   MF=(E,TPGPL)        ISSUE QUERY TO TSO TERMINAL
+         LTR   R15,R15             WAS TPG ISSUED SUCCESSFULLY?
+         BNZ   QUERYX              NO, DO NOT EXPECT A RESPONSE
+*
+*   READ QUERY RESPONSE
+*
+QUERYGET LA    R1,REPLY            POINT TO TGET BUFFER FOR RESPONSE
+         LA    R0,REPLYLEN                  FROM READ PARTITION
+         ICM   R1,8,=X'81'         FLAGS FOR TGET ASIS,WAIT
+         TGET  (1),(0),R           TGET ASIS,WAIT
+         CH    R15,=H'8'           ATTENTION INTERRUPT?
+         BE    QUERYX              YES, ASSUME QUERY NOT FUNCTIONAL
+         CH    R15,=H'16'          TGET PARAMETER ERROR?
+         BE    QUERYX              YES, ASSUME QUERY NOT FUNCTIONAL
+         CH    R15,=H'20'          TERMINAL DISCONNECTED?
+         BE    QUERYX              YES, ASSUME QUERY NOT FUNCTIONAL
+         CLI   REPLY,X'88'         QUERY RESPONSE AID?
+         BE    QUERYGOT            YES
+         CLI   REPLY,X'F3'         PF3?
+         BE    QUERYX              YES, EXIT
+         CLI   REPLY,X'C3'         PF15?
+         BE    QUERYX              YES, EXIT
+*
+*   DISPLAY INFORMATION ABOUT (NON-QUERY) INPUT DATA
+*
+         MVC   TPGPL,REPLY         PRESERVE INPUT DATA HEADER
+         MVC   REPLY(RCMSGLEN),RCMSG
+         STC   R15,@DATD           SHOW RETURN CODE
+         UNPK  REPLY+RCMSGRC(3),@DATD(2)
+         TR    REPLY+RCMSGRC(2),HEX-240
+         MVI   REPLY+RCMSGRC+2,X'7D'
+         STH   R1,@DATD            SHOW TGET INPUT DATA LENGTH
+         UNPK  REPLY+RCMSGLN(5),@DATD(3)
+         TR    REPLY+RCMSGLN(4),HEX-240
+         MVI   REPLY+RCMSGLN+4,X'7D'
+         LA    R15,REPLY+RCMSGLEN  POINT TO MESSAGE AREA
+         LA    R14,TPGPL           POINT TO PRESERVED DATA
+         LA    R0,TPGL             GET PRESERVED DATA LENGTH
+         CR    R1,R0               SAVED DATA TRUNCATED?
+         BNH   UNPKLOOP            NO
+         LR    R1,R0               YES, REDUCE LENGTH
+UNPKLOOP UNPK  0(3,R15),0(2,R14)   UNPACK DATA
+         TR    0(2,R15),HEX-240    TRANSLATE DATA
+         LA    R15,2(,R15)         ADJUST MESSAGE POINTER
+         LA    R14,1(,R14)         ADJUST DATA POINTER
+         BCT   R1,UNPKLOOP         SHUFFLE THROUGH DATA BYTES
+         LA    R1,REPLY            POINT TO MESSAGE
+         MVI   0(R15),X'7D'
+         LA    R0,1(,R15)
+         SR    R0,R1               GET MESSAGE LENGTH
+         TPUT  (1),(0),R           DISPLAY DATA ABOUT INPUT DATA
+         LA    R1,LPMSG            DISPLAY TRAPDOOR EXIT PLAN
+         LA    R0,LPMSGLEN
+         TPUT  (1),(0),R
+         B     QUERYGET            SEE IF NEXT I/O IS THE GO
+*
+*   PARSE QUERY RESPONSE
+*
+QUERYGOT LA    R15,REPLY+1         POINT PAST AID
+         SLR   R0,R0               CLEAR FOR INSERT
+         BCT   R1,QUERYPRS         DECREMENT FOR AID
+         B     QUERYX              ONLY AID WAS RETURNED
+QUERYPRS CLI   2(R15),X'81'        QUERY REPLY ID?
+         BNE   QUERYX              NO, GIVE UP
+         CLI   3(R15),X'85'        QUERY REPLY SYMBOL SETS ID?     @01A
+         BE    GETCCSID            YES                             @01A
+         CLI   3(R15),X'A6'        QUERY IMPLICIT PARTITION ID?
+         BE    SETSIZES            YES
+QUERYRTN DC    0H'0'                                               @01A
+         ICM   R0,3,0(R15)         NO, GET SUB-FIELD LENGTH
+         BZ    QUERYX              AVOID INFINITE LOOP
+         ALR   R15,R0              POINT TO NEXT SUB-FIELD
+         SR    R1,R0               ADJUST REMAINING LENGTH
+         BP    QUERYPRS            CONTINUE PARSING OF REPLY
+         B     QUERYX              REQUIRED SUB-FIELD NOT FOUND
+*
+*   ASCERTAIN PRIMARY AND ALTERNATE SCREEN SIZE DIMENSIONS
+*
+SETSIZES CLI   6(R15),11           EXPECTED PARAMETER LENGTH?
+         BNE   QUERYRTN            NO, GIVE UP                     @01C
+         CLI   7(R15),1            IMPLICIT PARTITION SIZES?
+         BNE   QUERYRTN            NO, GIVE UP                     @01C
+         ICM   R0,4,10(R15)        GET WIDTH OF PRIMARY SIZE
+         ICM   R0,8,12(R15)        GET DEPTH OF PRIMARY SIZE
+         ICM   R0,1,14(R15)        GET WIDTH OF ALTERNATE SIZE
+         ICM   R0,2,16(R15)        GET DEPTH OF ALTERNATE SIZE
+         ST    R0,TSBPRMR          SET INTO TSB
+         CLI   TSBALTR,24          AT LEAST 24 ROWS?
+         BL    QUERYOK             NO, MAKE NO MORE CHANGES
+         CLI   TSBALTC,80          AT LEAST 80 COLUMNS?
+         BL    QUERYOK             NO, MAKE NO MORE CHANGES
+         STCM  R0,1,TSBLNSZ        SET NEW SCREEN COLUMN COUNT
+         STCM  R0,2,TSBLNNO        SET NEW SCREEN LINE COUNT
+         OI    TVWAFLG1,TVWAXSCD   EXAMINE SCREEN DIMENSIONS
+QUERYOK  OI    TSBFLG5,TSBQRY      SET THE QUERY BIT ON
+         SR    R0,R0               CLEAR FOR INSERT                @01A
+         B     QUERYRTN            GO CONTINUE QUERY DATA PARSE    @01A
+*                                                                  @01A
+*   EXTRACT CODED GRAPHIC CHARACTER SET IDENTIFIER                 @01A
+*                                                                  @01A
+GETCCSID TM    4(R15),X'02'        CGCSGID PRESENT?                @01A
+         BZ    QUERYRTN            NO, DONE WITH THIS SUB-FIELD    @01A
+         LA    R2,13+3(,R15)       POINT TO WHERE IT MIGHT BE      @01A
+         TM    4(R15),X'08'        MULTIPLE SLOTS SIZES SUPPORTED? @01A
+         BZ    *+8                 NO                              @01A
+         LA    R2,2(,R2)           YES, POINT PAST THIS SLOT SIZE  @01A
+         TM    4(R15),X'04'        SUBSECTION VALUES PRESENT?      @01A
+         BZ    *+8                 NO                              @01A
+         LA    R2,2(,R2)           YES, POINT PAST SUBSN VALUES    @01A
+         MVC   TSBXCSID,0(R2)      COPY CODED CGCSGID              @01A
+         B     QUERYRTN            GO CONTINUE QUERY DATA PARSE    @01A
+*
+*   CLEAR THE TERMINAL READY FOR LINE MODE USAGE
+*
+QUERYX   STLINENO LINE=1,MODE=OFF  CLEAR AND FORMAT THE SCREEN
+*                                        AND RESET NOEDIT MODE
+         OI    TVWAFLG4,TVWAKBDL   REMEMBER KEYBOARD IS LOCKED
+         NI    TVWAFLG1,255-TVWAULK  AND NO UNLOCK REQUEST YET
+*
+*   RELEASE WORKING STORAGE AND EXIT
+*
+         LR    R1,R13              POINT TO WORKING STORAGE
+         L     R0,@SIZDATD         GET WORKING STORAGE SIZE
+         L     R13,4(,R13)         POINT TO CALLER'S SAVE AREA
+         FREEMAIN R,LV=(0),A=(1)   FREE WORKING STORAGE
+FASTEXIT LM    R14,R12,12(R13)     RESTORE REGISTERS
+         BR    R14                 RETURN TO CALLER
+         EJECT
+@DATA    DS    0H
+         DS    0F
+@SIZDATD DC    AL1(0)
+         DC    AL3(@ENDDATD-@DATD)
+TPG      TPG   QUERY,L'QUERY,NOEDIT,WAIT,HOLD,MF=L
+TPGL     EQU   *-TPG
+*              ESCAPE+ERASE/WRITE+WCC+SBA(LAST)+SF(INLO)+SBA(HOME)+IC
+RESETAID DC    X'27F5C3115D7F1D4011404013'
+QUERY    DC    X'F3000501FF02'    WRITE STRUCTURED FIELD + QUERY
+LPMSG    DC    C'IF LOOPING USE PF3/15 TO END'
+LPMSGLEN EQU   *-LPMSG
+RCMSG    DC    C'IKTXLOG TGET RC=X'''
+RCMSGRC  EQU   *-RCMSG
+         DC    C'XX'',LEN=X'''
+RCMSGLN  EQU   *-RCMSG
+         DC    C'XXXX'',DATA=X'''
+RCMSGLEN EQU   *-RCMSG
+         LTORG
+         DS    0D
+HEX      DC    CL16'0123456789ABCDEF'
+@PATCH   DC    10D'0'
+@ENDDATA DS    0D                 END OF CSECT
+@DATD    DSECT
+         DS    18F
+TPGPL    DS    XL(TPGL)
+REPLY    DS    0F
+         ORG   @DATD+4096
+         DS    0D
+REPLYLEN EQU   *-REPLY
+@ENDDATD EQU   *
+         SPACE
+R0       EQU   0                   EQUATES FOR REGISTERS 0-15
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         SPACE
+         PRINT NOGEN
+         IHAPSA
+         IHAASCB
+         IKJTSB EXT=YES
+TSBXCSID EQU   TSBXBIND+L'TSBXBIND,4       DEFINE NEW TSBX FIELD   @01A
+         IKTTVWA
+         SPACE
+         END   IKTXLOG
+./ ADD NAME=IKT0009D
+IKT0009D TITLE 'IKT0009D:  TSO/VTAM SVC 94 ROUTER                      *
+                        '
+*
+*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
+*            TO SUPPORT ENTRY CODE 17 (GTTERM)
+*
+IKT0009D CSECT
+         BALR  R15,0                       ADDRESS SET
+         USING *,R15
+         B     @PROLOG
+         DC    AL1(16)
+         DC    CL16'IKT0009D  78.290'
+         DROP  R15
+@PROLOG  BALR  R12,0                       ADDRESS SET
+@PSTART  DS    0H
+         USING @PSTART,R12
+*   /*****************************************************************/
+*   /*                                                               */
+*   /* PARAMETER REGISTER 0 WILL HAVE THE ENTRY CODE FOR THE SVC IN  */
+*   /* THE HIGH ORDER POSITION OF REGISTER 0, IF THE ENTRY CODE IS   */
+*   /* INVALID A RETURN CODE OF 4 IS RETURNED IN REG 15              */
+*   /*                                                               */
+*   /*****************************************************************/
+         LR    R15,R0
+         SRL   R15,24
+         CH    R15,HW20
+         BH    INVALID
+         LTR   R15,R15
+         BNP   INVALID
+         LR    R5,R8                       COPY TSB POINTER
+         LA    R10,A000058
+         SLL   R15,2
+         L     R15,MODTAB-4(15)
+         DROP  R12
+         LR    R12,R15
+         BR    R15
+INVALID  LA    R15,4
+         BR    R14                         EXIT
+INVALID8 LA    R15,8
+         BR    R14                         EXIT
+INVALIDC LA    R15,12
+         BR    R14                         EXIT
+HW20     DC    H'20'
+         DC    F'8'
+A000058  EQU   *
+         DC    F'0'
+         DC    F'99999999'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'0'
+         DC    F'8288'
+MODTAB   EQU   *
+TCLEARQ  DC   V(IKT09401)           ENTRY CODE  1
+TSEND    DC   A(INVALID)            ENTRY CODE  2,INVALID
+MSGS     DC   A(INVALID)            ENTRY CODE  3,INVALID
+STBREAK  DC   V(IKT09404)           ENTRY CODE  4
+STCOM    DC   V(IKT09405)           ENTRY CODE  5
+STTIMEO  DC   A(INVALID8)           ENTRY CODE  6,INVALID
+STCC     DC   A(INVALIDC)           ENTRY CODE  7,INVALID
+STATTN   DC   A(INVALID8)           ENTRY CODE  8,INVALID
+STAUTOL  DC   V(IKT09409)           ENTRY CODE  9
+STSIZE   DC   V(IKT0940A)           ENTRY CODE 10
+GTSIZE   DC   V(IGG0940B)           ENTRY CODE 11
+STAUTOC  DC   V(IKT0940C)           ENTRY CODE 12
+SPAUTOP  DC   V(IKT0940D)           ENTRY CODE 13
+RTAUTOP  DC   V(IKT0940E)           ENTRY CODE 14
+STTRAN   DC   V(IKT0940F)           ENTRY CODE 15
+STCLEAR  DC   A(INVALID8)           ENTRY CODE 16,INVALID
+GTTERM   DC   V(IKT09411)           ENTRY CODE 17               ZP60009
+STFSMODE DC   V(IKT09412)           ENTRY CODE 18
+STLINENO DC   V(IKT09413)           ENTRY CODE 19
+STTMPMD  DC   V(IKT09414)           ENTRY CODE 20
+         SPACE
+         DS   0D                    END OF CSECT
+         EJECT
+R0       EQU   0                    EQUATES FOR REGISTERS 0-15
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         TITLE '******** IKT09411:    GTTERM  - TERMINAL CONTROL MACRO *
+                 *******'
+IKT09411 CSECT
+*   /*****************************************************************/
+*   /*                                                               */
+*   /* THIS CSECT WAS WRITTEN BY GREG PRICE IN JANUARY 2003 FOR THE  */
+*   /* ZP60009 USERMOD TO ADD THE GTTERM MACRO FUNCTION TO TSO/VTAM  */
+*   /* ETV0108 WHICH IS SHIPPED WITH MVS 3.8J.                       */
+*   /*                                                               */
+*   /* $01=ZP60009,ETV0108,11MAR2024,GP@P6: SET A NETWORK NAME AND @01A
+*   /*                                      SUPPORT 'CODEPG'.      @01A
+*   /*                                                               */
+*   /*****************************************************************/
+         USING IKT09411,R12
+         USING TSB,R5
+         USING PSA,0
+         B     @GTTERM
+         DC    AL1(25)                                             @01C
+         DC    CL25'IKT09411 ZP60009 2024.071'                     @01C
+*   /*****************************************************************/
+*   /*                                                               */
+*   /* PARAMETER REGISTER 1 POINTS TO A PARAMETER LIST OF FROM 1 TO  */
+*   /* 4 WORDS, EACH CONTAINING A POINTER TO AN OUTPUT AREA.  THE    */
+*   /* PARAMETER LIST AND EACH OUTPUT AREA IS ACCESSED IN THE USER   */
+*   /* KEY TO VERIFY USER AUTHORITY TO ACCESS THE AREAS.  THE LAST   */
+*   /* PARAMETER LIST WORD SHOULD HAVE THE HIGH-ORDER BIT ON.        */
+*   /*                                                               */
+*   /*****************************************************************/
+@GTTERM  LTR   R1,R1                       ANY PARAMETER PASSED?
+         BNZ   HAVEPARM                    YES
+MISSPARM LA    R15,12                      NO, MISSING PARAMETER
+         BR    R14                         RETURN TO ISSUER
+*   /*****************************************************************/
+*   /*                                                               */
+*   /* THE GTTERM MACRO IS ONLY VALID FOR DISPLAY STATION TERMINALS. */
+*   /*                                                               */
+*   /*****************************************************************/
+HAVEPARM TM    TSBSTAT,TSBDSPLY            TERMINAL A DISPLAY STATION?
+         BO    ISADSPLY                    YES
+         LA    R15,8                       NO, WRONG TERMINAL TYPE
+         BR    R14                         RETURN TO ISSUER
+*   /*****************************************************************/
+*   /*                                                               */
+*   /* THE PARAMETERS ARE OUTPUT AREAS FOR:                          */
+*   /* (1) PRMSZE - PRIMARY SCREEN SIZE DIMENSIONS - 2 BYTES         */
+*   /* (2) ALTSZE - ALTERNATE SCREEN SIZE DIMENSIONS - 2 BYTES       */
+*   /* (3) ATTRIB - TERMINAL ATTRIBUTES - 4 BYTES                    */
+*   /* (4) TERMID - TERMINAL LU NAME AND NETWORK NAME              @01C
+*   /*              - 8 PLUS 8 = 16 BYTES                          @01A
+*   /*                                                               */
+*   /*****************************************************************/
+ISADSPLY L     R8,PSATOLD
+         IC    R15,TCBPKF-TCB(,R8)
+         SPKA  0(R15)                      GET INTO USER KEY
+         SLR   R8,R8
+         SLR   R9,R9
+         SLR   R10,R10
+         SLR   R11,R11
+         L     R8,0(,R1)                   LOAD FIRST ADDRESS
+         LTR   R8,R8
+         BM    GOTPARMS                    ONLY ONE PARAMETER
+         L     R9,4(,R1)                   LOAD SECOND ADDRESS
+         LTR   R9,R9
+         BM    GOTPARMS                    ONLY TWO PARAMETERS
+         L     R10,8(,R1)                  LOAD THIRD ADDRESS
+         LTR   R10,R10
+         BM    GOTPARMS                    ONLY THREE PARAMETERS
+         L     R11,12(,R1)                 LOAD FOURTH ADDRESS
+GOTPARMS LA    R8,0(,R8)                   ENSURE ADDRESS FORMAT
+         LA    R9,0(,R9)
+         LA    R10,0(,R10)
+         LA    R11,0(,R11)
+         LTR   R8,R8                       FIRST ADDRESS PRESENT?
+         BNP   BACKTOK0                    NO, SO GO DO RC=12      @01C
+         XC    0(2,R8),0(R2)               YES, CLEAR 2 BYTES
+         LTR   R9,R9                       SECOND ADDRESS PRESENT?
+         BNP   *+10                        NO
+         XC    0(2,R9),0(R9)               YES, CLEAR 2 BYTES
+         LTR   R10,R10                     THIRD ADDRESS PRESENT?
+         BNP   *+10                        NO
+         XC    0(4,R10),0(R10)             YES, CLEAR 4 BYTES
+         LTR   R11,R11                     FOURTH ADDRESS PRESENT?
+         BNP   BACKTOK0                    NO                      @01C
+         CLC   CODEPG,0(R11)               CODE PAGE REQUESTED?    @01A
+         BNE   CLEAR16                     NO                      @01A
+         XC    0(39,R11),0(R11)            YES, CLEAR 39 BYTES     @01A
+         MVC   0(6,R11),CODEPG             LEAVE REQUEST INDICATOR @01A
+         B     BACKTOK0                                            @01A
+CLEAR16  XC    0(16,R11),0(R11)            CLEAR 16 BYTES          @01C
+BACKTOK0 DC    0H'0'                                               @01A
+         SPKA  0                           REVERT TO KEY ZERO
+*   /*****************************************************************/
+*   /*                                                               */
+*   /* TSO/VTAM REQUIRES THE FIRST PARAMETER (PRMSZE) BE PRESENT.    */
+*   /*                                                               */
+*   /*****************************************************************/
+         LTR   R8,R8                       IS PRMSZE SPECIFIED?
+         BNP   MISSPARM                    NO, RETURN CODE 12
+         L     R15,TSBEXTNT                YES, POINT TO TSBX
+         USING TSBX,R15
+         ICM   R2,3,TSBPRMR                COPY PRIMARY ROWS+COLS
+         BNZ   PRIMOKAY
+         ICM   R2,3,MOD1DIMS               USE MODEL-1 DIMENSIONS
+         CLC   TSBXTMBF,MOD1SIZE           REALLY A MODEL-1?
+         BE    PRIMOKAY                    YES
+         ICM   R2,3,MOD2DIMS               USE MODEL-2 DIMENSIONS
+PRIMOKAY STCM  R2,3,0(R8)                  SET PRIMARY ROWS+COLS
+         LTR   R9,R9                       IS ALTSZE SPECIFIED?
+         BNP   ALTDONE                     NO
+         ICM   R2,3,TSBALTR                COPY ALTERNATE ROWS+COLS
+         BNZ   ALTOKAY
+         ICM   R2,3,MOD1DIMS               USE MODEL-1 DIMENSIONS
+         CLC   TSBXTMBF,MOD1SIZE           REALLY A MODEL-1?
+         BE    ALTOKAY                     YES
+         ICM   R2,3,MOD2DIMS               USE MODEL-2 DIMENSIONS
+ALTOKAY  STCM  R2,3,0(R9)                  AET ALTERNATE ROWS+COLS
+ALTDONE  LTR   R10,R10                     IS ATTRIB SPECIFIED?
+         BNP   ATTRDONE                    NO
+         SLR   R8,R8
+         IC    R8,TSBTERM2
+         LA    R9,TSBASCI7
+         NR    R8,R9                       GET ASCII-7/ASCII-8 FLAGS
+         SLL   R8,8                        SHIFT TO CORRECT BYTE
+         TM    TSBFLG5,TSBVTAM             VTAM TERMINAL?
+         BNO   *+8                         NO, HOW DID WE GET HERE?
+         LA    R8,X'80'(,R8)               YES, SET FLAG BIT ON
+         TM    TSBFLG5,TSBQRY              QUERY BIT ON?
+         BNO   *+8                         NO
+         LA    R8,X'01'(,R8)               YES, SET FLAG BIT ON
+         TM    TSBFLG3,TSBNOBRK            BREAK NOT ALLOWED NOW?
+         BNO   *+8                         NO
+         LA    R8,X'40'(,R8)               YES, SET FLAG BIT ON
+         TM    TSBXFLG1,TSBXASCI           ASCII TERMINAL?
+         BNO   *+8                         NO
+         LA    R8,X'02'(,R8)               YES, SET FLAG BIT ON
+         L     R9,TSBXTVWA
+         USING TVWA,R9
+         TM    TVWAFLG3,TVWATRAN           TRANSLATE TABLE IN USE?
+         BNO   *+8                         NO
+         LA    R8,X'20'(,R8)               YES, SET FLAG BIT ON
+         TM    TVWAFLG3,TVWATRDF           DEFAULT TRANSLATION?
+         BNO   *+8                         NO
+         LA    R8,X'10'(,R8)               YES, SET FLAG BIT ON
+         TM    TVWAFLG5,TVWAFSM            IN FULLSCREEN MODE?
+         BNO   *+8                         NO
+         LA    R8,X'08'(,R8)               YES, SET FLAG BIT ON
+         STCM  R8,15,0(R10)                SET ATTRIBUTES WORD
+         DROP  R9                          TVWA
+ATTRDONE LTR   R11,R11                     IS TERMID SPECIFIED?
+         BNP   TERMDONE                    NO
+         CLC   CODEPG,0(R11)               CODE PAGE REQUESTED?    @01A
+         BNE   LOADTERM                    NO                      @01A
+         MVC   35(4,R11),TSBXCSID          YES, LOAD IT            @01A
+LOADTERM MVC   0(8,R11),TSBTRMID           LOAD TERMINAL NAME      @01C
+         DROP  R15                         TSBX
+         MVC   8(8,R11),MVSVTAM            LOAD A DEFAULT NETWORK  @01A
+         L     R15,CVTPTR(,0)              POINT TO THE CVT        @01A
+         L     R15,CVTSMCA-CVT(,R15)       POINT TO THE SMCA       @01A
+         LTR   R15,R15                     DOES IT EXIST?          @01A
+         BZ    TERMDONE                    NO, GO EXIT             @01A
+         USING SMCABASE,R15                                        @01A
+         CLI   SMCASID,C' '                ANY SID SET?            @01A
+         BNH   TERMDONE                    NO                      @01A
+         MVC   8(4,R11),SMCASID            YES, COPY IT            @01A
+         DROP  R15                         SMCABASE                @01A
+TERMDONE SLR   R15,R15                     ZERO RETURN CODE
+         BR    R14                         RETURN TO ISSUER
+         SPACE
+MOD1SIZE DC    AL2(12*40)
+MOD1DIMS DC    AL1(12,40)
+MOD2DIMS DC    AL1(24,80)
+CODEPG   DC    CL6'CODEPG'                                         @01A
+         DC    0D'0'                                               @01A
+MVSVTAM  DC    CL8'MVS VTAM'               DEFAULT NETWORK NAME    @01A
+@PATCH11 DC    6D'0'                       PATCH AREA
+         SPACE
+         PRINT NOGEN
+         IHAPSA
+         CVT   DSECT=YES                                           @01A
+         IEESMCA ,                                                 @01A
+         IKJTCB
+         IKJTSB EXT=YES
+TSBXCSID EQU   TSBXBIND+L'TSBXBIND,4       DEFINE NEW TSBX FIELD   @01A
+         IKTTVWA
+         SPACE
+         END   IKT0009D,(C'PLS1425',0701,78290)
+./ ADD NAME=IKT0940A
+         TITLE '******** IKT0940A:    STSIZE  - TERMINAL CONTROL MACRO *
+                 *******'
+*
+*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
+*
+IKT0940A CSECT ,                                                   0001
+@MAINENT BALR  R15,0                                               0001
+         USING *,R15                                               0001
+         B     @PROLOG                                             0001
+         DC    AL1(16)                                             0001
+         DC    C'IKT0940A  77.319'                                 0001
+         DROP  R15
+@PROLOG  BALR  R12,0                                               0001
+@PSTART  DS    0H                                                  0001
+         USING @PSTART,R12                                         0001
+         USING TSB,R5
+*        R2 = R0;                      /*COPY REGISTERS              */
+         LR    R2,R0                                               0027
+*        R3 = R1;                                                  0028
+         LR    R3,R1                                               0028
+*        SLL(R2,SHIFT8);               /*SHIFT OUT ENTRY CODE        */
+         SLR   R10,R10                                             0029
+         IC    R10,SHIFT8                                          0029
+         SLL   R2,0(R10)                                           0029
+*        SRL(R2,SHIFT16);              /*SHIFT OUT LINE PARM         */
+         SLR   R4,R4                                               0030
+         IC    R4,SHIFT16                                          0030
+         SRL   R2,0(R4)                                            0030
+*        SRL(R3,SHIFT8);               /*SHIFT OUT SIZE PARM         */
+*                                                                  0031
+         SRL   R3,0(R10)                                           0031
+*        IF R2 ^= 0       R3 ^= 0                                  0032
+*        THEN                                                      0032
+         SLR   R10,R10                                             0032
+         CLR   R2,R10                                              0032
+         BNE   @RT00032                                            0032
+         CLR   R3,R10                                              0032
+         BE    @RF00032                                            0032
+@RT00032 DS    0H                                                  0033
+*          R15 = CODE04;                                           0033
+         LA    R15,4                                               0033
+*        ELSE                                                      0034
+*                                                                  0034
+*          /**********************************************************/
+*          /*                                                        */
+*          /* THE SIZE PARAMETER IN R1 IS REQUIRED WHENEVER          */
+*          /* STSIZE IS INVOKED. IF R1 IS ZERO, THE RETURN CODE      */
+*          /* IS SET TO 8.                                           */
+*          /*                                                        */
+*          /**********************************************************/
+*                                                                  0034
+*          IF R1 = 0                                               0034
+*          THEN                                                    0034
+         B     @RC00032                                            0034
+@RF00032 LTR   R1,R1                                               0034
+         BNZ   @RF00034                                            0034
+*            R15 = CODE08;                                         0035
+         LA    R15,8                                               0035
+*          ELSE                                                    0036
+*                                                                  0036
+*            /********************************************************/
+*            /*                                                      */
+*            /* SHIFT OUT ENTRY CODE FROM R0 AND ACQUIRE THE         */
+*            /* KEY OF THE TSB CREATOR (TCAS).                       */
+*            /*                                                      */
+*            /********************************************************/
+*                                                                  0036
+*STSZPROC:   DO;                                                   0036
+         B     @RC00034                                            0036
+@RF00034 DS    0H                                                  0036
+STSZPROC DS    0H                                                  0037
+*              GEN(MODESET KEYADDR=TCASKEY,WORKREG=2)              0037
+*                  REFS(TCASKEY) SETS(R2);/*GET TCAS KEY             */
+         MODESET KEYADDR=TCASKEY,WORKREG=2
+*              SLL(R0,SHIFT8);         /*SHIFT OUT ENTRY CODE        */
+         SLR   R10,R10                                             0038
+         IC    R10,SHIFT8                                          0038
+         SLL   R0,0(R10)                                           0038
+*              SRL(R0,SHIFT8);                                     0039
+*                                                                  0039
+         SRL   R0,0(R10)                                           0039
+*              /******************************************************/
+*              /*                                                    */
+*              /* IF THE TERMINAL IN USE IS A DISPLAY AND THE LINE   */
+*               /* PARAMETER WAS NOT SPECIFIED, THE RETURN CODE IS   */
+*              /* SET TO 8.                                          */
+*              /*                                                    */
+*              /******************************************************/
+*                                                                  0040
+*              IF TSBDSPLY = '1'B                                  0040
+*              THEN                                                0040
+*                                                                  0040
+         TM    TSBSTAT,TSBDSPLY                                    0040
+         BNO   @RF00040                                            0040
+*                IF R0 = 0                                         0041
+*                THEN                                              0041
+         LTR   R0,R0                                               0041
+         BNZ   @RF00041                                            0041
+*                  R15 = CODE08;                                   0042
+         LA    R15,8                                               0042
+*                ELSE                                              0043
+*                                                                  0043
+*                  /**************************************************/
+*                  /*                                                */
+*                  /* THE DISPROC ROUTINE IS INVOKED TO UPDATE THE   */
+*                  /* TSB AND VERIFY THE SCREEN DIMENSIONS AS        */
+*                  /* STANDARD.                                      */
+*                  /*                                                */
+*                  /**************************************************/
+*                                                                  0043
+*                  GEN(BAL R11,DISPROC)                            0043
+*                      REFS(DISPROC) SETS(R11);                    0043
+*                                                                  0043
+         B     @RC00041                                            0043
+@RF00041 DS    0H                                                  0043
+         BAL   R11,DISPROC
+*              ELSE                                                0044
+*                                                                  0044
+*                /****************************************************/
+*                /*                                                  */
+*                /* IF THE TERMINAL IN USE IS NOT A DISPLAY AND THE  */
+*                /* LINE PARAMETER WAS SPECIFIED, THE RETURN CODE IS */
+*                /* SET TO 8.                                        */
+*                /*                                                  */
+*                /****************************************************/
+*                                                                  0044
+*                IF R0 ^= 0                                        0044
+*                THEN                                              0044
+         B     @RC00040                                            0044
+@RF00040 LTR   R0,R0                                               0044
+         BZ    @RF00044                                            0044
+*                  R15 = CODE08;                                   0045
+         LA    R15,8                                               0045
+*                ELSE                                              0046
+*                                                                  0046
+*                  /**************************************************/
+*                  /*                                                */
+*                  /* SET VALUE OF SIZE IN TSB AND SET GOOD          */
+*                  /* RETURN CODE                                    */
+*                  /*                                                */
+*                  /**************************************************/
+*                                                                  0046
+*                  DO;                                             0046
+         B     @RC00044                                            0046
+@RF00044 DS    0H                                                  0047
+*                    TSBLNSZ = R1;                                 0047
+         STC   R1,TSBLNSZ                                          0047
+*                    R15 = CODE00;                                 0048
+         SLR   R15,R15                                             0048
+*                  END;                                            0049
+*                                                                  0049
+*            GEN(MODESET EXTKEY=SUPR); /*RETURN TO SUPR KEY          */
+*                                                                  0050
+@RC00044 DS    0H                                                  0050
+@RC00040 DS    0H                                                  0050
+         MODESET EXTKEY=SUPR
+*            END STSZPROC;                                         0051
+*        RETURN;                                           /*@ZM20487*/
+@EL00001 DS    0H                                                  0052
+@EF00001 DS    0H                                                  0052
+@ER00001 BR    R14                                                 0052
+*        /************************************************************/
+*        /*                                                          */
+*        /* DISPROC IS INVOKED VIA A 'BAL' FROM THE MAINLINE. THIS   */
+*        /* ROUTINE SETS THE FIELDS IN THE TSB TO INDICATE THE       */
+*        /* SPECIFIED SCREEN DIMENSIONS, AND CHECKS THE DIMENSION    */
+*        /* AGAINST KNOWN STANDARDS. NON-STANDARD DIMENSIONS ARE     */
+*        /* ALLOWED, BUT CAUSE THE RETURN CODE TO BE SET TO 12.      */
+*        /*                                                          */
+*        /************************************************************/
+*                                                                  0053
+*DISPROC:                                                          0053
+*                                                                  0053
+*        TSBLNSZ = R1;                 /*MOVE IN LINE SIZE           */
+DISPROC  STC   R1,TSBLNSZ                                          0053
+*        TSBLNNO = R0;                 /*MOVE IN NUMBER OF LINES     */
+         STC   R0,TSBLNNO                                          0054
+*        TVWAXSCD = '1'B;              /*EXAM SCR DIMEN SW   @G58AK3A*/
+*                                                                  0055
+         L     R10,TSBEXTNT                                        0055
+         L     R10,TSBXTVWA-TSBX(,R10)                             0055
+         USING TVWA,R10
+         OI    TVWAFLG1,TVWAXSCD                                   0055
+*        /***********************************************************/
+*        /*                                                         */
+*        /* NEW LOGIC FOR USERMOD ZP60009 IS TO CHECK THE NEW       */
+*        /* DIMENSIONS AGAINST THE PRIMARY AND ALTERNATE SCREEN     */
+*        /* SIZES.  A MATCH TO EITHER IS CONSIDERED TO MEAN THAT    */
+*        /* A STANDARD SIZE WAS SPECIFIED NO MATTER WHAT THE        */
+*        /* VALUES HAPPEN TO BE.                                    */
+*        /*                                                         */
+*        /* NO MATCH CAUSES THE ORIGINAL LOGIC TO BE USED.          */
+*        /*                                                         */
+*        /***********************************************************/
+         CLM   R0,1,TSBPRMR                PRIMARY LINES?       ZP60009
+         BNE   ALTCHECK                    NO                   ZP60009
+         CLM   R1,1,TSBPRMC                PRIMARY COLUMNS?     ZP60009
+         BE    @RT00056                    YES, IT IS STANDARD  ZP60009
+ALTCHECK CLM   R0,1,TSBALTR                ALTERNATE LINES?     ZP60009
+         BNE   STDCHECK                    NO                   ZP60009
+         CLM   R1,1,TSBALTC                ALTERNATE COLUMNS?   ZP60009
+         BE    @RT00056                    YES, IT IS STANDARD  ZP60009
+STDCHECK EQU   *                                                ZP60009
+*        /***********************************************************/
+*        /*                                                         */
+*        /* STANDARD SIZES FOR 3270 DISPLAYS ARE 24X80 AND 12X40.   */
+*        /* IF A STANDARD SIZE WAS SPECIFIED, RETURN CODE IS 0. IF  */
+*        /* NON-STANDARD SIZE WAS SPECIFIED, RETURN CODE IS 12. NO  */
+*        /* OTHER DISPLAYS ARE SUPPORTED BY TSO/VTAM.               */
+*        /*                                                         */
+*        /***********************************************************/
+*                                                                  0056
+*        IF (TSBLNNO = LENGTH1 & TSBLNSZ = WIDTH1)                 0056
+*           (TSBLNNO = LENGTH2 & TSBLNSZ = WIDTH2)       /*        0056
+*                                      WAS STANDARD SIZE GIVEN      */
+*        THEN                                                      0056
+         CLI   TSBLNNO,24                                          0056
+         BNE   @GL00002                                            0056
+         CLI   TSBLNSZ,80                                          0056
+         BE    @RT00056                                            0056
+@GL00002 CLI   TSBLNNO,12                                          0056
+         BNE   @RF00056                                            0056
+         CLI   TSBLNSZ,40                                          0056
+         BNE   @RF00056                                            0056
+@RT00056 DS    0H                                                  0057
+*          R15 = CODE00;               /*YES - STANDARD SIZE        */
+         SLR   R15,R15                                             0057
+*        ELSE                                                      0058
+*          R15 = CODE12;               /*NO - NON STANDARD SIZE     */
+*                                                                  0058
+         B     @RC00056                                            0058
+@RF00056 LA    R15,12                                              0058
+*        /***********************************************************/
+*        /*                                                         */
+*        /* RETURN TO MAINLINE                                      */
+*        /*                                                         */
+*        /***********************************************************/
+*                                                                  0059
+*        GEN(BR R11)                                               0059
+*            REFS(R11);                                            0059
+@RC00056 DS    0H                                                  0059
+         BR    R11
+*        END IKT0940A                                              0060
+*/* THE FOLLOWING INCLUDE STATEMENTS WERE FOUND IN THIS PROGRAM.      *
+*/*%INCLUDE SYSLIB  (IKJTSB  )                                        *
+*/*%INCLUDE SYSLIB  (IKTTSBX )                                        *
+*/*%INCLUDE SYSLIB  (IKTTVWA )                                        *
+*;                                                                 0060
+         B     @EL00001                                            0060
+@DATA    DS    0H
+@DATD    DSECT
+         DS    0F
+@ZTEMPS  DS    C
+@ZTEMPND EQU   *
+@ZLEN    EQU   @ZTEMPND-@ZTEMPS
+IKT0940A CSECT
+         DS    0F
+@DATD    DSECT
+         DS    0D
+         ORG   *+1-(*-@DATD)/(*-@DATD) INSURE DSECT DATA
+@ENDDATD EQU   *
+IKT0940A CSECT
+         DS    0F
+@SIZDATD DC    AL1(0)
+         DC    AL3(@ENDDATD-@DATD)
+         DS    0D
+SHIFT8   DC    AL1(8)
+SHIFT16  DC    AL1(16)
+TCASKEY  DC    BL1'01100000'
+         DS    CL1
+PATCH    DC    15F'0'
+R0       EQU   00                      EQUATES FOR REGISTERS 0-15
+R1       EQU   01
+R2       EQU   02
+R3       EQU   03
+R4       EQU   04
+R5       EQU   05
+R6       EQU   06
+R7       EQU   07
+R8       EQU   08
+R9       EQU   09
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+@RC00041 EQU   @RC00040
+@RC00034 EQU   @EL00001
+@RC00032 EQU   @EL00001
+@ENDDATA EQU   *
+         PRINT NOGEN                                            ZP60009
+         IKJTSB EXT=YES                                         ZP60009
+         IKTTVWA                                                ZP60009
+         PRINT GEN                                              ZP60009
+         END   IKT0940A,(C'PLS2016',0701,77319)
+./ ADD NAME=IKT09412
+         TITLE '********  IKT09412:  STFSMODE - TERMINAL CONTROL MACRO *
+                 *******'
+*
+*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009        @Z9A
+*            TO HANDLE NOEDIT INPUT MODE AND RESHOW CODES UP TO 24 @Z9A
+*
+* $ZA=ZP60009,ETV0108,11MAR2024,GP@P6: ACT UPON NOEDIT=NO.         @ZAA
+*
+IKT09412 CSECT ,                                                   0001
+@MAINENT BALR  R15,0                                               0001
+         USING *,R15                                               0001
+         B     @PROLOG                                             0001
+         DC    AL1(33)                                             @ZAC
+         DC    C'IKT09412  82.015'                                 0001
+         DC    C' ZP60009 2024.071'                                @ZAA
+         DROP  R15
+@PROLOG  BALR  R12,0                                               0001
+@PSTART  DS    0H                                                  0001
+         USING @PSTART,R12                                         0001
+         USING TSB,R5
+*        /************************************************************/
+*        /* SAVE REGISTER 1.  CLEAR RESHOW KEY VALUE IN      @G58AK3B*/
+*        /* RIGHT-MOST BYTE OF REGISTER 1.                   @G58AK3B*/
+*        /************************************************************/
+*        R6 = R1;                      /*SAVE REGISTER 1     @G58AK3B*/
+         LR    R6,R1                                               0024
+*        SRL(R1,SHIFT8);               /*SHIFT OUT RSHWKEY   @G58AK3B*/
+         SLR   R7,R7                                               0025
+         IC    R7,SHIFT8                                           0025
+         SRL   R1,0(R7)                                            0025
+*        SLL(R1,SHIFT8);               /*REALIGN REGISTER 1  @G58AK3B*/
+*                                                                  0026
+         SLL   R1,0(R7)                                            0026
+*        /************************************************************/
+*        /*                                                          */
+*        /* SHIFT OUT PARAMETER BIT. IF REMAINING BITS ARE NOT ZERO  */
+*        /* RETURN CODE 4 IS ISSUED.                                 */
+*        /*                                                          */
+*        /************************************************************/
+*        SLDL(R0,SHIFT3);              /*SHIFT OUT PARM BITS  OZ11997*/
+         SLR   R7,R7                                               0027
+         IC    R7,SHIFT3                                           0027
+         SLDL  R0,0(R7)                                            0027
+*        IF R1 ^= 0 THEN               /*INVALID - RETURN CODE 4     */
+         LTR   R1,R1                                               0028
+         BZ    @RF00028                                            0028
+*          R15 = CODE04;                                           0029
+         LA    R15,4                                               0029
+*        ELSE                                                      0030
+*          /**********************************************************/
+*          /*                                                        */
+*          /* IF THE TERMINAL IS NOT A DISPLAY TERMINAL, THE INVALID */
+*          /* TERMINAL IS NOTED WITH RETURN CODE 8                   */
+*          /*                                                        */
+*          /**********************************************************/
+*          IF TSBDSPLY = '0'B THEN                                 0030
+         B     @RC00028                                            0030
+@RF00028 TM    TSBSTAT,TSBDSPLY                                    0030
+         BNZ   @RF00030                                            0030
+*            R15 = CODE08;                                         0031
+         LA    R15,8                                               0031
+*          ELSE                                                    0032
+*            /********************************************************/
+*            /*                                                      */
+*            /* THE PARAMETER BIT IS RESTORED. FULLSCREEN MODE WILL  */
+*            /* BE SET OFF OR ON BASED ON THE PARAMETER BIT.         */
+*            /*                                                      */
+*            /********************************************************/
+*            DO;                                                   0032
+         B     @RC00030                                            0032
+@RF00030 DS    0H                                                  0033
+*              SRDL(R0,SHIFT3);        /*RESTORE PARM BITS    OZ11997*/
+         SLR   R7,R7                                               0033
+         IC    R7,SHIFT3                                           0033
+         SRDL  R0,0(R7)                                            0033
+*              R15 = CODE00;           /*SET GOOD RETURN CODE        */
+         SLR   R15,R15                                             0034
+*              IF R1 >=0 THEN          /*LOOK FOR MODE OFF    OZ11997*/
+         LTR   R1,R1                                               0035
+         BM    @RF00035                                            0035
+*                /****************************************************/
+*                /*                                                  */
+*                /* TURN OFF FULL SCREEN MODE INDICATORS             */
+*                /*                                                  */
+*                /****************************************************/
+*                DO;                                               0036
+         L     R7,TSBEXTNT                                         0037
+         L     R7,TSBXTVWA-TSBX(,R7)                               0037
+         USING TVWA,R7
+         TM    TVWAFLG5,TVWAFSM            ALREADY IN LINE MODE?
+         BNO   LINECTOK                    YES
+         TM    TVWAFLG5,TVWAWO+TVWAFSW     LINE MODE MSG ON SHOW?
+         BNZ   LINECTOK                    YES
+*                  TVWALNCT = 1;       /*SET LINE COUNTER    @YM03603*/
+         MVI   TVWALNCT,1                                          0037
+*                  TVWAFSM = '0'B;     /*FULL SCREEN MODE BIT        */
+*                  TVWAWO  = '0'B;     /*FULL SCREEN WRITTEN OVER    */
+*                  TVWAFSW = '0'B;     /*FULL SCREEN WAITING         */
+LINECTOK NI    TVWAFLG5,255-TVWAFSM-TVWAWO-TVWAFSW                 0040
+         OI    TVWAFLG4,TVWAFMSC           FORMAT THE SCREEN
+         NI    TSBFLG5,255-TSBNEDIT        RESET NOEDIT INPUT    @Z9A
+*                  /**************************************************/
+*                  /* WHENEVER STFSMODE IS OFF, THE RESHOW   @G58AK3B*/
+*                  /* KEY DEFAULTS TO THE PA2 KEY.           @G58AK3B*/
+*                  /**************************************************/
+*                  TVWARSHW = PA2;     /*RESET RESHOW KEY    @G58AK3B*/
+         MVI   TVWARSHW,X'6E'                                      0041
+*                END;                                              0042
+*              ELSE                                                0043
+*                /****************************************************/
+*                /*                                                  */
+*                /* TURN ON FULL SCREEN MODE INDICATOR               */
+*                /*                                                  */
+*                /****************************************************/
+*                DO;                                               0043
+         B     @RC00035                                            0043
+@RF00035 DS    0H                                                  0044
+*                  TVWAFSM = '1'B;     /*FULL SCREEN MODE BIT        */
+         L     R7,TSBEXTNT                                         0044
+         L     R7,TSBXTVWA-TSBX(,R7)                               0044
+         OI    TVWAFLG5,TVWAFSM                                    0044
+*                  SLL(R1,SHIFT1);     /*SHIFT OUT MODE BIT   OZ11997*/
+         SLR   R4,R4                                               0045
+         IC    R4,SHIFT1                                           0045
+         SLL   R1,0(R4)                                            0045
+*                  IF R1 < 0 THEN      /*LOOK FOR INITIAL CALLOZ11997*/
+         LTR   R1,R1                                               0046
+         BNM   @RF00046                                       @Z9A 0046
+*                    TVWANFSP = '1'B;  /*SET NO FULL SCR PAGE OZ11997*/
+         OI    TVWAFLG5,TVWANFSP                                   0047
+*                  ELSE                                            0048
+*                    TVWANFSP = '0'B;  /*ALLOW FULL SCR PAGE  OZ11997*/
+         B     NOEDCHEK                                       @Z9A 0048
+@RF00046 L     R7,TSBEXTNT                                         0048
+         L     R7,TSBXTVWA-TSBX(,R7)                               0048
+         NI    TVWAFLG5,255-TVWANFSP                               0048
+*                  SLL(R1,SHIFT1);     /*SHIFT OUT INITIAL BIT       */
+NOEDCHEK SLR   R4,R4                                             @Z9A
+         IC    R4,SHIFT1                                         @Z9A
+         SLL   R1,0(R4)                                          @Z9A
+*                  IF R1 < 0 THEN      /*LOOK FOR NOEDIT CALL    @Z9A*/
+*                    TSBNEDIT = '1'B;  /*SET NOEDIT INPUT MODE   @Z9A*/
+*               ELSE TSBNEDIT = '0'B;  /*RESET NOEDIT INPUT MODE @ZAA*/
+         LTR   R1,R1                                             @Z9A
+         BM    NOEDITIS                                          @ZAC
+         NI    TSBFLG5,255-TSBNEDIT        RESET NOEDIT INPUT    @ZAA
+         B     NOEDDONE                                          @ZAA
+NOEDITIS OI    TSBFLG5,TSBNEDIT              SET NOEDIT INPUT    @Z9A
+NOEDDONE DC    0H'0'                                             @ZAA
+*                  /**************************************************/
+*                  /* THE RSHWKEY VALUE IS FOUND IN THE      @G58AK3B*/
+*                  /* RIGHT-MOST BYTE OF THE REGISTER.       @G58AK3B*/
+*                  /**************************************************/
+*                  SLL(R6,SHIFT24); /*ISOLATE RESHOW         @G58AK3B*/
+@RC00046 SLR   R7,R7                                               0049
+         IC    R7,SHIFT24                                          0049
+         SLL   R6,0(R7)                                            0049
+*                  SRL(R6,SHIFT24);    /*IN RIGHT-MOST BYTE  @G58AK3B*/
+         SRL   R6,0(R7)                                            0050
+*                  /**************************************************/
+*                  /* WHEN STFSMODE IS ON AND A RSHWKEY HAS  @G58AK3B*/
+*                  /* BEEN SPECIFIED, THE SPECIFIED RSHWKEY  @G58AK3B*/
+*                  /* BECOMES THE RESHOW KEY.                @G58AK3B*/
+*                  /* WHEN STFSMODE IS ON BUT RSHWKEY HAS    @G58AK3B*/
+*                  /* NOT BEEN SPECIFIED, THE RESHOW KEY IS  @G58AK3B*/
+*                  /* NOT CHANGED.                           @G58AK3B*/
+*                  /**************************************************/
+*                  IF RSHWKEY ^= ZERO  /*RSHWKEY SPECIFIED?  @ZM20757*/
+*                  THEN                /*RSHWKEY SPECIFIED   @G58AK3B*/
+         LTR   R6,R6                                               0051
+         BZ    @RF00051                                            0051
+         LA    R7,25                                          @Z9A
+         CR    R6,R7
+         BNL   @RF00051
+*                    TVWARSHW = KEYS(RSHWKEY); /* SET RSHWKEY@G58AK3B*/
+         L     R7,TSBEXTNT                                         0052
+         L     R7,TSBXTVWA-TSBX(,R7)                               0052
+         LA    R4,KEYS-1(R6)                                       0052
+         MVC   TVWARSHW,0(R4)                                      0052
+*                  ELSE;               /*RSHWKEY NOT SPECIFD @G58AK3B*/
+@RF00051 DS    0H                                                  0054
+*                END;                                              0054
+*            END;                      /*END OF MODE PROCESSING      */
+*        END IKT09412                                              0056
+*/* THE FOLLOWING INCLUDE STATEMENTS WERE FOUND IN THIS PROGRAM.      *
+*/*%INCLUDE SYSLIB  (IKJTSB  )                                        *
+*/*%INCLUDE SYSLIB  (IKTTSBX )                                        *
+*/*%INCLUDE SYSLIB  (IKTTVWA )                                        *
+*;                                                                 0056
+@EL00001 DS    0H                                                  0056
+@EF00001 DS    0H                                                  0056
+@ER00001 BR    R14                                                 0056
+@DATA    DS    0H
+@DATD    DSECT
+         DS    0F
+IKT09412 CSECT
+         DS    0F
+@DATD    DSECT
+         DS    0D
+         ORG   *+1-(*-@DATD)/(*-@DATD) INSURE DSECT DATA
+@ENDDATD EQU   *
+IKT09412 CSECT
+         DS    0F
+@SIZDATD DC    AL1(0)
+         DC    AL3(@ENDDATD-@DATD)
+         DS    0D
+SHIFT1   DC    AL1(1)
+SHIFT3   DC    AL1(3)
+SHIFT8   DC    AL1(8)
+SHIFT24  DC    AL1(24)
+PATCH    DS    CL50
+KEYS     DC    CL1'1'
+         DC    CL1'2'
+         DC    CL1'3'
+         DC    CL1'4'
+         DC    CL1'5'
+         DC    CL1'6'
+         DC    CL1'7'
+         DC    CL1'8'
+         DC    CL1'9'
+         DC    CL1':'
+         DC    CL1'#'
+         DC    CL1'@'
+         DC    CL1'A'                                              @Z9A
+         DC    CL1'B'                                              @Z9A
+         DC    CL1'C'                                              @Z9A
+         DC    CL1'D'                                              @Z9A
+         DC    CL1'E'                                              @Z9A
+         DC    CL1'F'                                              @Z9A
+         DC    CL1'G'                                              @Z9A
+         DC    CL1'H'                                              @Z9A
+         DC    CL1'I'                                              @Z9A
+         DC    XL1'4A'                 CENT SIGN                   @Z9A
+         DC    CL1'.'                                              @Z9A
+         DC    CL1'<'                                              @Z9A
+R0       EQU   00                      EQUATES FOR REGISTERS 0-15
+R1       EQU   01
+R2       EQU   02
+R3       EQU   03
+R4       EQU   04
+R5       EQU   05
+R6       EQU   06
+R7       EQU   07
+R8       EQU   08
+R9       EQU   09
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+@RC00030 EQU   @EL00001
+@RC00028 EQU   @EL00001
+@RC00035 EQU   @EL00001
+@ENDDATA EQU   *
+         PRINT NOGEN                                               @Z9A
+         IKJTSB EXT=YES                                            @Z9A
+         IKTTVWA ,                                                 @Z9A
+         PRINT GEN                                                 @Z9A
+         END   IKT09412,(C'PLS2204',0702,82015)
+./ ADD NAME=IKT09413
+         TITLE '******** IKT09413:  STLINENO - TERMINAL CONTROL MACRO  *
+                ********'
+*
+*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
+*
+IKT09413 CSECT ,                                                   0001
+@MAINENT BALR  R15,0                                               0001
+         USING *,R15                                               0001
+         B     @PROLOG                                             0001
+         DC    AL1(16)                                             0001
+         DC    C'IKT09413  83.318'                                 0001
+         DROP  R15
+@PROLOG  BALR  R12,0                                               0001
+@PSTART  DS    0H                                                  0001
+         USING @PSTART,R12                                         0001
+         USING TSB,R5
+*        /************************************************************/
+*        /*                                                          */
+*        /* SHIFT OUT PARAMETERS FROM INPUT REG.  IF ANY REMAINING   */
+*        /* BITS ARE NOT ZERO, ERROR RETURN CODE 4 IS ISSUED.        */
+*        /*                                                          */
+*        /************************************************************/
+*        R2 = R1;                      /*MOVE PARM REG TO WORK REG   */
+         LR    R2,R1                                               0025
+*        SLL(R2,SHIFT1);               /*SHIFT OUT MODE BIT          */
+         SLR   R10,R10                                             0026
+         IC    R10,SHIFT1                                          0026
+         SLL   R2,0(R10)                                           0026
+*        SRL(R2,SHIFT9);               /*SHIFT OUT LINE NUMBER       */
+         SLR   R10,R10                                             0027
+         IC    R10,SHIFT9                                          0027
+         SRL   R2,0(R10)                                           0027
+*        IF R2 ^= 0 THEN                                           0028
+         LTR   R2,R2                                               0028
+         BZ    @RF00028                                            0028
+*          R15 = CODE04;                                           0029
+         LA    R15,4                                               0029
+*        ELSE                                                      0030
+*          /**********************************************************/
+*          /*                                                        */
+*          /* IF THE TERMINAL IN USE IS NOT A DISPLAY TERMINAL, THE  */
+*          /* RETURN CODE IS SET TO 8.                               */
+*          /*                                                        */
+*          /**********************************************************/
+*          IF TSBDSPLY = '0'B THEN                                 0030
+         B     @RC00028                                            0030
+@RF00028 TM    TSBSTAT,TSBDSPLY                                    0030
+         BNZ   @RF00030                                            0030
+*            R15 = CODE08;                                         0031
+         LA    R15,8                                               0031
+*          ELSE                                                    0032
+*            /********************************************************/
+*            /*                                                      */
+*            /* THE LINE NUMBER SPECIFIED MUST BE GREATER THAN ZERO  */
+*            /* AND NO LARGER THAN THE MAX ALLOWED NUMBER OF LINES   */
+*            /* FOR THE TERMINAL IN USE. INVALID LINE NUMBER IS NOTED*/
+*            /* WITH RETURN CODE 12.                                 */
+*            /*                                                      */
+*            /********************************************************/
+*            DO;                                                   0032
+         B     @RC00030                                            0032
+@RF00030 DS    0H                                                  0033
+*              R2 = R1;                /*SAVE PARM WITH MODE BIT   0033
+*                                        INTACT.                     */
+         LR    R2,R1                                               0033
+*              SLL(R1,SHIFT1);         /*SHIFT OUT MODE BIT          */
+         SLR   R10,R10                                             0034
+         IC    R10,SHIFT1                                          0034
+         SLL   R1,0(R10)                                           0034
+*              SRL(R1,SHIFT1);         /*RESTORE LINE NUMBER         */
+         SRL   R1,0(R10)                                           0035
+*              IF R1 = 0 THEN          /*ZERO LINE NUMBER IS INVALID */
+         LTR   R1,R1                                               0036
+         BNZ   @RF00036                                            0036
+*                R15 = CODE12;                                     0037
+         LA    R15,12                                              0037
+*              ELSE                                                0038
+*                /****************************************************/
+*                /*                                                  */
+*                /* IF LINE NUMBER IS NOT TOO LARGE, LINNOPROC IS    */
+*                /* CALLED TO SET THE LINE NUMBER AND PERFORM MODE   */
+*                /* PROCESSING.                                      */
+*                /*                                                  */
+*                /****************************************************/
+*                                                                  0038
+*                IF TSBXTMBF = LGSCREEN THEN /*LOOK FOR LARGE SCREEN */
+         B     @RC00036                                            0038
+@RF00036 L     R10,TSBEXTNT                                        0038
+         CLC   TSBXTMBF-TSBX(2,R10),HW1920                         0038
+*ZP60009 BNE   @RF00038                                            0038
+         BL    @RF00038                    ASSUME <MOD2 => MOD1 ZP60009
+*                  IF R1 > MAXLNLG THEN /*TOO LARGE, SET R15 */
+         LA    R11,24                      DEFAULT LINE COUNT   ZP60009
+         CLI   TSBPRMR,0                   FIELD POPULATED?     ZP60009
+         BE    ROWSOKAY                    NO, TREAT AS MODEL-2 ZP60009
+         IC    R11,TSBPRMR                 YES, USE IT INSTEAD  ZP60009
+         L     R3,TSBXTVWA-TSBX(,R10)      POINT TO TVWA        ZP60009
+         USING TVWA,R3                                          ZP60009
+         TM    TVWAFLG6,X'01'              IS TVWAALTS ON?      ZP60009
+         BNO   ROWSOKAY                    NO, USE PRIMARY SIZE ZP60009
+         IC    R11,TSBALTR                 USE ALTERNATE SIZE   ZP60009
+ROWSOKAY CLR   R1,R11                      LARGER THAN MAXIMUM? ZP60009
+*ZP60009 CL    R1,FW24                                             0039
+         BNH   @RF00039                                            0039
+*                    R15 = CODE12;                                 0040
+         LA    R15,12                                              0040
+*                  ELSE                     /*OK, CALL LNNOPROC      */
+*                    GEN (BAL R11,LNNOPROC)                        0041
+*                       SETS (R11) REFS (LNNOPROC);                0041
+         B     @RC00039                                            0041
+@RF00039 DS    0H                                                  0041
+         BAL   R11,LNNOPROC
+*                ELSE                       /*MUST BE SMALL SCREEN   */
+*                  IF R1 > MAXLNSM THEN /*TOO LARGE, SET R15 */
+         B     @RC00038                                            0042
+@RF00038 LA    R10,12                                              0042
+         CLR   R1,R10                                              0042
+         BNH   @RF00042                                            0042
+*                    R15 = CODE12;                                 0043
+         LR    R15,R10                                             0043
+*                  ELSE                     /*OK, CALL LNNOPROC      */
+*                    GEN (BAL R11,LNNOPROC)                        0044
+*                       SETS (R11) REFS (LNNOPROC);                0044
+         B     @RC00042                                            0044
+@RF00042 DS    0H                                                  0044
+         BAL   R11,LNNOPROC
+*            END;                                                  0045
+*        RETURN;                                           /*@ZM20487*/
+@EL00001 DS    0H                                                  0046
+@EF00001 DS    0H                                                  0046
+@ER00001 BR    R14                                                 0046
+*        /************************************************************/
+*        /*                                                          */
+*        /* LNNOPROC: STORES LINE NUMBER IN TVWALNCT.  SETS FULL     */
+*        /*           SCREEN MODE ON OR OFF BASED ON THE MODE BIT    */
+*        /*           IN PARAMETER REGISTER 1.                       */
+*        /*                                                          */
+*        /************************************************************/
+*LNNOPROC:                                                         0047
+*        R3 = TSBXTVWA;                /*GET ADDRES OF TVWA          */
+LNNOPROC L     R10,TSBEXTNT                                        0047
+         L     R3,TSBXTVWA-TSBX(,R10)                              0047
+*        RFY TVWA BASED(R3);           /*REBASE TVWA                 */
+*        GEN (STCM R1,1,TVWALNCT(R3))                              0049
+*           REFS (R1) SETS (TVWALNCT); /*STORE LINE NUM IN TVWA      */
+         STCM  R1,1,TVWALNCT
+*        IF R2 < 0 THEN                /*HIGH ORDER BIT ON?          */
+         LTR   R2,R2                                               0050
+         BNM   @RF00050                                            0050
+*          DO;                                                     0051
+*            TVWAFSM = '1'B;           /*YES-SET FULL SCREEN MODE ON */
+         OI    TVWAFLG5,TVWAFSM                                    0052
+*          END;                                                    0053
+*        ELSE                          /*HIGH ORDER BIT OFF          */
+*          DO;                         /*TURN OFF FULL SCR MODE INDIC*/
+         B     @RC00050                                            0054
+@RF00050 DS    0H                                                  0055
+*            TVWAFSM = '0'B;           /*FULL SCREEN MODE            */
+*            TVWAWO  = '0'B;           /*FULL SCREEN WRITTEN OVER    */
+*            TVWAFSW = '0'B;           /*FULL SCREEN TPUT WAITING    */
+         NI    TVWAFLG5,255-TVWAFSM-TVWAWO-TVWAFSW                 0057
+         NI    TSBFLG5,255-TSBNEDIT    /*EDIT INPUT          ZP60009 */
+*          IF TVWALNCT = 1 THEN        /*IS LINENO 1?        AZ74745 */
+         CLI   TVWALNCT,1
+         BNE   @RC00050
+*            TVWAFMSC = '1'B;          /*YES-FORMAT SCREEN   AZ74745 */
+         OI    TVWAFLG4,TVWAFMSC                                   0057
+*          END;                                                    0058
+*        /************************************************************/
+*        /*                                                          */
+*        /* RETURN TO MAINLINE WITH RETURN CODE 0                    */
+*        /*                                                          */
+*        /************************************************************/
+*        R15 = CODE00;                 /*SET GOOD RETURN CODE        */
+@RC00050 SLR   R15,R15                                             0059
+*        GEN (BR R11)                                              0060
+*           REFS (R11);                /*RETURN TO MAINLINE          */
+         BR    R11
+*        END   IKT09413                                            0061
+*/* THE FOLLOWING INCLUDE STATEMENTS WERE FOUND IN THIS PROGRAM.      *
+*/*%INCLUDE SYSLIB  (IKJTSB  )                                        *
+*/*%INCLUDE SYSLIB  (IKTTSBX )                                        *
+*/*%INCLUDE SYSLIB  (IKTTVWA )                                        *
+*;                                                                 0061
+         B     @EL00001                                            0061
+@DATA    DS    0H
+HW1920   DC    H'1920'
+*ZP60009 @DATD    DSECT
+*ZP60009          DS    0F
+*ZP60009 IKT09413 CSECT
+*ZP60009          DS    0F
+*ZP60009 FW24     DC    F'24'
+@DATD    DSECT
+         DS    0D
+         ORG   *+1-(*-@DATD)/(*-@DATD) INSURE DSECT DATA
+@ENDDATD EQU   *
+IKT09413 CSECT
+         DS    0F
+@SIZDATD DC    AL1(0)
+         DC    AL3(@ENDDATD-@DATD)
+         DS    0D
+SHIFT1   DC    AL1(1)
+SHIFT9   DC    AL1(9)
+         DS    CL2
+PATCH    DC    15F'0'
+R0       EQU   00                      EQUATES FOR REGISTERS 0-15
+R1       EQU   01
+R2       EQU   02
+R3       EQU   03
+R4       EQU   04
+R5       EQU   05
+R6       EQU   06
+R7       EQU   07
+R8       EQU   08
+R9       EQU   09
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+@RC00030 EQU   @EL00001
+@RC00028 EQU   @EL00001
+@RC00042 EQU   @EL00001
+@RC00038 EQU   @EL00001
+@RC00036 EQU   @EL00001
+@RC00039 EQU   @RC00038
+@ENDDATA EQU   *
+         PRINT NOGEN                                            ZP60009
+         IKJTSB EXT=YES                                         ZP60009
+         IKTTVWA                                                ZP60009
+         PRINT GEN                                              ZP60009
+         END   IKT09413,(C'PLS1932',0702,83318)
+./ ADD NAME=IKT3270I
+         TITLE '*** IKT3270I: INPUT DATA HANDLING ROUTINE ***          *
+                        '
+*
+*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009        @Z9A
+*
+* $ZA=ZP60009,ETV0108,21JUN2020,GP@P6: USE SCREEN WIDTH TO         @ZAA
+*                               DETERMINE THE NUMBER OF SCREEN     @ZAA
+*                               LINES OCCUPIED BY INPUT DATA.      @ZAA
+* $ZB=ZP60009,ETV0108,11MAR2024,GP@P6: DO NOT TRANSLATE FIELD MARK @ZBA
+*                               CODES WITHIN INBOUND SBA ORDERS.   @ZBA
+*
+IKT3270I CSECT
+         USING IKT3270I,R15
+         B     @PROLOG
+         DC    AL1(33)                                             @Z9C
+         DC    CL16'IKT3270I  84.045'
+         DC    C' ZP60009 2024.071'                                @ZBC
+         DROP  R15                         IKT3270I
+@PROLOG  STM   R14,R12,12(R13)             SAVE REGS
+         BALR  R5,0                        ADDRESS SET
+         USING *,R5
+         USING PSA,0
+*  TVWAPTR=TSBXTVWA;                   /* ADDRESSING TO TVWA @G58AK3B*/
+         L     R12,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R12)
+         L     R7,TSBEXTNT-TSB(,R12)
+         L     R9,TSBXTVWA-TSBX(,R7)
+         USING TVWA,R9
+*  TIMGETMN = TVWATIMW;                /* TIM WORK AREA ADDR @G58AK3B*/
+         L     R6,TVWATIMW                 TIM WORK AREA ADDRESS
+*                                                                  @Z9A
+         CLI   TSBPRMR-TSB(R12),0          FIELD POPULATED?        @Z9A
+         BE    ROWSOKAY                    NO, PHYSLNNO OKAY       @Z9A
+         MVC   2319(1,R6),TSBPRMR-TSB(R12) YES, USE REAL DEPTH     @Z9A
+         TM    TVWAFLG6,X'01'              CHECK TVWAALTS          @Z9A
+         BNO   ROWSOKAY                    USE PRIMARY DEPTH       @Z9A
+         MVC   2319(1,R6),TSBALTR-TSB(R12) USE ALTERNATE DEPTH     @Z9A
+*                                                                  @Z9A
+ROWSOKAY EQU   *                           PHYSLNNO NOW SET        @Z9A
+*  TIMLNNO = MAX(2,MIN(TSBLNNO,PHYSLNNO));                 /*@ZA13627*/
+         SLR   R8,R8
+         IC    R8,TSBLNNO-TSB(,R12)
+         L     R7,2316(,R6)                PHYSLNNO
+         CR    R8,R7
+         BNH   A000042
+         LR    R8,R7
+A000042  LA    R7,2
+         CR    R8,R7
+         BNL   A00004E
+         LR    R8,R7
+A00004E  ST    R8,2312(,R6)                TIMLNNO
+*  IF TSBIFLSH='1'B THEN               /* THROW DATA AWAY?           */
+         TM    TSBFLG1-TSB(R12),TSBIFLSH
+         BNO   A000096
+*   DO;                                                            0115
+*        RPLMIDLE = '1'B THEN                              /*@G58AK3B*/
+*     IF RPLRLEN > BUFLEN ?           /* CHECK ANOTHER RECEIVE NEC. */
+*        RPLFIRST = '1'B ?                                /*@G58AK3B*/
+         LA    R12,2348
+         LR    R8,R6
+         ALR   R8,R12
+         CLC   48(4,R8),FW1500
+         BH    A000076
+         ALR   R12,R6
+         TM    18(R12),X'C0'
+         BZ    A00007E
+*       REC2FLG = '1'B;                /* INDICATE NEXT RECEIVE NECES*/
+A000076  OI    448(R6),X'02'
+*     ELSE                             /* OTHERWISE SCHEDULE TOM     */
+*       DO;                                                        0118
+         B     A000096
+*         REC2FLG='0'B;                /* NO 2ND RECEIVE NECESSARY   */
+*         TIMSCHTM='1'B;               /* SCHEDULE TOM               */
+A00007E  OI    448(R6),X'40'
+         NI    448(R6),X'FD'
+*         TVWANOFB = '0'B;
+         NI    TVWAFLG4,255-TVWANOFB
+*         TVWABKMG='0'B;               /* NO FLASHBACK       @ZM20856*/
+         NI    TVWAFLG2,255-TVWABKMG
+*         TVWATQL1=0;                  /* CLEAR FLASHBACK 1  @ZM20856*/
+         MVI   TVWATQL1,0
+*         TVWATQL2=0;                  /* CLEAR FLASHBACK 2  @ZM20856*/
+         MVI   TVWATQL2,0
+*       END;                                                       0125
+*   END;                               /* END DO FOR TSBIFLSH='1'    */
+*      DO;                                                         0127
+*      IF TVWAPGN='0'B THEN            /* NO PAGING?                 */
+A000096  TM    TVWAFLG2,TVWAPGN
+         BNZ   A0002D4
+*      DO;                             /* NO PAGING                  */
+*        IF RPLCSI='1'B   THEN         /* CHECK FOR ASCII INPUT      */
+         LA    R12,2348
+         ALR   R12,R6
+         TM    16(R12),X'08'
+         BNO   A0000B0
+*         CALL ASCITRAN;               /* CALL ROUTINE TO CONVERT INP*/
+         BAL   R14,ASCITRAN                PERFORM
+*        ELSE;                         /* DO NOTHING IF ALREADY EBCD */
+*        /************************************************************/
+*        /*  THE FOLLOWING CODE CHECKS THE AVAILIBILITY OF A USER    */
+*        /*  EXIT. IF THE ADDRESS OF IKTIDSX2 IS NOT ZERO, THEN THE  */
+*        /*  USER IS GIVEN CONTROL WITH REG0 CONTAINING THE ADDRESS  */
+*        /*  OF THE DATA TO BE SCANNED AND REG1 CONTAINING THE       */
+*        /*  LENGTH OF THAT DATA.                                    */
+*        /************************************************************/
+*                                                                  0133
+*        IF ADDR(IKTIDSX2)^=0 THEN                                 0133
+A0000B0  L     R12,IKTIDSX2
+         LTR   R12,R12
+         BZ    A0000F2
+*         DO;                                                      0134
+*           RFY (REG0,REG1,REG2) RSTD; /* RESTRICT WORK REGS         */
+*           REG0=RPLAREA;              /* DATA TO BE TRANSLATED      */
+         LA    R12,2348
+         LR    R8,R6
+         ALR   R8,R12
+         L     R0,32(,R8)
+*           IF RPLRLEN > BUFLEN THEN                               0137
+         LA    R8,1500
+         ALR   R12,R6
+         C     R8,48(,R12)
+         BNL   A0000DA
+*             REG1=BUFLEN;             /* SCAN MAX BUFFER LENGTH     */
+         LR    R1,R8
+*           ELSE                       /* OTHERWISE SCAN ALL DATA    */
+         B     A0000E4
+*             REG1=RPLRLEN;                                        0139
+A0000DA  LA    R12,2348
+         ALR   R12,R6
+         L     R1,48(,R12)
+*           REG2 = REG13;              /* SAVE REGISTER 13   @G58AK3B*/
+A0000E4  LR    R2,R13
+*           REG13 = ADDR(SAREA2);      /* SEC SAVE AREA      @G58AK3B*/
+         LA    R13,2216(,R6)
+*           CALL IKTIDSX2;             /* CALL USER TRANSLATION RTN  */
+         L     R15,IKTIDSX2
+         BALR  R14,R15                     STD LINKAGE
+         LR    R13,R2
+*           RFY (REG0,REG1,REG2) UNRSTD;                           0144
+*         END;                                                     0145
+*        ELSE;                                                     0146
+*/********************************************************************/
+*/*    AT THIS POINT THE INPUT DATA HAS BEEN TRANSLATED IF NECESSARY */
+*/*    NOW THE DATA WILL BE SCANNED FOR INPUT LINE DELIMITERS.       */
+*/*            THE DATA WILL BE BROKEN INTO LINE SEGMENTS AND        */
+*/*    PLACED ON THE INPUT QUEUE.                                    */
+*/********************************************************************/
+*
+*        /************************************************************/
+*        /* THIS CODE WILL HELP TOM IN THE PLACEMENT OF THE NEXT     */
+*        /* ATTRIBUTE BYTE WHEN VTIOC IS DOING THE SCREEN MANAGEMENT */
+*        /************************************************************/
+*                                                                  0147
+*        IF REC2FLG='0'B & TVWASCAN='1'B THEN                      0147
+A0000F2  TM    448(R6),X'02'
+         BNZ   A000106
+         TM    TVWAFLG5,TVWASCAN
+         BNO   A000106
+*          TVWADARC='1'B;              /* SET DATA FOUND BIT @ZA19883*/
+         OI    TVWAFLG4,TVWADARC
+*        ELSE;                         /* 2ND RECEIVE OR TVWASCAN OFF*/
+*                                                                  0149
+*        SCANPTR=RPLAREA;              /* INITIALIZE SCAN AREA       */
+A000106  LA    R12,2348
+         LR    R8,R6
+         ALR   R8,R12
+         L     R4,32(,R8)
+*        DONECNT=0;                    /* NUMBER BYTES DATA PROCESSED*/
+         SLR   R8,R8
+         ST    R8,2136(,R6)
+*        DATALINE=0;                   /* INPUT LINE LENGTH          */
+         ST    R8,2144(,R6)
+*        IF RPLRLEN > BUFLEN THEN      /* IS ALL DATA IN BUFFER?     */
+         LA    R8,1500
+         ALR   R12,R6
+         C     R8,48(,R12)
+         BNL   A000132
+*          COUNT=BUFLEN;               /* NO, SCAN BUFFER LENGTH     */
+         ST    R8,2120(,R6)
+*        ELSE                                                      0155
+         B     A000140
+*          COUNT=RPLRLEN;              /* YES, SCAN DATA LENGTH      */
+A000132  LA    R12,2348
+         ALR   R12,R6
+         L     R12,48(,R12)
+         ST    R12,2120(,R6)
+*        IF REC2FLG = '0'B THEN                            /*@ZA13627*/
+A000140  TM    448(R6),X'02'
+         BNZ   A00014C
+*          CALL HEADPROC;              /* CALL HEADER PROCESS RTN    */
+         BAL   R14,HEADPROC                PERFORM
+*        ELSE;                                             /*@ZA13627*/
+         EJECT
+*      /**************************************************************/
+*      /*  NOW THE DATA WILL BE SCANNED FOR THE LINE LENGTH          */
+*      /*  WHEN THE LINE LENGTH IS FOUND, THE DATA WILL BE PUT ON    */
+*      /*  THE INPUT QUEUE PRECEDED BY THE HEADER INFORMATION.       */
+*      /*  SINCE DATA CAN ONLY BE SCANNED IN 256 BYTE LENGTHS,       */
+*      /*  THIS VALUE WILL BE USED WHEN THE REMAINING DATA EXCEEDS   */
+*      /*  THE 256 BYTE MAXIMUM.                                     */
+*      /**************************************************************/
+*                                                                  0159
+*        DO UNTIL DONECNT=COUNT  ?TIMADDER='1'B;                  0159
+*          RFY SCANAREA BASED(SCANPTR); /* BUFFER AREA POINTER       */
+*          RFY (REG1,REG2) RSTD;       /* USED BY TRT BUILT-IN FUNC  */
+*          DELIMFLG='0'B;              /* INIT DELIM FLAG            */
+A00014C  NI    448(R6),X'7F'
+*          REG1=0;                     /* INITIALIZE REG 1 FOR SCAN  */
+         SLR   R1,R1
+*          BUFPTR=SCANPTR;             /* RESET BUFFER POINTER       */
+         ST    R4,2140(,R6)
+*          DO UNTIL DELIMFLG='1'B ?DONECNT=COUNT;                 0165
+*           /* SET UP VALUE FOR TRT LENGTH. LIMIT TO 256             */
+*           IF COUNT-DONECNT > 256 THEN                            0166
+A000156  LA    R12,256
+         L     R8,2120(,R6)
+         SL    R8,2136(,R6)
+         CR    R8,R12
+         BNH   A000170
+*            VALUE=256;                /* SCAN VALUE AT MAX          */
+         ST    R12,2148(,R6)
+*           ELSE                                                   0168
+         B     A00017C
+*            VALUE=COUNT-DONECNT;      /* ELSE SCAN ALL DATA         */
+A000170  L     R12,2120(,R6)
+         SL    R12,2136(,R6)
+         ST    R12,2148(,R6)
+*           IF VALUE >0 THEN           /* CHECK FOR NULL LINE        */
+A00017C  L     R12,2148(,R6)
+         LTR   R12,R12
+         BNP   NODELIM
+*           DO;                                                    0170
+*                                                                  @ZBA
+         L     R12,PSAAOLD                POINT TO THE ASCB        @ZBA
+         L     R12,ASCBTSB-ASCB(,R12)     POINT TO THE TSB         @ZBA
+         TM    TSBFLG5-TSB(R12),TSBNEDIT  IN NOEDIT MODE?          @ZBA
+         BO    NODELIM                    YES, FIELD MARK OKAY     @ZBA
+*                                                                  @ZBA
+*           TRT(SCANAREA(1:VALUE),NEWLINE(1)); /* TRANSLATE DATA     */
+         L     R3,2148(,R6)
+*                                                                  @ZBA
+         LR    R0,R4                      SAVE DATA ADDRESS        @ZBA
+DOTRTSBA DC    0H'0'                                               @ZBA
+*                                                                  @ZBA
+         BCTR  R3,0
+         EX    R3,TRTNWLN                 TRTNWLN NOW USES SBATAB
+*                                                                  @ZBA
+         LR    R4,R0                      RESTORE DATA ADDRESS     @ZBA
+*                                                                  @ZBA
+*           BC(8,NODELIM);             /* NO DELIMITER FOUND         */
+         BC    8,NODELIM
+*                                                                  @ZBA
+         CLI   0(R1),X'11'                FOUND AN SBA?            @ZBA
+         BNE   NOTANSBA                   NO, A FIELD MARK         @ZBA
+         C     R3,FW3                     AN SBA AT END OF DATA?   @ZBA
+         BL    NODELIM                    YES, WAVE IT THROUGH     @ZBA
+         LA    R1,3(,R1)                  POINT PAST SBA ORDER     @ZBA
+         L     R3,2148(,R6)               RELOAD LENGTH "VALUE"    @ZBA
+         AR    R3,R4                      SUBTRACT THE LENGTH      @ZBA
+         SR    R3,R1                       ALREADY DONE            @ZBA
+         LR    R4,R1                      SET NEW TRT START        @ZBA
+         B     DOTRTSBA                   RESUME FIELD MARK SCAN   @ZBA
+*                                                                  @ZBA
+*                                                                  @ZBA
+NOTANSBA DC    0H'0'                                               @ZBA
+*                                                                  @ZBA
+*           DELIMFLG='1'B;             /* TURN ON DELIMITER FOUND FLG*/
+         OI    448(R6),X'80'
+*           DATALINE=(REG1-SCANPTR)+DATALINE; /* LINE SIZE           */
+         LR    R12,R1
+         SLR   R12,R4
+         LR    R8,R12
+         AL    R8,2144(,R6)
+         ST    R8,2144(,R6)
+*           VALUE=REG1-SCANPTR;        /* RESET VALUE                */
+         ST    R12,2148(,R6)
+*           BC(15,DELIM);              /* SKIP TO DELIMITER FND CDE  */
+         B     DELIM
+*           END;                       /* END VALUE GREATER THAN 0   */
+*           ELSE;                                                  0178
+*        NODELIM:                                                  0179
+*           DATALINE=VALUE+DATALINE;   /* SIZE OF DATA LINE          */
+NODELIM  L     R12,2148(,R6)
+         AL    R12,2144(,R6)
+         ST    R12,2144(,R6)
+*        DELIM:                                                    0180
+*           SCANPTR=SCANPTR+VALUE;     /* UPDATE SCAN POINTER        */
+DELIM    L     R12,2148(,R6)
+         ALR   R4,R12
+*           DONECNT=DONECNT+VALUE;     /* UPDATE DATA PROCESSED COUNT*/
+         AL    R12,2136(,R6)
+         ST    R12,2136(,R6)
+*          END;                        /* END OF DO UNTIL LOOP       */
+         TM    448(R6),X'80'
+         BO    A0001DA
+         CLC   2136(4,R6),2120(R6)
+         BNE   A000156
+*          RFY (REG1,REG2) UNRSTD;     /* FREE REGISTERS 1 AND 2     */
+*                                                                  0183
+*         /***********************************************************/
+*         /* THIS MARKS THE END OF THE DO UNTIL TO SCAN FOR DELIMITER*/
+*         /* EITHER A DELIMITER WAS FOUND OR ALL THE DATA IN THE     */
+*         /* BUFFER WAS PROCESSED.                                   */
+*         /***********************************************************/
+*                                                                  0184
+*         IF DELIMFLG='1'B THEN        /* CHECK FOR A DELIMITER FOUND*/
+A0001DA  TM    448(R6),X'80'
+         BNO   A00023C
+*          DO;                                                     0185
+*            IF IPPRTL='1'B THEN       /* CHECK FOR PRIOR PARTIAL    */
+         TM    437(R6),X'20'
+         BNO   A0001EE
+*              PRIORPRT='1'B;          /* SET FLAG ACCORDINGLY       */
+         OI    448(R6),X'01'
+*            ELSE;                                                 0188
+*            IPAVBL='1'B;              /* MARK LINE AVAILABLE        */
+*            IPPRTL='0'B;              /* LINE NOT PARTIAL LINE      */
+A0001EE  OI    437(R6),X'80'
+         NI    437(R6),X'DF'
+*            IF PRIORPRT='0'B THEN     /* INCLUDE HEADER FOR NEW LINE*/
+         TM    448(R6),X'01'
+         BNZ   A000214
+*            DO;                                                   0192
+*            IPBFSZ=HEADCNT+DATALINE;  /* SET LINE LENGTH FOR Q MGR  */
+         LH    R12,450(,R6)
+         LR    R8,R12
+         AL    R8,2144(,R6)
+         STH   R8,434(,R6)
+*            IPCCC=HEADCNT;            /* SIZE OF  HEADER            */
+*            END;                                                  0195
+         STC   R12,438(,R6)
+         B     A000220
+*            ELSE                      /* NO HEADER FOR PREVIOUS PRTL*/
+*            DO;                                                   0196
+*            IPBFSZ=DATALINE;          /* ONLY DATA ON QUEUE         */
+A000214  L     R12,2144(,R6)
+         STH   R12,434(,R6)
+*            IPCCC=0;                  /* HEADER VALUE SET TO ZERO   */
+         MVI   438(R6),X'00'
+*            END;                                                  0199
+*            IF SCANAREA(1)=FIELDMRK THEN                          0200
+A000220  CLI   0(R4),X'1E'
+         BNE   A000234
+*              DONECNT=DONECNT+1;      /* UPDATE DATA SCANNED NUMBER */
+         LA    R12,1
+         AL    R12,2136(,R6)
+         ST    R12,2136(,R6)
+*            ELSE;                                                 0202
+*            CALL ADDELRTN;            /* ADD ELEMENT TO INPUT QUEUE */
+A000234  BAL   R14,ADDEL                   PERFORM
+         B     A0002B0
+*          END;                        /* END DELIMITER FOUND PROC   */
+*         ELSE                                                     0205
+*             DO;                      /* NO DELIMITER FOUND         */
+*               IF IPPRTL='1'B THEN    /* CHECK FOR PREVIOUS PRTL    */
+A00023C  TM    437(R6),X'20'
+         BNO   A000248
+*                 PRIORPRT='1'B;       /* SET INDICATOR IF YES       */
+         OI    448(R6),X'01'
+*               ELSE;                                              0208
+*               IF PRIORPRT='0'B THEN  /* CHECK FOR PARTIAL LINE     */
+A000248  TM    448(R6),X'01'
+         BNZ   A000266
+*               DO;                                                0210
+*               IPBFSZ=HEADCNT+DATALINE; /* SIZE OF ELEMENT NEEDED   */
+         LH    R12,450(,R6)
+         LR    R8,R12
+         AL    R8,2144(,R6)
+         STH   R8,434(,R6)
+*               IPCCC=HEADCNT;         /* PART OF LINE THAT IS HEADER*/
+         STC   R12,438(,R6)
+*               END;                   /* END FULL LINE PROCESS      */
+         B     A000272
+*               ELSE                   /* PARTIAL LINE PROCESS       */
+*                 DO;                                              0214
+*                   IPCCC=0;           /* DO NOT PROCESS HEADER      */
+A000266  MVI   438(R6),X'00'
+*                   IPBFSZ=DATALINE;   /* SIZE OF Q MANAGER BUFFER   */
+         L     R12,2144(,R6)
+         STH   R12,434(,R6)
+*                 END;                                             0217
+*               IF RPLRLEN > COUNT ?    /* MORE DATA?       @ZM20581*/
+*                  RPLFIRST='1'B ?      /* BOC?             @ZM20581*/
+*                  RPLMIDLE='1'B THEN    /* MOC?             @ZM20581*/
+A000272  LA    R12,2348
+         LR    R8,R6
+         ALR   R8,R12
+         L     R8,48(,R8)
+         C     R8,2120(,R6)
+         BH    A000290
+         ALR   R12,R6
+         TM    18(R12),X'C0'
+         BZ    A0002A4
+*                 DO;                                              0219
+*                   DONECNT=COUNT;     /* PROCESSING FINISHED        */
+A000290  L     R12,2120(,R6)
+         ST    R12,2136(,R6)
+*                   IPAVBL='0'B;       /* LINE NOT AVAILABLE FOR TGET*/
+*                   IPPRTL='1'B;       /* INPUT NOT A FULL LINE      */
+         OI    437(R6),X'20'
+         NI    437(R6),X'7F'
+*                 END;                                             0223
+         B     A0002AC
+*               ELSE                                               0224
+*                 DO;                                              0224
+*                   IPAVBL='1'B;       /* LINE IS AVAILABLE          */
+*                   IPPRTL='0'B;       /* INPUT IS A FULL LINE       */
+A0002A4  OI    437(R6),X'80'
+         NI    437(R6),X'DF'
+*                 END;                                             0227
+*               CALL ADDELRTN;                                     0228
+A0002AC  BAL   R14,ADDEL                   PERFORM
+*             END;                                                 0229
+*         SCANPTR=RPLAREA+DONECNT;     /* UPDATE BUFFER POINTER      */
+A0002B0  LA    R12,2348
+         ALR   R12,R6
+         L     R4,32(,R12)
+         AL    R4,2136(,R6)
+*      END;                            /* END OF SCAN DATA LOOP      */
+         CLC   2136(4,R6),2120(R6)
+         BE    A0002D0
+*      END;                            /* END NON-PAGING             */
+         TM    448(R6),X'10'
+         BNO   A00014C
+*                                                                  0232
+*    ELSE                              /* BEGIN SUPPORT              */
+A0002D0  B     A00033C
+*      DO;                             /* FORCE RESHOW CODE          */
+*        TIMADDER='1'B;                /* TREAT AS ADD-ERROR @ZM21079*/
+A0002D4  OI    448(R6),X'10'
+*        COUNT=MIN(RPLRLEN,BUFLEN);    /* LENGTH OF DATA RECEIVED  0235
+*                                                            @ZM21467*/
+         LA    R12,2348
+         ALR   R12,R6
+         L     R12,48(,R12)
+         LA    R8,1500
+         CR    R12,R8
+         BNH   A0002EE
+         LR    R12,R8
+A0002EE  ST    R12,2120(,R6)
+*        IPREQ=ADDEL;                  /* REQUEST ADD ELEMENT        */
+         MVI   432(R6),X'01'
+*        IPCCC=0;                      /* NO HEADER INFORMATION      */
+         MVI   438(R6),X'00'
+*        IPPRTL='0'B;                  /* FULL LINE INPUT            */
+*        IPAVBL='1'B;                  /* AVAILABLE FOR TGET         */
+         OI    437(R6),X'80'
+         NI    437(R6),X'DF'
+*        IPBFSZ=1;                     /* LENGTH OF INPUT            */
+         MVC   434(2,R6),HW1
+*        RFY (REG1,REG2) RSTD;         /* RESTRICT WORK REGS @G58AK3B*/
+*        REG2 = REG13;                 /* SAVE REG 13        @G58AK3B*/
+         LR    R2,R13
+*        QMPTR = ADDR(IPARMS);         /* POINTER TO IPARMS  @G58AK3B*/
+         LA    R12,428(,R6)
+         ST    R12,404(,R6)
+*        REG1 = ADDR(QMPTR);           /* IPARMS PTR ADDRESS @G58AK3B*/
+         LA    R1,404(,R6)
+*        REG13 = ADDR(SAREA2);         /* SEC SAVE AREA      @G58AK3B*/
+         LA    R13,2216(,R6)
+*        CALL IKTQMIN;                 /* CALL INPUT QUEUE MANAGER   */
+         L     R12,CVTPTR                  CVT ADDRESS
+         L     R12,CVTTCASP-CVT(,R12)
+         L     R15,TCASIQM-TCAST(,R12)
+         BALR  R14,R15                     STD LINKAGE
+*        REG13 = REG2;                 /* RESTORE REG 13     @G58AK3B*/
+         LR    R13,R2
+*        RFY (REG1,REG2) UNRSTD;       /* FREE WORK REGS     @G58AK3B*/
+*        IF IPRC=1 THEN                /* CHECK RETURN CODE          */
+         CLI   433(R6),X'01'
+         BNE   A00033C
+*          QINBUF(1:1)=TVWARSHW;       /* MOVE IN RESHOW CDE         */
+         L     R12,428(,R6)
+         MVC   0(1,R12),TVWARSHW
+*        ELSE;                         /* BAD RETURN ACTION          */
+*      END;                            /* END PAGING SUPPORT         */
+*      /**************************************************************/
+*      /*  AT THIS POINT THE INPUT DATA STREAM HAS BEEN SCANNED AND  */
+*      /*  EITHER ALL THE AVAILABLE DATA HAS BEEN PUT ON THE INPUT Q */
+*      /*  OR WE HAVE FALLEN THROUGH THE PROCESS LOOP DUE TO AN ERROR*/
+*      /*  THE FIRST CHECK MADE IS TO DETERMINE IF ALL THE PROCESSING*/
+*      /*  WAS SUCCESSFUL.                                           */
+*      /**************************************************************/
+*                                                                  0253
+*       IF TIMADDER='0'B THEN                                      0253
+A00033C  TM    448(R6),X'10'
+         BNZ   A00038C
+*         DO;                                                      0254
+*           IF RPLRLEN > COUNT ?                                  0255
+*              RPLFIRST = '1'B ?      /* BOC?               @G58AK3B*/
+*              RPLMIDLE = '1'B THEN    /* MIDDLE OF CHAIN?   @G58AK3B*/
+         LA    R12,2348
+         LR    R8,R6
+         ALR   R8,R12
+         L     R8,48(,R8)
+         C     R8,2120(,R6)
+         BH    A000362
+         ALR   R12,R6
+         TM    18(R12),X'C0'
+         BZ    A00036A
+*             REC2FLG='1'B;            /* ANOTHER RECEIVE NECESSARY  */
+A000362  OI    448(R6),X'02'
+*           ELSE                                                   0257
+         B     A0003CA
+*             DO;                                                  0257
+*               REC2FLG = '0'B;                            /*@ZA13627*/
+A00036A  NI    448(R6),X'FD'
+*               TVWANOFB = '0'B;       /* RESET NO FLASHBACK @G38AK3B*/
+         NI    TVWAFLG4,255-TVWANOFB
+*               IF TVWALNCT > TIMLNNO THEN                 /*@ZA13627*/
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         C     R12,2312(,R6)
+         BNH   A000388
+*                 TVWALNCT = 1;        /* RESET LINE COUNT   @ZA13627*/
+         MVI   TVWALNCT,1                  TVWALNCT=1
+         OI    TVWAFLG4,TVWAFMSC
+*               ELSE;                                      /*@ZA13627*/
+*             END;                     /* END RPLELEN=COUNT          */
+*         END;                                                     0264
+*       ELSE                                                       0265
+A000388  B     A0003CA
+*         DO;                                                      0265
+*           IF RPLRLEN > COUNT ?      /* CHECK FOR 2ND RECEIVE NEC  */
+*              RPLFIRST = '1'B ?      /* BOC?               @G58AK3B*/
+*              RPLMIDLE = '1'B THEN    /* MIDDLE OF CHAIN?   @G58AK3B*/
+A00038C  LA    R12,2348
+         LR    R8,R6
+         ALR   R8,R12
+         L     R8,48(,R8)
+         C     R8,2120(,R6)
+         BH    A0003AA
+         ALR   R12,R6
+         TM    18(R12),X'C0'
+         BZ    A0003B2
+*             REC2FLG='1'B;            /* SET SECOND RECEIVE FLAG    */
+A0003AA  OI    448(R6),X'02'
+*           ELSE                       /* RECEIVE COMPLETE   @ZA13627*/
+         B     A0003B6
+*             REC2FLG = '0'B;          /* RESET RECEIVE FLAG @ZA13627*/
+A0003B2  NI    448(R6),X'FD'
+*           TVWANOFB = '0'B;           /* RESET NO FLASHBACK @G58AK3B*/
+A0003B6  NI    TVWAFLG4,255-TVWANOFB
+*           TVWABKMG='0'B;             /* NO FLASHBACK       @ZM20856*/
+         NI    TVWAFLG2,255-TVWABKMG
+*           TVWATQL1=0;                /* CLEAR FLASHBACK 1  @ZM20856*/
+         MVI   TVWATQL1,0
+*           TVWATQL2=0;                /* CLEAR FLASHBACK 2  @ZM20856*/
+         MVI   TVWATQL2,0
+*           TIMSCHTM='1'B;             /* SET SCHEDULE TOM FLAG      */
+         OI    448(R6),X'40'
+*         END;                                                     0274
+*       IF REC2FLG='0'B ?             /* RECEIVE COMPLETED? @ZM21079*/
+*          TIMADDER='1'B THEN          /* ADD-ERROR?         @ZM21079*/
+A0003CA  TM    448(R6),X'10'
+         BNZ   A0003DA
+         TM    448(R6),X'02'
+         BO    A000414
+*         IF TSBIWAIT='1'B THEN                                    0276
+A0003DA  L     R12,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R12)
+         TM    41(R12),X'40'
+         BNO   A000414
+*           DO;                                                    0277
+*             RFY (REG0,REG1,REG2) RSTD;                           0278
+*             REG2=REG13;              /* REG2 WILL HOLD SAVE ADDRESS*/
+         LR    R2,R13
+*             REG0=8;                                              0280
+         LA    R0,8
+*             REG1='80000000'X;                                    0281
+         L     R1,HIGHBIT
+*             REG13='0800'X;                                       0282
+         LA    R13,2048
+*             CALL STATUS;                                         0283
+         L     R12,CVTPTR                  CVT ADDRESS
+         L     R12,CVTABEND-CVT(,R12)
+         L     R15,SCVTSTAT-SCVTSECT(,R12)
+         BALR  R14,R15                     STD LINKAGE
+*             REG13=REG2;              /* RESTORE SAVE AREA          */
+         LR    R13,R2
+*             RFY (REG0,REG1,REG2) UNRSTD;                         0285
+*             TSBIWAIT='0'B;                                       0286
+         L     R12,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R12)
+         NI    TSBFLG4-TSB(R12),255-TSBIWAIT
+*           END;                                                   0287
+*         ELSE;                                                    0288
+*       ELSE;                          /*                    @ZM21079*/
+*      END;                            /* END TSBIFLSH = ZERO        */
+A000414  LM    R14,R12,12(R13)             RESTORE REGS
+         BR    R14                         EXIT
+         EJECT
+*         /***********************************************************/
+*         /* THE FOLLOWING CODE WILL CONVERT THE DATA IN THE INPUT   */
+*         /* BUFFER FROM ASCII TO EBCDIC. THE LENGTH OF THE DATA     */
+*         /* TO BE CONVERTED CAN NOT EXCEED THE BUFFER SIZE, EVEN    */
+*         /* THOUGH RPLBUFL MAY INDICATE THAT ADDITIONAL DATA IS     */
+*         /* WAITING TO BE RECEIVED. THE DATA WILL BE CONVERTED IN   */
+*         /* 256 BYTE INCREMENTS UNTIL REMAINING DATA IS LESS THAN   */
+*         /* 256 BYTES.                                              */
+*         /* COUNT WILL CONTAIN THE LENGTH TO  BE TRANSLATED         */
+*         /* VALUE WILL BE USED TO SUBSTRING THE TRANSLATE INSTRUCT  */
+*         /***********************************************************/
+*                                                                  0291
+*RFY REG14 RSTD;                                                   0291
+*ASCITRAN: PROCEDURE OPTIONS(NOSAVE);                              0292
+*           IF RPLRLEN <= BUFLEN THEN   /* MAX TRANSLATE LENGTH      */
+ASCITRAN LA    R15,2348
+         ALR   R15,R6
+         L     R15,48(,R15)
+         C     R15,FW1500
+         BH    A000434
+*             COUNT=RPLRLEN;            /* BUFLEN USED HERE          */
+         ST    R15,2120(,R6)
+*           ELSE                                                   0295
+         B     A00043A
+*             COUNT=BUFLEN;             /* RPLRLEN USED HERE         */
+A000434  MVC   2120(4,R6),FW1500
+*          DONE='0'B;                   /* INITIALIZE LOOP FLAG      */
+A00043A  NI    448(R6),X'FB'
+*          SCANPTR=RPLAREA;             /* INIT BEGIN DATA AREA      */
+         LA    R15,2348
+         ALR   R15,R6
+         L     R4,32(,R15)
+*          DO WHILE DONE='0'B;                                     0298
+         B     A000486
+*            IF COUNT>256 THEN          /* MORE THAN 256 BYTES IN BUF*/
+A00044C  LA    R15,256
+         L     R12,2120(,R6)
+         CR    R12,R15
+         BNH   A000468
+*              DO;                                                 0300
+*                VALUE=256;             /* MAX TRANSLATION NUMB      */
+         ST    R15,2148(,R6)
+*                COUNT=COUNT-256;       /* DECREMENT SCAN NUMBER     */
+         SLR   R12,R15
+         ST    R12,2120(,R6)
+*              END;                                                0303
+*            ELSE                       /* LESS THAT 256 TO TRANS    */
+*              DO;                                                 0304
+         B     A000474
+*                VALUE=COUNT;           /* SCAN LENGTH = ALL DATA    */
+A000468  L     R15,2120(,R6)
+         ST    R15,2148(,R6)
+*                DONE='1'B;             /* TRANSLATE LAST OF DATA    */
+         OI    448(R6),X'04'
+*              END;                                                0307
+*            TR(SCANAREA(1:VALUE),ASCIITAB); /* TRANSLATE TO EBCDIC  */
+A000474  L     R15,2148(,R6)
+         BCTR  R15,0
+         L     R12,TVWAATBI
+         EX    R15,A000990
+*            SCANPTR=SCANPTR+VALUE;          /* RESET BUFF POINTER   */
+         AL    R4,2148(,R6)
+*          END;                              /* END OF DO WHILE LOOP */
+A000486  TM    448(R6),X'04'
+         BZ    A00044C
+*    END;                                    /* END ASCII TRANSLATION*/
+         BR    R14                         EXIT ASCITRAN
+         EJECT
+*         /***********************************************************/
+*         /* THE SAME PROCESS THAT WAS FOLLOWED FOR ASCII TRANSLATION*/
+*         /* WILL BE FOLLOWED FOR USER TABLE TRANSLATION             */
+*         /***********************************************************/
+*                                                                  0312
+* USERTRAN: PROCEDURE OPTIONS(NOSAVE);                             0312
+*          RFY (REG1,REG2) RSTD;       /* RESTRICT REGS      @ZA18919*/
+*          RFY REG3 RSTD;              /* USE TO POINT TO SCAN BUFF  */
+*          RFY SCANAREA BASED(REG3);   /* BASE INPUT BUFFER ON REG3  */
+*          REG3=BUFPTR;                /* INITIALIZE REG3            */
+USERTRAN L     R15,2320(,R6)
+         L     R3,2140(,R6)
+*          CNTRL=DATALINE;             /* INITIALIZE COUNT           */
+         ALR   R3,R15
+         LCR   R15,R15
+         AL    R15,2144(,R6)
+         ST    R15,2124(,R6)
+*          DONE='0'B;                  /* INITIALIZE LOOP CONTROL    */
+         NI    448(R6),X'FB'
+*          DO  WHILE DONE='0'B;        /* BEGIN TRANSLATION LOOP     */
+         LTR   R15,R15
+         BP    A0004B2
+*                DONE='1'B;            /* SET END OF LOOP INDICATOR  */
+         OI    448(R6),X'04'
+A0004B2  B     A000556
+*            REG1=0;                   /* INIT REG FOR TRT   @ZA18919*/
+A0004B6  SLR   R1,R1
+*            REG2=0;                   /* INIT REG FOR TRT   @ZA18919*/
+         SLR   R2,R2
+*            IF CNTRL > 256 THEN                                   0322
+         LA    R15,256
+         L     R12,2124(,R6)
+         CR    R12,R15
+         BNH   A0004D6
+*              DO;                                                 0323
+*                VALUE=256;            /* TRANLATE MAX VALUE         */
+         ST    R15,2148(,R6)
+*                CNTRL=CNTRL-256;      /* REDUCE DATA TO TRANSLATE   */
+         SLR   R12,R15
+         ST    R12,2124(,R6)
+*              END;                                                0326
+*            ELSE                                                  0327
+*              DO;                     /* OTHERWISE TRANS ALL DATA   */
+         B     A0004E4
+*                VALUE=CNTRL;          /* VALUE = DATA LEFT          */
+A0004D6  L     R15,2124(,R6)
+         ST    R15,2148(,R6)
+*                                      /* SET END OF LOOP INDICATOR  */
+         SLR   R15,R15
+         ST    R15,2124(,R6)
+*              END;                                                0330
+*            TRT(SCANAREA(1:VALUE),SBATAB(1)); /* SBA?       @ZA18919*/
+A0004E4  L     R15,2148(,R6)
+         BCTR  R15,0
+         EX    R15,TRTSBA
+         LTR   R2,R2
+         BZ    A00050C
+         SLR   R1,R3
+         LR    R15,R1
+         ALR   R15,R2
+         LCR   R15,R15
+         AL    R15,2148(,R6)
+         AL    R15,2124(,R6)
+         ST    R15,2124(,R6)
+*                VALUE=REG1;            /* POINT BEFORE SBA  @ZA18919*/
+         ST    R1,2148(,R6)
+*                CNTRL=CNTRL+(VALUE-(REG1+3));             /*@ZA18919*/
+A00050C  SLR   R15,R15
+         L     R12,2124(,R6)
+         CR    R12,R15
+         BH    A000526
+         LPR   R12,R12
+         ST    R12,2320(,R6)
+         ST    R15,2124(,R6)
+*                  DONE='1'B;           /* EXIT LOOP         @ZA18919*/
+         OI    448(R6),X'04'
+*              END;                     /*                   @ZA18919*/
+*            ELSE;                      /*                   @ZA18919*/
+*            IF VALUE^=0 THEN           /*                   @ZA18919*/
+A000526  L     R15,2148(,R6)
+         LTR   R15,R15
+         BZ    A00053E
+*              TR(SCANAREA(1:VALUE),TRANTAB);/* USER TRANSLATION     */
+         L     R15,2148(,R6)
+         BCTR  R15,0
+         L     R12,TVWATABI
+         EX    R15,A00099C
+*            ELSE;                           /*              @ZA18919*/
+*            IF REG2=0 THEN                  /*              @ZA18919*/
+A00053E  LTR   R2,R2
+         BNZ   A00054C
+*              REG3=REG3+VALUE;              /* UPDATE BUFFER POINTER*/
+         AL    R3,2148(,R6)
+         B     A000556
+*            ELSE                                                  0347
+*              REG3=REG3+VALUE+3;            /* UDATE BUFFER PTR     */
+A00054C  LR    R15,R3
+         AL    R15,2148(,R6)
+         ALR   R15,R2
+         LR    R3,R15
+*          END;                              /* END DO WHILE LOOP    */
+A000556  TM    448(R6),X'04'
+         BZ    A0004B6
+*          RFY (REG1,REG2,REG3) UNRSTD;      /* FREE REGS    @ZA18919*/
+*          RFY SCANAREA BASED(SCANPTR);      /* REBASE INPUT AREA    */
+*    END;                                    /* END USERTRAN ROUTINE */
+         BR    R14                         EXIT USERTRAN
+         EJECT
+*        /************************************************************/
+*        /*  CHECK THAT THIS WAS THE PRIMARY RECEIVE TO GET THE DATA */
+*        /*  IF REC2FLG=1 THEN A SUBSEQUENT RECEIVE WAS NEEDED       */
+*        /*  TO RECEIVE ALL THE DATA FROM THE TERMINAL.              */
+*        /************************************************************/
+*                                                                  0352
+* HEADPROC: PROCEDURE OPTIONS(NOSAVE);                             0352
+*             HEADCNT=0;                /* INITIALIZE HEADER COUNT   */
+HEADPROC SLR   R15,R15
+         STH   R15,450(,R6)
+*             IF COUNT<3 THEN           /* CHECK FOR SHORT READ      */
+         L     R15,2120(,R6)
+         C     R15,FW3
+         BNL   A00058C
+*             DO;                                                  0355
+*             HEADER(1:COUNT)=SCANAREA; /* MOVE AID TO HEADER        */
+         LR    R12,R15
+         BCTR  R12,0
+         EX    R12,A0009A2
+*             HEADCNT=COUNT;            /* RESET SIZE OF HEADER      */
+         STH   R15,450(,R6)
+*             SCANPTR=SCANPTR+COUNT;    /* ADJUST BUFFER POINTER     */
+         ALR   R4,R15
+*             DONECNT=DONECNT+COUNT;    /* ADJUST DONECNT            */
+         AL    R15,2136(,R6)
+         ST    R15,2136(,R6)
+*             END;                      /* END SHORT READ PROCESS    */
+         B     A0005AA
+*             ELSE                                                 0361
+*               DO;                     /* REGULAR INPUT PROCESSING  */
+*                 HEADER(1:3)=SCANAREA; /* SAVE HEADER               */
+A00058C  MVC   452(3,R6),0(R4)
+*                 HEADCNT=HEADCNT+3;    /* UPDATE HEAD COUNT         */
+         LA    R15,3
+         LH    R12,450(,R6)
+         ALR   R12,R15
+         STH   R12,450(,R6)
+*                 SCANPTR=SCANPTR+3;    /* UPDATE BUFFER POINTER     */
+         ALR   R4,R15
+*                 DONECNT=DONECNT+3;    /* UPDATE BYTES PROCESSED    */
+         AL    R15,2136(,R6)
+         ST    R15,2136(,R6)
+*               END;                                               0366
+*             IF DONECNT<COUNT THEN                                0367
+A0005AA  L     R15,2136(,R6)
+         C     R15,2120(,R6)
+         BNL   A0005DA
+*             DO;                                                  0368
+*             IF SCANAREA(1)=SBA THEN   /* CHECK SET BUFFER ADDRESS  */
+         CLI   0(R4),X'11'
+         BNE   A0005DA
+*               DO;                                                0370
+*                 HEADER(4:6)=SCANAREA; /* MOVE IN ADDITIONAL HEAD   */
+         MVC   455(3,R6),0(R4)
+*                 HEADCNT=HEADCNT+3;    /* UPDATE HEADER LENGTH      */
+         LA    R12,3
+         LH    R8,450(,R6)
+         ALR   R8,R12
+         STH   R8,450(,R6)
+*                 SCANPTR=SCANPTR+3;    /* UPDATE BUFFER POINTER     */
+         ALR   R4,R12
+*                 DONECNT=DONECNT+3;    /* UPDATE BYTES PROCESSED    */
+         ALR   R15,R12
+         ST    R15,2136(,R6)
+*               END;                                               0375
+*             ELSE;                     /* UNFORMATTED INPUT         */
+*            END;                                                  0377
+*            ELSE;                                                 0378
+*        END HEADPROC;                  /* END OF HEADPROC           */
+A0005DA  BR    R14                         EXIT HEADPROC
+         EJECT
+*/********************************************************************/
+*/*    THE ADDEL ROUTINE IS CALLED TO PLACE INCOMING DATA FROM THE   */
+*/*    TERMINAL ON THE INPUT QUEUE, ONE LINE AT A TIME.              */
+*/*    NOADDEL IS CHECKED TO SEE IF THE DATA SHOULD BE ADDED TO THE  */
+*/*    QUEUE, LINE PROMPTING IS HANDLED, AND THE RETURN CODE FROM    */
+*/*    THE QUEUE MANAGER IS CHECKED TO ASSURE A SUCCESSFUL ADD.      */
+*/********************************************************************/
+*                                                                  0380
+*ADDELRTN:                                                         0380
+*  PROCEDURE OPTIONS(NOSAVE);                                      0380
+*        SAVE14 = REG14;                /* SAVE RETURN ADDRESS       */
+ADDEL    ST    R14,2288(,R6)
+*        RFY REG14 UNRSTD;              /* FREE REGISTER 14          */
+*        IF TSBAUTON='1'B THEN          /* CHECK FOR PROMPTING       */
+         L     R12,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R12)
+         TM    TSBFLG2-TSB(R12),TSBAUTON
+         BNO   A000640
+*          DO;                          /* PROMPTING ON              */
+*            IF IPBFSZ<=HEADCNT & IPPRTL='0'B & PRIORPRT='0'B THEN 0385
+         LH    R8,434(,R6)
+         CH    R8,450(,R6)
+         BH    A00061C
+         TM    437(R6),X'20'
+         BNZ   A00061C
+         TM    448(R6),X'01'
+         BNZ   A00061C
+*              DO;                                                 0386
+*                IPPRMPT='0'B;          /* SET PROMPT FLAG OFF       */
+         NI    437(R6),X'BF'
+*                TSBAUTON='0'B;         /* TURN OFF AUTOPROMPT       */
+         NI    16(R12),X'BF'
+*                TVWAULK='0'B;          /* UNLOCK-KEYBOARD SW OFF    */
+         NI    TVWAFLG1,255-TVWAULK
+*              END;                                                0390
+         B     A000640
+*            ELSE                                                  0391
+*              IF TSBAULST='1'B & IPPRTL='0'B THEN                 0391
+A00061C  L     R12,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R12)
+         TM    16(R12),X'10'
+         BNO   A00063C
+         TM    437(R6),X'20'
+         BNZ   A00063C
+*                IPPRMPT='1'B;          /* SET PROMPT FLAG ON        */
+         OI    437(R6),X'40'
+*              ELSE                                                0393
+         B     A000640
+*                IPPRMPT='0'B;          /* SET PROMPT FLAG OFF       */
+A00063C  NI    437(R6),X'BF'
+*          END;                         /* END OF PROMPTING          */
+*        ELSE;                          /* PROMPTING OFF             */
+A000640  MVI   432(R6),X'01'
+*        RFY (REG1,REG2) RSTD;          /* RESTRICT REGS     @G58AK3B*/
+*        REG2 = REG13;                  /* SAVE REGISTER 13  @G58AK3B*/
+         LR    R2,R13
+*        QMPTR = ADDR(IPARMS);          /* POINTER TO IPARMS @G58AK3B*/
+         LA    R12,428(,R6)
+         ST    R12,404(,R6)
+*        REG1 = ADDR(QMPTR);            /* IPARMS PTR ADDR   @G58AK3B*/
+         LA    R1,404(,R6)
+*        REG13 = ADDR(SAREA2);          /* SEC SAVE AREA     @G58AK3B*/
+         LA    R13,2216(,R6)
+*        CALL IKTQMIN;                  /* CALL INPUT QUEUE MANAGER  */
+         L     R12,CVTPTR                  CVT ADDRESS
+         L     R12,CVTTCASP-CVT(,R12)
+         L     R15,TCASIQM-TCAST(,R12)
+         BALR  R14,R15                     STD LINKAGE
+*        REG13 = REG2;                  /* RESTORE REG 13    @G58AK3B*/
+         LR    R13,R2
+*        RFY REG2 UNRSTD;               /* FREE WORK REG     @G58AK3B*/
+*        PRIORPRT='0'B;                 /* SET PRIOR PARTIAL FLAG OFF*/
+         NI    448(R6),X'FE'
+*        IF IPRC=1 THEN                 /* CHECK RETURN CODE         */
+         CLI   433(R6),X'01'
+         BNE   A00071C
+         CLI   438(R6),X'00'
+         BNH   A00068A
+*              QINBUF(1:IPCCC)=HEADER;  /* MOVE IN HEADER            */
+         L     R12,428(,R6)
+         SLR   R8,R8
+         IC    R8,438(,R6)
+         BCTR  R8,0
+         EX    R8,A0009A8
+*            ELSE;                                                 0410
+*            IF DATALINE > 0 THEN                                  0411
+A00068A  L     R12,2144(,R6)
+         LTR   R12,R12
+         BNP   A0006B6
+*              DO;                                                 0412
+*                IF TVWATRAN='1'B THEN  /* CHECK FOR USER TRANSLATION*/
+         TM    TVWAFLG3,TVWATRAN
+         BNO   A0006A0
+*                  CALL USERTRAN;       /* TRANSLATE DATA INPUT      */
+         BAL   R14,USERTRAN                PERFORM
+*                ELSE;                  /* NO USER TRANSLATION       */
+*                RFY (REG0,REG1,REG2,WRK3) RSTD; /* MVCL WORK REGS   */
+*                REG0=IPBUFADR+IPCCC;                              0417
+A0006A0  SLR   R0,R0
+         IC    R0,438(,R6)
+         AL    R0,428(,R6)
+*                REG1=DATALINE;         /* LENGTH OF DATA TO BE MOVED*/
+         L     R1,2144(,R6)
+*                REG2=BUFPTR;           /* MOVE DATA FROM            */
+         L     R2,2140(,R6)
+*                WRK3=REG1;             /* NO PADDING CHAR           */
+         LR    R3,R1
+*                MVCL(REG0,REG2);       /* MOVE IN DATA              */
+         MVCL  R0,R2
+*                RFY (REG0,REG1,REG2,WRK3) UNRSTD;                 0422
+*              END;                                                0423
+*            ELSE;                                                 0424
+*            TIMADDER='0'B;            /* REFRESH ERROR FLAG         */
+A0006B6  NI    448(R6),X'EF'
+*            IF TSBAUTON='1'B THEN     /* CHECK FOR PROMPTING        */
+         L     R12,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R12)
+         TM    TSBFLG2-TSB(R12),TSBAUTON
+         BNO   A0006FA
+*              DO;                     /* PROMPTING ON               */
+*                IF TSBAULST='1'B THEN /* CHECK FOR LINE PROMPTING   */
+         TM    TSBFLG2-TSB(R12),TSBAULST
+         BNO   A0006EE
+*                  IF IPPRTL='0'B THEN /* FOR FULL LINE PROMPT       */
+         TM    437(R6),X'20'
+         BNZ   A0006EA
+*                    DO;                                           0430
+*                      TSBAUTOS=TSBAUTOS+TSBAUTOI; /* INCREMENT LINE */
+         L     R8,TSBAUTOS-TSB(,R12)
+         AL    R8,TSBAUTOI-TSB(,R12)
+         ST    R8,TSBAUTOS-TSB(,R12)
+*                      TSBSTAUT='1'B;  /* START LINE PROMPT          */
+         OI    TSBFLG2-TSB(R12),TSBSTAUT
+*                    END;                                          0434
+A0006EA  B     A0006FA
+*                  ELSE;                                           0435
+*                    TSBSTAUT='1'B;    /* START PROMPTING            */
+A0006EE  L     R12,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R12)
+         OI    16(R12),X'04'
+A0006FA  TM    TVWAFLG5,TVWAFSM
+         BNO   A000714
+         TM    TVWAFLG5,TVWAWO
+         BNZ   A000714
+         SLR   R12,R12
+         ST    R12,2144(,R6)
+         B     A000724
+A000714  BAL   R14,LINECNT                 PERFORM
+         B     A000724
+A00071C  OI    448(R6),X'10'
+         OI    TVWAFLG2,TVWAERMG
+A000724  L     R14,2288(,R6)
+         BR    R14                         EXIT ADDEL
+         EJECT
+* /*******************************************************************/
+* /*  LINECNT IS THE ROUTINE THAT WILL RECEIVE CONTROL WHEN FULL     */
+* /*  SCREEN MODE IS NOT IN EFFECT. THE INPUT LINES WILL BE INCRE-   */
+* /*  MENTED AS DATA IS RECEIVED. IF THE BYPASS FLAG IS NOT ON, THE  */
+* /*  LINE COUNT IS CHECKED AND WHEN WE HAVE REACHED THE LAST TWO    */
+* /*  LINES OF DATA ON THE SCREEN, THE DATA WILL BE SAVED AND FLASHED*/
+* /*  BACK TO THE TERMINAL USER, EXCEPT IN FULLSCREEN  PROCESSING    */
+* /*******************************************************************/
+LINECNT  L     R15,PSAAOLD                 PSA REFERENCE
+         L     R12,ASCBTSB-ASCB(,R15)      KEEP TSB POINTER        @ZAC
+         L     R15,TSBEXTNT-TSB(,R12)      KEEP TSB POINTER        @ZAC
+         CLC   TSBXTMBF-TSBX(2,R15),HW480
+         BNE   A00074A
+         MVC   2128(4,R6),FW40
+         B     A000750
+A00074A  MVC   2128(4,R6),FW80
+*                                                                  @ZAA
+         CLI   TSBPRMC-TSB(R12),0          FIELD POPULATED?        @ZAA
+         BE    A000750                     NO, CAN'T USE IT        @ZAA
+         MVC   2131(1,R6),TSBPRMC-TSB(R12) YES, COPY WIDTH         @ZAA
+         TM    TVWAFLG6,X'01'              CHECK TVWAALTS          @ZAA
+         BNO   A000750                     USE PRIMARY WIDTH       @ZAA
+         MVC   2131(1,R6),TSBALTC-TSB(R12) USE ALTERNATE           @ZAA
+*                                                                  @ZAA
+*  /******************************************************************/
+*  /*  THE FOLLOWING CODE WILL PROCESS THE DATA IF THE LINE NUMBER   */
+*  /*  IS LESS THAN THE NEXT TO LAST LINE ON THE SCREEN OR IF THE    */
+*  /*  BYPASS FLAG IS ON.                                            */
+*  /******************************************************************/
+*
+*    IF TVWALNCT < (TIMLNNO-1)   TVWANOFB='1'B   DATALINE=0
+*       TVWAFLSC='1'B THEN                                 /*@ZA13627*/
+A000750  L     R15,2312(,R6)
+         BCTR  R15,0
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         CR    R15,R12
+         BH    A00077C
+         TM    TVWAFLG4,TVWANOFB
+         BO    A00077C
+         L     R15,2144(,R6)
+         LTR   R15,R15
+         BZ    A00077C
+         TM    TVWAFLG4,TVWAFLSC
+         BNO   A000812
+*      DO;                                                         0460
+*        IF DATALINE+PRELINE > LINESIZE THEN  /* MORE THAN ONE LINE  */
+A00077C  L     R15,PSAAOLD                 PSA REFERENCE
+         L     R15,ASCBTSB-ASCB(,R15)
+         TM    16(R15),X'04'
+         BNZ   A000792
+         SLR   R15,R15
+         STH   R15,TVWANCNT
+A000792  L     R15,2144(,R6)
+         L     R12,2132(,R6)
+         LR    R8,R15
+         ALR   R8,R12
+         LH    R7,TVWANCNT
+         ALR   R8,R7
+         L     R11,2128(,R6)
+         CR    R8,R11
+         BNH   A0007DE
+*          DO;                                                     0462
+*            DATALINE=DATALINE-(LINESIZE-PRELINE); /* NEW DATA LENGTH*/
+         ALR   R15,R7                                              @??A
+         SLR   R11,R12
+         SLR   R15,R11
+         ST    R15,2144(,R6)
+*            BUFPTR=BUFPTR+(LINESIZE-PRELINE); /* ADJUST BUFFER POINT*/
+         AL    R11,2140(,R6)
+         ST    R11,2140(,R6)
+*            TVWALNCT=TVWALNCT+1;        /* UP LINE COUNT BY ONE     */
+         LA    R15,1
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         ALR   R15,R12
+         STC   R15,TVWALNCT
+*            PRELINE=0;                  /* RESET PREVIOUS LINE TO 0 */
+         SLR   R15,R15
+         ST    R15,2132(,R6)
+         STH   R15,TVWANCNT
+*          END;                          /* END MORE THAN 1 LINE PROC*/
+         B     A000812
+*        ELSE                            /* BEGIN ONLY ONE LINE      */
+*          DO;                                                     0468
+*            IF IPPRTL='0'B THEN         /* NOT PARTIAL LINE         */
+A0007DE  TM    437(R6),X'20'
+         BNZ   A000800
+*              DO;                                                 0470
+*                PRELINE=0;              /* RESET PREVIOUS LINE      */
+         SLR   R15,R15
+         ST    R15,2132(,R6)
+*                TVWALNCT=TVWALNCT+1;    /* UP LINE COUNT            */
+         LA    R15,1
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         ALR   R15,R12
+         STC   R15,TVWALNCT
+*              END;                                                0473
+         B     A00080C
+*            ELSE                        /* PARTIAL LINE INDICATED   */
+*              PRELINE=PRELINE+DATALINE; /* SAVE PARTIAL LINE LENGTH */
+A000800  L     R15,2132(,R6)
+         AL    R15,2144(,R6)
+         ST    R15,2132(,R6)
+*            DATALINE=0;                 /* ALL DATA PROCESSED       */
+A00080C  SLR   R15,R15
+         ST    R15,2144(,R6)
+*          END;                          /* END NO FLASH BACK PROCESS*/
+*      END;                                                        0477
+*    ELSE;                                                         0478
+*                                                                  0478
+*        /************************************************************/
+*        /*  AT THIS POINT A CHECK IS MADE TO SEE IF WE ARE PROCESS- */
+*        /*  ING THE NEXT TO LAST LINE OF THE SCREEN AND FLASHBACK   */
+*        /*  IS PERMITTED. THE INPUT DATA WILL BE SAVED IN THE FIRST */
+*        /*  FLASHBACK BUFFER TO BE RETURNED TO THE TERMINAL USER.   */
+*        /************************************************************/
+*
+*        IF TVWALNCT=TIMLNNO-1 & TVWANOFB='0'B & DATALINE>0 THEN
+A000812  L     R15,2312(,R6)
+         BCTR  R15,0
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         CR    R15,R12
+         BNE   A000896
+         TM    TVWAFLG4,TVWANOFB
+         BNZ   A000896
+         L     R15,2144(,R6)
+         LTR   R15,R15
+         BNP   A000896
+*          DO;                                             /*@ZA13627*/
+*            IF DATALINE > LINESIZE THEN                           0481
+         L     R12,2128(,R6)
+         CR    R15,R12
+         BNH   A000848
+*              VALUE=LINESIZE;           /* MAXIMUM FLASHBACK SIZE   */
+         ST    R12,2148(,R6)
+*            ELSE                        /* OTHERWISE USE DATA LENGTH*/
+         B     A000850
+*              VALUE=DATALINE;                                     0483
+A000848  L     R15,2144(,R6)
+         ST    R15,2148(,R6)
+*            FLASHBK1(1:VALUE)=SCANAREA; /* MOVE DATA TO QUEUE       */
+A000850  L     R15,2148(,R6)
+         LR    R12,R15
+         BCTR  R12,0
+         L     R8,2140(,R6)
+         EX    R12,A0009AE
+*            BUFPTR=BUFPTR+VALUE;        /* UPDATE BUFFER POINTER    */
+         ALR   R8,R15
+         ST    R8,2140(,R6)
+*            DATALINE=DATALINE-VALUE;    /* RECOMPUTE DATA PROCESSED */
+         L     R12,2144(,R6)
+         SLR   R12,R15
+         ST    R12,2144(,R6)
+*            TVWATQL1=VALUE;             /* RESET LINE SIZE OF DATA  */
+         STC   R15,TVWATQL1
+*            /* UPDATE LINE COUNT FOR FULL LINE.                     */
+*            IF IPPRTL='0'B ?DATALINE > 0 THEN                    0488
+         TM    437(R6),X'20'
+         BZ    A000882
+         LTR   R12,R12
+         BNP   A000896
+*              DO;                                                 0489
+*                TVWALNCT=TVWALNCT+1;    /* UP LINE COUNT            */
+A000882  LA    R15,1
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         ALR   R15,R12
+         STC   R15,TVWALNCT
+*                TVWABKMG='1'B;          /* FLASHBACK AVAILABLE      */
+         OI    TVWAFLG2,TVWABKMG
+*              END;                                                0492
+*            ELSE;                                                 0493
+*          END;                          /* END OF NXT TO LAST LINE  */
+*        ELSE;                                                     0495
+*                                                                  0495
+*        /************************************************************/
+*        /*  THE NEXT BLOCK OF CODE WILL BUILD THE DATA FLASHBACK    */
+*        /*  WHEN THE LINECOUNT EQUALS OR EXCEEDS THE LAST SCREEN    */
+*        /*  LINE AND THE BYPASS FLAG IS NOT SET ON.                 */
+*        /************************************************************/
+*                                                                  0496
+*        IF TVWALNCT>=TIMLNNO & TVWANOFB='0'B & DATALINE>0 THEN    0496
+A000896  SLR   R15,R15
+         IC    R15,TVWALNCT
+         C     R15,2312(,R6)
+         BL    A00096E
+         TM    TVWAFLG4,TVWANOFB
+         BNZ   A00096E
+         L     R15,2144(,R6)
+         LTR   R15,R15
+         BNP   A00096E
+*          DO;                                                     0497
+*                                                                  0497
+*            /********************************************************/
+*            /* ALL FOLLOWING CONDITIONS INDICATE MORE THAN 1 LINE   */
+*            /* WILL BE FLASHED BACK TO THE USER.                    */
+*            /********************************************************/
+*                                                                  0498
+*            IF DATALINE>LINESIZE ?DONECNT<COUNT ?IPPRTL='1'B THEN
+         C     R15,2128(,R6)
+         BH    A0008D2
+         L     R15,2136(,R6)
+         C     R15,2120(,R6)
+         BL    A0008D2
+         TM    437(R6),X'20'
+         BNO   A000940
+*                                                          /*@ZA13627*/
+*              DO;                       /* PLACE DATA IN FLASHBK 1  */
+*                IF DATALINE> LINESIZE THEN                        0500
+A0008D2  L     R15,2128(,R6)
+         C     R15,2144(,R6)
+         BNL   A0008E6
+*                  VALUE=LINESIZE;       /* LENGTH DATA = LINE SIZE  */
+         ST    R15,2148(,R6)
+*                ELSE                                              0502
+*                  VALUE=DATALINE;       /* FLASHBACK IS DATA SIZE   */
+         B     A0008EE
+A0008E6  L     R15,2144(,R6)
+         ST    R15,2148(,R6)
+*                FLASHBK1(1:VALUE)=SCANAREA; /* MORE DATA TO Q       */
+A0008EE  L     R15,2148(,R6)
+         LR    R12,R15
+         BCTR  R12,0
+         L     R8,2140(,R6)
+         EX    R12,A0009AE
+*                DATALINE=DATALINE-VALUE; /* DECREASE DATA TO PROCESS*/
+         L     R12,2144(,R6)
+         SLR   R12,R15
+         ST    R12,2144(,R6)
+*                TVWATQL1=VALUE;         /* LENGTH OF FLASH BACK DATA*/
+         STC   R15,TVWATQL1
+*                BUFPTR=BUFPTR+VALUE;    /* UPDATE BUFFER POINTER    */
+         ALR   R8,R15
+         ST    R8,2140(,R6)
+*                IF IPPRTL='0'B ?DATALINE > 0 THEN                0507
+         TM    437(R6),X'20'
+         BZ    A000920
+         LTR   R12,R12
+         BNP   A000938
+*                  DO;                                             0508
+*                    TVWALNCT=TVWALNCT+1; /* UP LINE COUNT           */
+A000920  LA    R15,1
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         ALR   R15,R12
+         STC   R15,TVWALNCT
+*                    TVWABKMG='1'B;      /* READY FOR FLASH BACK     */
+         OI    TVWAFLG2,TVWABKMG
+*                  END;                                            0511
+         B     A00096E
+*                ELSE                                              0512
+*                  TVWABKMG='0'B;        /* DO NOT FLASH BACK PARTIAL*/
+A000938  NI    TVWAFLG2,255-TVWABKMG
+*              END;                      /* END DATA > 1 LINE        */
+         B     A00096E
+*            ELSE                                                  0514
+*              DO;                       /* PROCESS LAST FLSHBK DATA */
+*                FLASHBK2(1:DATALINE)=SCANAREA; /* MOVE DATA TO BUFF */
+A000940  L     R15,2144(,R6)
+         LR    R12,R15
+         BCTR  R12,0
+         L     R8,2140(,R6)
+         EX    R12,A0009B4
+*                TVWATQL2=DATALINE;      /* LENGTH OF FLASH BACK DATA*/
+         STC   R15,TVWATQL2
+*                TVWABKMG='1'B;          /* READY TO FLASH BACK      */
+         OI    TVWAFLG2,TVWABKMG
+*                DATALINE=0;             /* END OF DATA PROCESS      */
+         SLR   R15,R15
+         ST    R15,2144(,R6)
+*                TVWALNCT=TVWALNCT+1;    /* INCREMENT LINE COUNT     */
+         LA    R15,1
+         SLR   R12,R12
+         IC    R12,TVWALNCT
+         ALR   R15,R12
+         STC   R15,TVWALNCT
+*              END;                                                0520
+*          END;                                                    0521
+*        ELSE;                                                     0522
+*    END;                                /* END OF DO UNTIL DATA PROC*/
+A00096E  L     R15,2144(,R6)
+         LTR   R15,R15
+         BP    A000750
+*    IF TVWABKMG='1'B THEN               /* CHECK IF TOM NEEDS SCHED */
+         TM    TVWAFLG2,TVWABKMG
+         BNO   A000984
+*      TIMSCHTM='1'B;                    /* YES, SET SCHED-TOM FLAG  */
+         OI    448(R6),X'40'
+*    ELSE;                                                         0526
+*    RFY SCANAREA BASED(SCANPTR);        /* POINTER TO DATA BUFFER   */
+*  END LINECNT;                          /* END OF LINECNT           */
+A000984  BR    R14
+         EJECT
+HW1      DC    H'1'
+HW480    DC    H'480'
+TRTNWLN  TRT   0(0,R4),SBATAB              WAS NEWLINE             @ZBC
+A000990  TR    0(0,R4),0(R12)
+TRTSBA   TRT   0(0,R3),SBATAB
+A00099C  TR    0(0,R3),0(R12)
+A0009A2  MVC   452(0,R6),0(R4)
+A0009A8  MVC   0(0,R12),452(R6)
+A0009AE  MVC   458(0,R6),0(R8)
+A0009B4  MVC   538(0,R6),0(R8)
+FW3      DC    F'3'
+FW40     DC    F'40'
+FW80     DC    F'80'
+FW1500   DC    F'1500'
+HIGHBIT  DC    X'80000000'
+IKTIDSX2 DC    V(IKTIDSX2)
+         DC    0D'0'
+         AGO   .SKPNLTB                    SBATAB NOW USED INSTEAD @ZBA
+NEWLINE  DC    30X'00'
+         DC    X'1E'
+         DC    225X'00'
+.SKPNLTB ANOP                              SBATAB NOW USED INSTEAD @ZBA
+SBATAB   DC    17AL1(0)
+         DC    AL1(3)
+         DC    12AL1(0)
+         DC    AL1(1)
+         DC    225AL1(0)
+PATCH    DC    20F'0'
+         EJECT
+R0       EQU   0                           EQUATES FOR REGISTERS 0-15
+R1       EQU   1
+R2       EQU   2
+R3       EQU   3
+R4       EQU   4
+R5       EQU   5
+R6       EQU   6
+R7       EQU   7
+R8       EQU   8
+R9       EQU   9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+         SPACE
+         PRINT NOGEN
+         IHAPSA
+         CVT   DSECT=YES
+         IHASCVT
+         IHAASCB
+         IKJTSB EXT=YES
+         IKTTVWA
+         IKTTCAST
+         END   IKT3270I,(C'PLS1824',0702,84045)
+./ ADD NAME=IKT3270O
          TITLE '*** IKT3270O: TSO/VTAM TERMINAL SCREEN MANAGER ***     *
                         '
 *
@@ -3738,13 +6215,13 @@ A0010B0  ST    R0,TOMMVCNT(,R8)
          L     R3,TOMMVCNT(,R8)
          SL    R3,TOMQDATA(,R8)
          BCTR  R3,0
-*                                              22ND APRIL, 2019 ZP60009
-*  IT SEEMS THAT - LIKE TPUT NOEDIT - TPUT FULLSCR DOES NOT     ZP60009
-*  PERFORM ANY DATA FILTERING THESE DAYS.  ACCORDINGLY, ANY     ZP60009
-*  REFERENCE TO FLSCRTAB CAN NOW BE DISPENSED WITH.             ZP60009
-*  TO REINSTATE THE TRANSLATION, CHANGE X'4700' TO X'4430'.     ZP60009
-****     EX    R3,A002042                  EDIT RU DATA WITH FLSCRTAB
-         NOP   A002042                     ZAP PLACEHOLDER      ZP60009
+*                                          22ND APRIL, 2019   ZP60009-A
+*  IT SEEMS THAT - LIKE TPUT NOEDIT - TPUT FULLSCR DOES NOT   ZP60009-A
+*  PERFORM ANY DATA FILTERING THESE DAYS.  ACCORDINGLY, ANY   ZP60009-A
+*  REFERENCE TO FLSCRTAB CAN NOW BE DISPENSED WITH.           ZP60009-A
+*  TO REINSTATE THE TRANSLATION, CHANGE X'4700' TO X'4430'.   ZP60009-A
+*        EX    R3,A002042  (PRE-ZP60009)   EDIT RU DATA WITH FLSCRTAB
+         NOP   A002042                     ZAP PLACEHOLDER    ZP60009-C
          LTR   R2,R2                       CURSOR FOUND?
          BNZ   A0010F6                     YES, SKIP SEARCH
          L     R3,TOMBFPTR(,R8)
@@ -5048,7 +7525,7 @@ FWMINUS4 DC    F'-4'
 IKTIDSX1 DC    V(IKTIDSX1)
          DS    0D
 A0020D0  EQU   *,11                        SAVE 8 BYTES OF      ZP60009
-         DC    X'11C150'                    DUPLICATE DATA      ZP60008
+         DC    X'11C150'                    DUPLICATE DATA      ZP60009
 SFWRTATT EQU   *,2
 A0020DB  DC    X'1DC85C5C5C1D4013'
 A0020E3  DC    X'1DC84FC91D40'
@@ -5278,2357 +7755,289 @@ OPNXASID EQU   OPNXFLGS+1
          IKTTVWA
          IKTTCAST
          END   IKT3270O,(C'PLS1952',0701,83271)
-/*
-//*
-//STEP05  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKT3270O('ZP60009')
-++MOD(IKT0009D) DISTLIB(AOST3).
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP06  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
-IKT0009D TITLE 'IKT0009D:  TSO/VTAM SVC 94 ROUTER                      *
-                        '
-*
-*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
-*            TO SUPPORT ENTRY CODE 17 (GTTERM)
-*
-IKT0009D CSECT
-         BALR  R15,0                       ADDRESS SET
-         USING *,R15
-         B     @PROLOG
-         DC    AL1(16)
-         DC    CL16'IKT0009D  78.290'
-         DROP  R15
-@PROLOG  BALR  R12,0                       ADDRESS SET
-@PSTART  DS    0H
-         USING @PSTART,R12
-*   /*****************************************************************/
-*   /*                                                               */
-*   /* PARAMETER REGISTER 0 WILL HAVE THE ENTRY CODE FOR THE SVC IN  */
-*   /* THE HIGH ORDER POSITION OF REGISTER 0, IF THE ENTRY CODE IS   */
-*   /* INVALID A RETURN CODE OF 4 IS RETURNED IN REG 15              */
-*   /*                                                               */
-*   /*****************************************************************/
-         LR    R15,R0
-         SRL   R15,24
-         CH    R15,HW20
-         BH    INVALID
-         LTR   R15,R15
-         BNP   INVALID
-         LR    R5,R8                       COPY TSB POINTER
-         LA    R10,A000058
-         SLL   R15,2
-         L     R15,MODTAB-4(15)
-         DROP  R12
-         LR    R12,R15
-         BR    R15
-INVALID  LA    R15,4
-         BR    R14                         EXIT
-INVALID8 LA    R15,8
-         BR    R14                         EXIT
-INVALIDC LA    R15,12
-         BR    R14                         EXIT
-HW20     DC    H'20'
-         DC    F'8'
-A000058  EQU   *
-         DC    F'0'
-         DC    F'99999999'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'0'
-         DC    F'8288'
-MODTAB   EQU   *
-TCLEARQ  DC   V(IKT09401)           ENTRY CODE  1
-TSEND    DC   A(INVALID)            ENTRY CODE  2,INVALID
-MSGS     DC   A(INVALID)            ENTRY CODE  3,INVALID
-STBREAK  DC   V(IKT09404)           ENTRY CODE  4
-STCOM    DC   V(IKT09405)           ENTRY CODE  5
-STTIMEO  DC   A(INVALID8)           ENTRY CODE  6,INVALID
-STCC     DC   A(INVALIDC)           ENTRY CODE  7,INVALID
-STATTN   DC   A(INVALID8)           ENTRY CODE  8,INVALID
-STAUTOL  DC   V(IKT09409)           ENTRY CODE  9
-STSIZE   DC   V(IKT0940A)           ENTRY CODE 10
-GTSIZE   DC   V(IGG0940B)           ENTRY CODE 11
-STAUTOC  DC   V(IKT0940C)           ENTRY CODE 12
-SPAUTOP  DC   V(IKT0940D)           ENTRY CODE 13
-RTAUTOP  DC   V(IKT0940E)           ENTRY CODE 14
-STTRAN   DC   V(IKT0940F)           ENTRY CODE 15
-STCLEAR  DC   A(INVALID8)           ENTRY CODE 16,INVALID
-GTTERM   DC   V(IKT09411)           ENTRY CODE 17               ZP60009
-STFSMODE DC   V(IKT09412)           ENTRY CODE 18
-STLINENO DC   V(IKT09413)           ENTRY CODE 19
-STTMPMD  DC   V(IKT09414)           ENTRY CODE 20
-         SPACE
-         DS   0D                    END OF CSECT
-         EJECT
-R0       EQU   0                    EQUATES FOR REGISTERS 0-15
-R1       EQU   1
-R2       EQU   2
-R3       EQU   3
-R4       EQU   4
-R5       EQU   5
-R6       EQU   6
-R7       EQU   7
-R8       EQU   8
-R9       EQU   9
-R10      EQU   10
-R11      EQU   11
-R12      EQU   12
-R13      EQU   13
-R14      EQU   14
-R15      EQU   15
-         TITLE '******** IKT09411:    GTTERM  - TERMINAL CONTROL MACRO *
-                 *******'
-IKT09411 CSECT
-*   /*****************************************************************/
-*   /*                                                               */
-*   /* THIS CSECT WAS WRITTEN BY GREG PRICE IN JANUARY 2003 FOR THE  */
-*   /* ZP60009 USERMOD TO ADD THE GTTERM MACRO FUNCTION TO TSO/VTAM  */
-*   /* ETV0108 WHICH IS SHIPPED WITH MVS 3.8J.                       */
-*   /*                                                               */
-*   /*****************************************************************/
-         USING IKT09411,R12
-         USING TSB,R5
-         USING PSA,0
-         B     @GTTERM
-         DC    AL1(16)
-         DC    CL16'IKT09411 ZP60009'
-*   /*****************************************************************/
-*   /*                                                               */
-*   /* PARAMETER REGISTER 1 POINTS TO A PARAMETER LIST OF FROM 1 TO  */
-*   /* 4 WORDS, EACH CONTAINING A POINTER TO AN OUTPUT AREA.  THE    */
-*   /* PARAMETER LIST AND EACH OUTPUT AREA IS ACCESSED IN THE USER   */
-*   /* KEY TO VERIFY USER AUTHORITY TO ACCESS THE AREAS.  THE LAST   */
-*   /* PARAMETER LIST WORD SHOULD HAVE THE HIGH-ORDER BIT ON.        */
-*   /*                                                               */
-*   /*****************************************************************/
-@GTTERM  LTR   R1,R1                       ANY PARAMETER PASSED?
-         BNZ   HAVEPARM                    YES
-MISSPARM LA    R15,12                      NO, MISSING PARAMETER
-         BR    R14                         RETURN TO ISSUER
-*   /*****************************************************************/
-*   /*                                                               */
-*   /* THE GTTERM MACRO IS ONLY VALID FOR DISPLAY STATION TERMINALS. */
-*   /*                                                               */
-*   /*****************************************************************/
-HAVEPARM TM    TSBSTAT,TSBDSPLY            TERMINAL A DISPLAY STATION?
-         BO    ISADSPLY                    YES
-         LA    R15,8                       NO, WRONG TERMINAL TYPE
-         BR    R14                         RETURN TO ISSUER
-*   /*****************************************************************/
-*   /*                                                               */
-*   /* THE PARAMETERS ARE OUTPUT AREAS FOR:                          */
-*   /* (1) PRMSZE - PRIMARY SCREEN SIZE DIMENSIONS - 2 BYTES         */
-*   /* (2) ALTSZE - ALTERNATE SCREEN SIZE DIMENSIONS - 2 BYTES       */
-*   /* (3) ATTRIB - TERMINAL ATTRIBUTES - 4 BYTES                    */
-*   /* (4) TERMID - TERMINAL LU NAME - 8 BYTES                       */
-*   /*                                                               */
-*   /*****************************************************************/
-ISADSPLY L     R8,PSATOLD
-         IC    R15,TCBPKF-TCB(,R8)
-         SPKA  0(R15)                      GET INTO USER KEY
-         SLR   R8,R8
-         SLR   R9,R9
-         SLR   R10,R10
-         SLR   R11,R11
-         L     R8,0(,R1)                   LOAD FIRST ADDRESS
-         LTR   R8,R8
-         BM    GOTPARMS                    ONLY ONE PARAMETER
-         L     R9,4(,R1)                   LOAD SECOND ADDRESS
-         LTR   R9,R9
-         BM    GOTPARMS                    ONLY TWO PARAMETERS
-         L     R10,8(,R1)                  LOAD THIRD ADDRESS
-         LTR   R10,R10
-         BM    GOTPARMS                    ONLY THREE PARAMETERS
-         L     R11,12(,R1)                 LOAD FOURTH ADDRESS
-GOTPARMS LA    R8,0(,R8)                   ENSURE ADDRESS FORMAT
-         LA    R9,0(,R9)
-         LA    R10,0(,R10)
-         LA    R11,0(,R11)
-         LTR   R8,R8                       FIRST ADDRESS PRESENT?
-         BNP   *+10                        NO
-         XC    0(2,R8),0(R2)               YES, CLEAR 2 BYTES
-         LTR   R9,R9                       SECOND ADDRESS PRESENT?
-         BNP   *+10                        NO
-         XC    0(2,R9),0(R9)               YES, CLEAR 2 BYTES
-         LTR   R10,R10                     THIRD ADDRESS PRESENT?
-         BNP   *+10                        NO
-         XC    0(4,R10),0(R10)             YES, CLEAR 4 BYTES
-         LTR   R11,R11                     FOURTH ADDRESS PRESENT?
-         BNP   *+10                        NO
-         XC    0(8,R11),0(R11)             YES, CLEAR 8 BYTES
-         SPKA  0                           REVERT TO KEY ZERO
-*   /*****************************************************************/
-*   /*                                                               */
-*   /* TSO/VTAM REQUIRES THE FIRST PARAMETER (PRMSZE) BE PRESENT.    */
-*   /*                                                               */
-*   /*****************************************************************/
-         LTR   R8,R8                       IS PRMSZE SPECIFIED?
-         BNP   MISSPARM                    NO, RETURN CODE 12
-         L     R15,TSBEXTNT                YES, POINT TO TSBX
-         USING TSBX,R15
-         ICM   R2,3,TSBPRMR                COPY PRIMARY ROWS+COLS
-         BNZ   PRIMOKAY
-         ICM   R2,3,MOD1DIMS               USE MODEL-1 DIMENSIONS
-         CLC   TSBXTMBF,MOD1SIZE           REALLY A MODEL-1?
-         BE    PRIMOKAY                    YES
-         ICM   R2,3,MOD2DIMS               USE MODEL-2 DIMENSIONS
-PRIMOKAY STCM  R2,3,0(R8)                  SET PRIMARY ROWS+COLS
-         LTR   R9,R9                       IS ALTSZE SPECIFIED?
-         BNP   ALTDONE                     NO
-         ICM   R2,3,TSBALTR                COPY ALTERNATE ROWS+COLS
-         BNZ   ALTOKAY
-         ICM   R2,3,MOD1DIMS               USE MODEL-1 DIMENSIONS
-         CLC   TSBXTMBF,MOD1SIZE           REALLY A MODEL-1?
-         BE    ALTOKAY                     YES
-         ICM   R2,3,MOD2DIMS               USE MODEL-2 DIMENSIONS
-ALTOKAY  STCM  R2,3,0(R9)                  AET ALTERNATE ROWS+COLS
-ALTDONE  LTR   R10,R10                     IS ATTRIB SPECIFIED?
-         BNP   ATTRDONE                    NO
-         SLR   R8,R8
-         IC    R8,TSBTERM2
-         LA    R9,TSBASCI7
-         NR    R8,R9                       GET ASCII-7/ASCII-8 FLAGS
-         SLL   R8,8                        SHIFT TO CORRECT BYTE
-         TM    TSBFLG5,TSBVTAM             VTAM TERMINAL?
-         BNO   *+8                         NO, HOW DID WE GET HERE?
-         LA    R8,X'80'(,R8)               YES, SET FLAG BIT ON
-         TM    TSBFLG5,TSBQRY              QUERY BIT ON?
-         BNO   *+8                         NO
-         LA    R8,X'01'(,R8)               YES, SET FLAG BIT ON
-         TM    TSBFLG3,TSBNOBRK            BREAK NOT ALLOWED NOW?
-         BNO   *+8                         NO
-         LA    R8,X'40'(,R8)               YES, SET FLAG BIT ON
-         TM    TSBXFLG1,TSBXASCI           ASCII TERMINAL?
-         BNO   *+8                         NO
-         LA    R8,X'02'(,R8)               YES, SET FLAG BIT ON
-         L     R9,TSBXTVWA
-         USING TVWA,R9
-         TM    TVWAFLG3,TVWATRAN           TRANSLATE TABLE IN USE?
-         BNO   *+8                         NO
-         LA    R8,X'20'(,R8)               YES, SET FLAG BIT ON
-         TM    TVWAFLG3,TVWATRDF           DEFAULT TRANSLATION?
-         BNO   *+8                         NO
-         LA    R8,X'10'(,R8)               YES, SET FLAG BIT ON
-         TM    TVWAFLG5,TVWAFSM            IN FULLSCREEN MODE?
-         BNO   *+8                         NO
-         LA    R8,X'08'(,R8)               YES, SET FLAG BIT ON
-         STCM  R8,15,0(R10)                SET ATTRIBUTES WORD
-         DROP  R9                          TVWA
-ATTRDONE LTR   R11,R11                     IS TERMID SPECIFIED?
-         BNP   TERMDONE                    NO
-         MVC   0(8,R11),TSBTRMID           YES, SHOW TERMINAL NAME
-         DROP  R15                         TSBX
-TERMDONE SLR   R15,R15                     ZERO RETURN CODE
-         BR    R14                         RETURN TO ISSUER
-         SPACE
-MOD1SIZE DC    AL2(12*40)
-MOD1DIMS DC    AL1(12,40)
-MOD2DIMS DC    AL1(24,80)
-@PATCH11 DC    6D'0'                       PATCH AREA
-         SPACE
-         PRINT NOGEN
-         IHAPSA
-         IKJTCB
-         IKJTSB EXT=YES
-         IKTTVWA
-         SPACE
-         END   IKT0009D,(C'PLS1425',0701,78290)
-/*
-//*
-//STEP07  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKT0009D('ZP60009')
-  IDENTIFY IKT09411('ZP60009')
-++MOD(IKTXLOG) DISTLIB(AOST4).
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP08  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
-         TITLE 'EXTENDED LOGON ROUTINE'
-*
-*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
-*
-*   /*****************************************************************/
-*   /*                                                               */
-*   /*   FIRSTLY PERFORM THE IBM SUPPLIED LOGIC                      */
-*   /*                                                               */
-*   /*****************************************************************/
-IKTXLOG  CSECT
-         USING IKTXLOG,R15
-         B     @PROLOG
-         DC    AL1(32)
-         DC    CL16'IKTXLOG  ZP60009'
-         DC    CL16' REWORK 20090601'
-         DROP  R15
-@PROLOG  STM   R14,R12,12(R13)
-         LR    R12,R15
-         USING IKTXLOG,R12
-*
-*   INBUF=TVWAVST                  INSERT ADDRESS OF LOGON BUFFER
-*                                      IN PARAMETER
-         USING PSA,0
-         L     R15,0(,R1)          POINT TO PARAMETER
-         L     R14,PSAAOLD
-         USING ASCB,R14
-         L     R3,ASCBTSB
-         DROP  R14
-         USING TSB,R3
-         L     R4,TSBEXTNT
-         USING TSBX,R4
-         L     R5,TSBXTVWA
-         USING TVWA,R5
-         L     R0,TVWAVST
-         ST    R0,0(,R15)          STORE ADDRESS INTO INBUF
-*   /*****************************************************************/
-*   /*                                                               */
-*   /*   SECONDLY PERFORM THE LOGIC ADDED BY USERMOD ZP60009         */
-*   /*                                                               */
-*   /*   THIS EXTRA LOGIC IS ONLY FOR 3270 TERMINALS AND HAS         */
-*   /*   BEEN ADDED TO FACILITATE ACCESS TO 3270 EXTENSIONS BY       */
-*   /*   TSO APPLICATIONS.  THE PURPOSE OF THIS EXTRA LOGIC IS       */
-*   /*   TO ASCERTAIN (A) THE PRIMARY AND ALTERNATE SCREEN SIZES     */
-*   /*   AND (B) IF THE TERMINAL IS QUERYABLE.                       */
-*   /*                                                               */
-*   /*   THE RESULTS ARE STORED IN THE TSB, AND MADE AVAILABLE       */
-*   /*   TO ISSUERS OF THE GTTERM MACRO.                             */
-*   /*                                                               */
-*   /*   FOR SNA 3270 SESSIONS THE SCREEN DIMENSIONS ARE INITIALLY   */
-*   /*   COPIED FROM THE BIND, AND IF THE QUERY BIT IN THE BIND      */
-*   /*   IS NOT SET, NO FURTHER ACTION IS TAKEN.                     */
-*   /*                                                               */
-*   /*   FOR NON-SNA SESSIONS, AND SNA SESSIONS WITH THE QUERY       */
-*   /*   BIT SET IN THE BIND, THE FOLLOWING PROCESSING OCCURS.       */
-*   /*                                                               */
-*   /*   THE FIRST TPUT OF THE TSO SESSION IS ISSUED HERE.           */
-*   /*   A FULLSCREEN TPUT IS USED TO CLEAR THE TERMINAL AID AND     */
-*   /*   ENSURE THAT NO INPUT DATA IS PENDING FROM THE TERMINAL      */
-*   /*   BUFFER.  FULLSCREEN MODE IS NOT TURNED ON TO AVOID THE      */
-*   /*   REQUIREMENT OF AN ADDITIONAL INPUT FROM THE TERMINAL        */
-*   /*   OPERATOR CAUSED BY VTAM PAGE PROTECTION ('***').  AS        */
-*   /*   A RESULT, NOEDIT INPUT MODE IS ACTIVATED BY DIRECTLY        */
-*   /*   SETTING THE FLAG, AND NOT BY AN STFSMODE MACRO.             */
-*   /*                                                               */
-*   /*   A NOEDIT TPUT IS THEN USED TO ISSUE THE QUERY TO THE        */
-*   /*   TERMINAL.  A TGET MACRO IS USED TO GET THE RESPONSE.        */
-*   /*   ABNORMAL TGET RETURN CODES TERMINATE THE QUERY PROCESS.     */
-*   /*   IF THE RETURN CODE IS NORMAL NON-QUERY RESPONSES ARE        */
-*   /*   DISCARDED AND THE TGET REISSUED.  ONLY THE IMPLICIT         */
-*   /*   PARTITION SUB-FIELD OF THE QUERY RESPONSE IS EXAMINED,      */
-*   /*   FROM WHICH THE PRIMARY AND ALTERNATE SCREEN SIZES ARE       */
-*   /*   DISCOVERED.                                                 */
-*   /*                                                               */
-*   /*   UPON SUCCESSFULLY PROCESSING THE QUERY RESPONSE, THIS       */
-*   /*   ROUTINE:                                                    */
-*   /*   (1) REGISTERS THE PRIMARY AND ALTERNATE SCREEN SIZES        */
-*   /*       IN THE TERMINAL STATUS BLOCK.                           */
-*   /*   (2) SETS THE CURRENT SCREEN SIZE TO THE ALTERNATE SCREEN    */
-*   /*       SIZE IF THE ALTERNATE SCREEN SIZE HAS AT LEAST 24       */
-*   /*       LINES AND 80 COLUMNS.                                   */
-*   /*   (3) SETS THE FLAG TO INSTRUCT THE TSO/VTAM 3270 SCREEN      */
-*   /*       MANAGER TO RECHECK THE SCREEN DIMENSIONS IF THE         */
-*   /*       SCREEN SIZE WAS SET.                                    */
-*   /*   (4) SETS THE QUERY BIT ON.                                  */
-*   /*   (5) ISSUES THE STLINENO LINE=1,MODE=OFF MACRO WHICH WILL    */
-*   /*   (5.1) SET THE NEXT OUTPUT LINE FOR THE FIRST SCREEN LINE.   */
-*   /*   (5.2) SET THE FLAG TO INSTRUCT THE TSO/VTAM 3270 SCREEN     */
-*   /*         MANAGER TO FORMAT THE SCREEN FOR LINE MODE.           */
-*   /*   (5.3) KEEP FULLSCREEN MODE OFF AND TURN OFF NOEDIT INPUT    */
-*   /*         MODE.                                                 */
-*   /*   (6) SETS THE KEYBOARD LOCKED FLAG SO A SUBSEQUENT UNLOCK    */
-*   /*       REQUEST WILL NOT BE GENERATED.                          */
-*   /*   (7) RESETS THE UNLOCK REQUESTED FLAG SO LOGON MESSAGES      */
-*   /*       CAN BE OUTPUT WITHOUT BEING QUEUED BEHIND AN EXTRA      */
-*   /*       TERMINAL INPUT REQUEST.                                 */
-*   /*                                                               */
-*   /*****************************************************************/
-*
-*   DETERMINE IF USING A 3270 DISPLAY
-*
-         TM    TSBSTAT,TSBINUSE+TSBDSPLY+TSB3270
-         BNO   FASTEXIT            NOT EXPECTED TERMINAL TYPE
-         TM    TSBSTAT,TSBDISC     TERMINAL DISCONNECTED?
-         BO    FASTEXIT            YES, CANNOT TALK TO TERMINAL
-         CLI   TSBLNNO,0           WOULD GTSIZE SAY ZERO LINES?
-         BE    FASTEXIT            YES, TERMINAL IS NOT A SCREEN
-*
-*   DETERMINE IF SNA SESSION
-*
-         ICM   R0,15,TSBXBIND+8    SNA BIND PRESENT?
-         BZ    QUERYTRM            NO, ALWAYS QUERY IF NON-SNA
-*
-*   SET SCREEN DIMENSIONS FROM SNA BIND
-*
-         MVC   TSBPRMR(4),TSBXBIND+19
-*
-*   DETERMINE IF SNA TERMINAL IS QUERYABLE
-*
-         TM    TSBXBIND+14,X'80'   QUERY BIT SET?
-         BNO   FASTEXIT            NO, DO NOT QUERY TERMINAL
-*
-*   ACQUIRE WORKING STORAGE
-*
-QUERYTRM L     R0,@SIZDATD
-         GETMAIN R,LV=(0)
-         ST    R13,4(,R1)          CHAIN SAVE AREAS
-         ST    R1,8(,R13)
-         LR    R13,R1
-         USING @DATD,R13
-*
-*   ISSUE QUERY
-*
-         MVC   TPGPL,TPG           INITIALISE TPG PLIST
-         OI    TSBFLG5,TSBNEDIT    ENSURE INPUT NOT EDITED
-         LA    R1,RESETAID         RESET THE TERMINAL AID
-         LA    R0,L'RESETAID             BEFORE ISSUING THE
-         ICM   R1,8,=X'0B'               READ PARTITION
-         TPUT  (1),(0),R           TPUT FULLSCR,WAIT,HOLD
-         TCLEARQ INPUT             FLUSH ANY TYPE-AHEAD TEXT
-         TPG   MF=(E,TPGPL)        ISSUE QUERY TO TSO TERMINAL
-         LTR   R15,R15             WAS TPG ISSUED SUCCESSFULLY?
-         BNZ   QUERYX              NO, DO NOT EXPECT A RESPONSE
-*
-*   READ QUERY RESPONSE
-*
-QUERYGET LA    R1,REPLY            POINT TO TGET BUFFER FOR RESPONSE
-         LA    R0,REPLYLEN                  FROM READ PARTITION
-         ICM   R1,8,=X'81'         FLAGS FOR TGET ASIS,WAIT
-         TGET  (1),(0),R           TGET ASIS,WAIT
-         CH    R15,=H'8'           ATTENTION INTERRUPT?
-         BE    QUERYX              YES, ASSUME QUERY NOT FUNCTIONAL
-         CH    R15,=H'16'          TGET PARAMETER ERROR?
-         BE    QUERYX              YES, ASSUME QUERY NOT FUNCTIONAL
-         CH    R15,=H'20'          TERMINAL DISCONNECTED?
-         BE    QUERYX              YES, ASSUME QUERY NOT FUNCTIONAL
-         CLI   REPLY,X'88'         QUERY RESPONSE AID?
-         BE    QUERYGOT            YES
-         CLI   REPLY,X'F3'         PF3?
-         BE    QUERYX              YES, EXIT
-         CLI   REPLY,X'C3'         PF15?
-         BE    QUERYX              YES, EXIT
-*
-*   DISPLAY INFORMATION ABOUT (NON-QUERY) INPUT DATA
-*
-         MVC   TPGPL,REPLY         PRESERVE INPUT DATA HEADER
-         MVC   REPLY(RCMSGLEN),RCMSG
-         STC   R15,@DATD           SHOW RETURN CODE
-         UNPK  REPLY+RCMSGRC(3),@DATD(2)
-         TR    REPLY+RCMSGRC(2),HEX-240
-         MVI   REPLY+RCMSGRC+2,X'7D'
-         STH   R1,@DATD            SHOW TGET INPUT DATA LENGTH
-         UNPK  REPLY+RCMSGLN(5),@DATD(3)
-         TR    REPLY+RCMSGLN(4),HEX-240
-         MVI   REPLY+RCMSGLN+4,X'7D'
-         LA    R15,REPLY+RCMSGLEN  POINT TO MESSAGE AREA
-         LA    R14,TPGPL           POINT TO PRESERVED DATA
-         LA    R0,TPGL             GET PRESERVED DATA LENGTH
-         CR    R1,R0               SAVED DATA TRUNCATED?
-         BNH   UNPKLOOP            NO
-         LR    R1,R0               YES, REDUCE LENGTH
-UNPKLOOP UNPK  0(3,R15),0(2,R14)   UNPACK DATA
-         TR    0(2,R15),HEX-240    TRANSLATE DATA
-         LA    R15,2(,R15)         ADJUST MESSAGE POINTER
-         LA    R14,1(,R14)         ADJUST DATA POINTER
-         BCT   R1,UNPKLOOP         SHUFFLE THROUGH DATA BYTES
-         LA    R1,REPLY            POINT TO MESSAGE
-         MVI   0(R15),X'7D'
-         LA    R0,1(,R15)
-         SR    R0,R1               GET MESSAGE LENGTH
-         TPUT  (1),(0),R           DISPLAY DATA ABOUT INPUT DATA
-         LA    R1,LPMSG            DISPLAY TRAPDOOR EXIT PLAN
-         LA    R0,LPMSGLEN
-         TPUT  (1),(0),R
-         B     QUERYGET            SEE IF NEXT I/O IS THE GO
-*
-*   PARSE QUERY RESPONSE
-*
-QUERYGOT LA    R15,REPLY+1         POINT PAST AID
-         SLR   R0,R0               CLEAR FOR INSERT
-         BCT   R1,QUERYPRS         DECREMENT FOR AID
-         B     QUERYX              ONLY AID WAS RETURNED
-QUERYPRS CLI   2(R15),X'81'        QUERY REPLY ID?
-         BNE   QUERYX              NO, GIVE UP
-         CLI   3(R15),X'A6'        QUERY IMPLICIT PARTITION ID?
-         BE    SETSIZES            YES
-         ICM   R0,3,0(R15)         NO, GET SUB-FIELD LENGTH
-         BZ    QUERYX              AVOID INFINITE LOOP
-         ALR   R15,R0              POINT TO NEXT SUB-FIELD
-         SR    R1,R0               ADJUST REMAINING LENGTH
-         BP    QUERYPRS            CONTINUE PARSING OF REPLY
-         B     QUERYX              REQUIRED SUB-FIELD NOT FOUND
-*
-*   ASCERTAIN PRIMARY AND ALTERNATE SCREEN SIZE DIMENSIONS
-*
-SETSIZES CLI   6(R15),11           EXPECTED PARAMETER LENGTH?
-         BNE   QUERYX              NO, GIVE UP
-         CLI   7(R15),1            IMPLICIT PARTITION SIZES?
-         BNE   QUERYX              NO, GIVE UP
-         ICM   R0,4,10(R15)        GET WIDTH OF PRIMARY SIZE
-         ICM   R0,8,12(R15)        GET DEPTH OF PRIMARY SIZE
-         ICM   R0,1,14(R15)        GET WIDTH OF ALTERNATE SIZE
-         ICM   R0,2,16(R15)        GET DEPTH OF ALTERNATE SIZE
-         ST    R0,TSBPRMR          SET INTO TSB
-         CLI   TSBALTR,24          AT LEAST 24 ROWS?
-         BL    QUERYOK             NO, MAKE NO MORE CHANGES
-         CLI   TSBALTC,80          AT LEAST 80 COLUMNS?
-         BL    QUERYOK             NO, MAKE NO MORE CHANGES
-         STCM  R0,1,TSBLNSZ        SET NEW SCREEN COLUMN COUNT
-         STCM  R0,2,TSBLNNO        SET NEW SCREEN LINE COUNT
-         OI    TVWAFLG1,TVWAXSCD   EXAMINE SCREEN DIMENSIONS
-QUERYOK  OI    TSBFLG5,TSBQRY      SET THE QUERY BIT ON
-*
-*   CLEAR THE TERMINAL READY FOR LINE MODE USAGE
-*
-QUERYX   STLINENO LINE=1,MODE=OFF  CLEAR AND FORMAT THE SCREEN
-*                                        AND RESET NOEDIT MODE
-         OI    TVWAFLG4,TVWAKBDL   REMEMBER KEYBOARD IS LOCKED
-         NI    TVWAFLG1,255-TVWAULK  AND NO UNLOCK REQUEST YET
-*
-*   RELEASE WORKING STORAGE AND EXIT
-*
-         LR    R1,R13              POINT TO WORKING STORAGE
-         L     R0,@SIZDATD         GET WORKING STORAGE SIZE
-         L     R13,4(,R13)         POINT TO CALLER'S SAVE AREA
-         FREEMAIN R,LV=(0),A=(1)   FREE WORKING STORAGE
-FASTEXIT LM    R14,R12,12(R13)     RESTORE REGISTERS
-         BR    R14                 RETURN TO CALLER
-         EJECT
-@DATA    DS    0H
-         DS    0F
-@SIZDATD DC    AL1(0)
-         DC    AL3(@ENDDATD-@DATD)
-TPG      TPG   QUERY,L'QUERY,NOEDIT,WAIT,HOLD,MF=L
-TPGL     EQU   *-TPG
-*              ESCAPE+ERASE/WRITE+WCC+SBA(LAST)+SF(INLO)+SBA(HOME)+IC
-RESETAID DC    X'27F5C3115D7F1D4011404013'
-QUERY    DC    X'F3000501FF02'    WRITE STRUCTURED FIELD + QUERY
-LPMSG    DC    C'IF LOOPING USE PF3/15 TO END'
-LPMSGLEN EQU   *-LPMSG
-RCMSG    DC    C'IKTXLOG TGET RC=X'''
-RCMSGRC  EQU   *-RCMSG
-         DC    C'XX'',LEN=X'''
-RCMSGLN  EQU   *-RCMSG
-         DC    C'XXXX'',DATA=X'''
-RCMSGLEN EQU   *-RCMSG
-         LTORG
-         DS    0D
-HEX      DC    CL16'0123456789ABCDEF'
-@PATCH   DC    10D'0'
-@ENDDATA DS    0D                 END OF CSECT
-@DATD    DSECT
-         DS    18F
-TPGPL    DS    XL(TPGL)
-REPLY    DS    0F
-         ORG   @DATD+4096
-         DS    0D
-REPLYLEN EQU   *-REPLY
-@ENDDATD EQU   *
-         SPACE
-R0       EQU   0                   EQUATES FOR REGISTERS 0-15
-R1       EQU   1
-R2       EQU   2
-R3       EQU   3
-R4       EQU   4
-R5       EQU   5
-R6       EQU   6
-R7       EQU   7
-R8       EQU   8
-R9       EQU   9
-R10      EQU   10
-R11      EQU   11
-R12      EQU   12
-R13      EQU   13
-R14      EQU   14
-R15      EQU   15
-         SPACE
-         PRINT NOGEN
-         IHAPSA
-         IHAASCB
-         IKJTSB EXT=YES
-         IKTTVWA
-         SPACE
-         END   IKTXLOG
-/*
-//*
-//STEP09  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKTXLOG('ZP60009')
-++MOD(IKT3270I) DISTLIB(AOST3).
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP10  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
-         TITLE '*** IKT3270I: INPUT DATA HANDLING ROUTINE ***          *
-                        '
-*
-*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
-*
-IKT3270I CSECT
-         USING IKT3270I,R15
-         B     @PROLOG
-         DC    AL1(16)
-         DC    CL16'IKT3270I  84.045'
-         DROP  R15                         IKT3270I
-@PROLOG  STM   R14,R12,12(R13)             SAVE REGS
-         BALR  R5,0                        ADDRESS SET
-         USING *,R5
-         USING PSA,0
-         L     R12,PSAAOLD                 PSA REFERENCE
-         L     R12,ASCBTSB-ASCB(,R12)
-         L     R7,TSBEXTNT-TSB(,R12)
-         L     R9,TSBXTVWA-TSBX(,R7)
-         USING TVWA,R9
-         L     R6,TVWATIMW                 TIM WORK AREA ADDRESS
-         CLI   TSBPRMR-TSB(R12),0          FIELD POPULATED?     ZP60009
-         BE    ROWSOKAY                    NO, PHYSLNNO OKAY    ZP60009
-         MVC   2319(1,R6),TSBPRMR-TSB(R12) YES, USE REAL DEPTH  ZP60009
-         TM    TVWAFLG6,X'01'              CHECK TVWAALTS       ZP60009
-         BNO   ROWSOKAY                    USE PRIMARY DEPTH    ZP60009
-         MVC   2319(1,R6),TSBALTR-TSB(R12) USE ALTERNATE DEPTH  ZP60009
-ROWSOKAY EQU   *                           PHYSLNNO NOW SET     ZP60009
-*  TIMLNNO = MAX(2,MIN(TSBLNNO,PHYSLNNO));                 /*@ZA13627*/
-         SLR   R8,R8
-         IC    R8,TSBLNNO-TSB(,R12)
-         L     R7,2316(,R6)                PHYSLNNO
-         CR    R8,R7
-         BNH   A000042
-         LR    R8,R7
-A000042  LA    R7,2
-         CR    R8,R7
-         BNL   A00004E
-         LR    R8,R7
-A00004E  ST    R8,2312(,R6)                TIMLNNO
-         TM    4(R12),X'08'
-         BNO   A000096
-         LA    R12,2348
-         LR    R8,R6
-         ALR   R8,R12
-         CLC   48(4,R8),FW1500
-         BH    A000076
-         ALR   R12,R6
-         TM    18(R12),X'C0'
-         BZ    A00007E
-A000076  OI    448(R6),X'02'
-         B     A000096
-A00007E  OI    448(R6),X'40'
-         NI    448(R6),X'FD'
-         NI    TVWAFLG4,255-TVWANOFB
-         NI    TVWAFLG2,255-TVWABKMG
-         MVI   TVWATQL1,0
-         MVI   TVWATQL2,0
-A000096  TM    TVWAFLG2,TVWAPGN
-         BNZ   A0002D4
-         LA    R12,2348
-         ALR   R12,R6
-         TM    16(R12),X'08'
-         BNO   A0000B0
-         BAL   R14,ASCITRAN                PERFORM
-*        /************************************************************/
-*        /*  THE FOLLOWING CODE CHECKS THE AVAILIBILITY OF A USER    */
-*        /*  EXIT. IF THE ADDRESS OF IKTIDSX2 IS NOT ZERO, THEN THE  */
-*        /*  USER IS GIVEN CONTROL WITH REG0 CONTAINING THE ADDRESS  */
-*        /*  OF THE DATA TO BE SCANNED AND REG1 CONTAINING THE       */
-*        /*  LENGTH OF THAT DATA.                                    */
-*        /************************************************************/
-A0000B0  L     R12,IKTIDSX2
-         LTR   R12,R12
-         BZ    A0000F2
-         LA    R12,2348
-         LR    R8,R6
-         ALR   R8,R12
-         L     R0,32(,R8)
-         LA    R8,1500
-         ALR   R12,R6
-         C     R8,48(,R12)
-         BNL   A0000DA
-         LR    R1,R8
-         B     A0000E4
-A0000DA  LA    R12,2348
-         ALR   R12,R6
-         L     R1,48(,R12)
-A0000E4  LR    R2,R13
-         LA    R13,2216(,R6)
-         L     R15,IKTIDSX2
-         BALR  R14,R15                     STD LINKAGE
-         LR    R13,R2
-*/********************************************************************/
-*/*    AT THIS POINT THE INPUT DATA HAS BEEN TRANSLATED IF NECESSARY */
-*/*    NOW THE DATA WILL BE SCANNED FOR INPUT LINE DELIMITERS.       */
-*/*            THE DATA WILL BE BROKEN INTO LINE SEGMENTS AND        */
-*/*    PLACED ON THE INPUT QUEUE.                                    */
-*/********************************************************************/
-*
-*        /************************************************************/
-*        /* THIS CODE WILL HELP TOM IN THE PLACEMENT OF THE NEXT     */
-*        /* ATTRIBUTE BYTE WHEN VTIOC IS DOING THE SCREEN MANAGEMENT */
-*        /************************************************************/
-A0000F2  TM    448(R6),X'02'
-         BNZ   A000106
-         TM    TVWAFLG5,TVWASCAN
-         BNO   A000106
-         OI    TVWAFLG4,TVWADARC
-A000106  LA    R12,2348
-         LR    R8,R6
-         ALR   R8,R12
-         L     R4,32(,R8)
-         SLR   R8,R8
-         ST    R8,2136(,R6)
-         ST    R8,2144(,R6)
-         LA    R8,1500
-         ALR   R12,R6
-         C     R8,48(,R12)
-         BNL   A000132
-         ST    R8,2120(,R6)
-         B     A000140
-A000132  LA    R12,2348
-         ALR   R12,R6
-         L     R12,48(,R12)
-         ST    R12,2120(,R6)
-A000140  TM    448(R6),X'02'
-         BNZ   A00014C
-         BAL   R14,HEADPROC                PERFORM
-         EJECT
-*      /**************************************************************/
-*      /*  NOW THE DATA WILL BE SCANNED FOR THE LINE LENGTH          */
-*      /*  WHEN THE LINE LENGTH IS FOUND, THE DATA WILL BE PUT ON    */
-*      /*  THE INPUT QUEUE PRECEDED BY THE HEADER INFORMATION.       */
-*      /*  SINCE DATA CAN ONLY BE SCANNED IN 256 BYTE LENGTHS,       */
-*      /*  THIS VALUE WILL BE USED WHEN THE REMAINING DATA EXCEEDS   */
-*      /*  THE 256 BYTE MAXIMUM.                                     */
-*      /**************************************************************/
-A00014C  NI    448(R6),X'7F'
-         SLR   R1,R1
-         ST    R4,2140(,R6)
-A000156  LA    R12,256
-         L     R8,2120(,R6)
-         SL    R8,2136(,R6)
-         CR    R8,R12
-         BNH   A000170
-         ST    R12,2148(,R6)
-         B     A00017C
-A000170  L     R12,2120(,R6)
-         SL    R12,2136(,R6)
-         ST    R12,2148(,R6)
-A00017C  L     R12,2148(,R6)
-         LTR   R12,R12
-         BNP   NODELIM
-         L     R12,PSAAOLD                 PSA REFERENCE        ZP60009
-         L     R12,ASCBTSB-ASCB(,R12)                           ZP60009
-         TM    TSBFLG5-TSB(R12),TSBNEDIT   IN NOEDIT MODE?      ZP60009
-         BO    NODELIM                     YES, FIELD MARK OKAY ZP60009
-         L     R3,2148(,R6)
-         BCTR  R3,0
-         EX    R3,A00098A
-         BC    8,NODELIM
-         OI    448(R6),X'80'
-         LR    R12,R1
-         SLR   R12,R4
-         LR    R8,R12
-         AL    R8,2144(,R6)
-         ST    R8,2144(,R6)
-         ST    R12,2148(,R6)
-         B     DELIM
-NODELIM  L     R12,2148(,R6)
-         AL    R12,2144(,R6)
-         ST    R12,2144(,R6)
-DELIM    L     R12,2148(,R6)
-         ALR   R4,R12
-         AL    R12,2136(,R6)
-         ST    R12,2136(,R6)
-         TM    448(R6),X'80'
-         BO    A0001DA
-         CLC   2136(4,R6),2120(R6)
-         BNE   A000156
-*         /***********************************************************/
-*         /* THIS MARKS THE END OF THE DO WHILE TO SCAN FOR DELIMITER*/
-*         /* EITHER A DELIMITER WAS FOUND OR ALL THE DATA IN THE     */
-*         /* BUFFER WAS PROCESSED.                                   */
-*         /***********************************************************/
-A0001DA  TM    448(R6),X'80'
-         BNO   A00023C
-         TM    437(R6),X'20'
-         BNO   A0001EE
-         OI    448(R6),X'01'
-A0001EE  OI    437(R6),X'80'
-         NI    437(R6),X'DF'
-         TM    448(R6),X'01'
-         BNZ   A000214
-         LH    R12,450(,R6)
-         LR    R8,R12
-         AL    R8,2144(,R6)
-         STH   R8,434(,R6)
-         STC   R12,438(,R6)
-         B     A000220
-A000214  L     R12,2144(,R6)
-         STH   R12,434(,R6)
-         MVI   438(R6),X'00'
-A000220  CLI   0(R4),X'1E'
-         BNE   A000234
-         L     R12,PSAAOLD                 PSA REFERENCE        ZP60009
-         L     R12,ASCBTSB-ASCB(,R12)                           ZP60009
-         TM    TSBFLG5-TSB(R12),TSBNEDIT   IN NOEDIT MODE?      ZP60009
-         BO    A000234                     YES, FIELD MARK OKAY ZP60009
-         LA    R12,1
-         AL    R12,2136(,R6)
-         ST    R12,2136(,R6)
-A000234  BAL   R14,ADDEL                   PERFORM
-         B     A0002B0
-A00023C  TM    437(R6),X'20'
-         BNO   A000248
-         OI    448(R6),X'01'
-A000248  TM    448(R6),X'01'
-         BNZ   A000266
-         LH    R12,450(,R6)
-         LR    R8,R12
-         AL    R8,2144(,R6)
-         STH   R8,434(,R6)
-         STC   R12,438(,R6)
-         B     A000272
-A000266  MVI   438(R6),X'00'
-         L     R12,2144(,R6)
-         STH   R12,434(,R6)
-A000272  LA    R12,2348
-         LR    R8,R6
-         ALR   R8,R12
-         L     R8,48(,R8)
-         C     R8,2120(,R6)
-         BH    A000290
-         ALR   R12,R6
-         TM    18(R12),X'C0'
-         BZ    A0002A4
-A000290  L     R12,2120(,R6)
-         ST    R12,2136(,R6)
-         OI    437(R6),X'20'
-         NI    437(R6),X'7F'
-         B     A0002AC
-A0002A4  OI    437(R6),X'80'
-         NI    437(R6),X'DF'
-A0002AC  BAL   R14,ADDEL                   PERFORM
-A0002B0  LA    R12,2348
-         ALR   R12,R6
-         L     R4,32(,R12)
-         AL    R4,2136(,R6)
-         CLC   2136(4,R6),2120(R6)
-         BE    A0002D0
-         TM    448(R6),X'10'
-         BNO   A00014C
-A0002D0  B     A00033C
-A0002D4  OI    448(R6),X'10'
-         LA    R12,2348
-         ALR   R12,R6
-         L     R12,48(,R12)
-         LA    R8,1500
-         CR    R12,R8
-         BNH   A0002EE
-         LR    R12,R8
-A0002EE  ST    R12,2120(,R6)
-         MVI   432(R6),X'01'
-         MVI   438(R6),X'00'
-         OI    437(R6),X'80'
-         NI    437(R6),X'DF'
-         MVC   434(2,R6),HW1
-         LR    R2,R13
-         LA    R12,428(,R6)
-         ST    R12,404(,R6)
-         LA    R1,404(,R6)
-         LA    R13,2216(,R6)
-         L     R12,CVTPTR                  CVT ADDRESS
-         L     R12,CVTTCASP-CVT(,R12)
-         L     R15,TCASIQM-TCAST(,R12)
-         BALR  R14,R15                     STD LINKAGE
-         LR    R13,R2
-         CLI   433(R6),X'01'
-         BNE   A00033C
-         L     R12,428(,R6)
-         MVC   0(1,R12),TVWARSHW
-*      /**************************************************************/
-*      /*  AT THIS POINT THE INPUT DATA STREAM HAS BEEN SCANNED AND  */
-*      /*  EITHER ALL THE AVAILABLE DATA HAS BEEN PUT ON THE INPUT Q */
-*      /*  OR WE HAVE FALLEN THROUGH THE PROCESS LOOP DUE TO AN ERROR*/
-*      /*  THE FIRST CHECK MADE IS TO DETERMINE IF ALL THE PROCESSING*/
-*      /*  WAS SUCCESSFUL.                                           */
-*      /**************************************************************/
-A00033C  TM    448(R6),X'10'
-         BNZ   A00038C
-         LA    R12,2348
-         LR    R8,R6
-         ALR   R8,R12
-         L     R8,48(,R8)
-         C     R8,2120(,R6)
-         BH    A000362
-         ALR   R12,R6
-         TM    18(R12),X'C0'
-         BZ    A00036A
-A000362  OI    448(R6),X'02'
-         B     A0003CA
-A00036A  NI    448(R6),X'FD'
-         NI    TVWAFLG4,255-TVWANOFB
-*               IF TVWALNCT > TIMLNNO THEN                 /*@ZA13627*/
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         C     R12,2312(,R6)
-         BNH   A000388
-         MVI   TVWALNCT,1                  TVWALNCT=1
-         OI    TVWAFLG4,TVWAFMSC
-A000388  B     A0003CA
-A00038C  LA    R12,2348
-         LR    R8,R6
-         ALR   R8,R12
-         L     R8,48(,R8)
-         C     R8,2120(,R6)
-         BH    A0003AA
-         ALR   R12,R6
-         TM    18(R12),X'C0'
-         BZ    A0003B2
-A0003AA  OI    448(R6),X'02'
-         B     A0003B6
-A0003B2  NI    448(R6),X'FD'
-A0003B6  NI    TVWAFLG4,255-TVWANOFB
-         NI    TVWAFLG2,255-TVWABKMG
-         MVI   TVWATQL1,0
-         MVI   TVWATQL2,0
-         OI    448(R6),X'40'
-A0003CA  TM    448(R6),X'10'
-         BNZ   A0003DA
-         TM    448(R6),X'02'
-         BO    A000414
-A0003DA  L     R12,PSAAOLD                 PSA REFERENCE
-         L     R12,ASCBTSB-ASCB(,R12)
-         TM    41(R12),X'40'
-         BNO   A000414
-         LR    R2,R13
-         LA    R0,8
-         L     R1,A0009CC
-         LA    R13,2048
-         L     R12,CVTPTR                  CVT ADDRESS
-         L     R12,CVTABEND-CVT(,R12)
-         L     R15,SCVTSTAT-SCVTSECT(,R12)
-         BALR  R14,R15                     STD LINKAGE
-         LR    R13,R2
-         L     R12,PSAAOLD                 PSA REFERENCE
-         L     R12,ASCBTSB-ASCB(,R12)
-         NI    41(R12),X'BF'
-A000414  LM    R14,R12,12(R13)             RESTORE REGS
-         BR    R14                         EXIT
-         EJECT
-*         /***********************************************************/
-*         /* THE FOLLOWING CODE WILL CONVERT THE DATA IN THE INPUT   */
-*         /* BUFFER FROM ASCII TO EBCDIC. THE LENGTH OF THE DATA     */
-*         /* TO BE CONVERTED CAN NOT EXCEED THE BUFFER SIZE, EVEN    */
-*         /* THOUGH RPLBUFL MAY INDICATE THAT ADDITIONAL DATA IS     */
-*         /* WAITING TO BE RECEIVED. THE DATA WILL BE CONVERTED IN   */
-*         /* 256 BYTE INCREMENTS UNTIL REMAINING DATA IS LESS THAN   */
-*         /* 256 BYTES.                                              */
-*         /* COUNT WILL CONTAIN THE LENGTH TO  BE TRANSLATED         */
-*         /* VALUE WILL BE USED TO SUBSTRING THE TRANSLATE INSTRUCT  */
-*         /***********************************************************/
-ASCITRAN LA    R15,2348
-         ALR   R15,R6
-         L     R15,48(,R15)
-         C     R15,FW1500
-         BH    A000434
-         ST    R15,2120(,R6)
-         B     A00043A
-A000434  MVC   2120(4,R6),FW1500
-A00043A  NI    448(R6),X'FB'
-         LA    R15,2348
-         ALR   R15,R6
-         L     R4,32(,R15)
-         B     A000486
-A00044C  LA    R15,256
-         L     R12,2120(,R6)
-         CR    R12,R15
-         BNH   A000468
-         ST    R15,2148(,R6)
-         SLR   R12,R15
-         ST    R12,2120(,R6)
-         B     A000474
-A000468  L     R15,2120(,R6)
-         ST    R15,2148(,R6)
-         OI    448(R6),X'04'
-A000474  L     R15,2148(,R6)
-         BCTR  R15,0
-         L     R12,TVWAATBI
-         EX    R15,A000990
-         AL    R4,2148(,R6)
-A000486  TM    448(R6),X'04'
-         BZ    A00044C
-         BR    R14                         EXIT ASCITRAN
-         EJECT
-*         /***********************************************************/
-*         /* THE SAME PROCESS THAT WAS FOLLOWED FOR ASCII TRANSLATION*/
-*         /* WILL BE FOLLOWED FOR USER TABLE TRANSLATION             */
-*         /***********************************************************/
-USERTRAN L     R15,2320(,R6)
-         L     R3,2140(,R6)
-         ALR   R3,R15
-         LCR   R15,R15
-         AL    R15,2144(,R6)
-         ST    R15,2124(,R6)
-         NI    448(R6),X'FB'
-         LTR   R15,R15
-         BP    A0004B2
-         OI    448(R6),X'04'
-A0004B2  B     A000556
-A0004B6  SLR   R1,R1
-         SLR   R2,R2
-         LA    R15,256
-         L     R12,2124(,R6)
-         CR    R12,R15
-         BNH   A0004D6
-         ST    R15,2148(,R6)
-         SLR   R12,R15
-         ST    R12,2124(,R6)
-         B     A0004E4
-A0004D6  L     R15,2124(,R6)
-         ST    R15,2148(,R6)
-         SLR   R15,R15
-         ST    R15,2124(,R6)
-A0004E4  L     R15,2148(,R6)
-         BCTR  R15,0
-         EX    R15,A000996
-         LTR   R2,R2
-         BZ    A00050C
-         SLR   R1,R3
-         LR    R15,R1
-         ALR   R15,R2
-         LCR   R15,R15
-         AL    R15,2148(,R6)
-         AL    R15,2124(,R6)
-         ST    R15,2124(,R6)
-         ST    R1,2148(,R6)
-A00050C  SLR   R15,R15
-         L     R12,2124(,R6)
-         CR    R12,R15
-         BH    A000526
-         LPR   R12,R12
-         ST    R12,2320(,R6)
-         ST    R15,2124(,R6)
-         OI    448(R6),X'04'
-A000526  L     R15,2148(,R6)
-         LTR   R15,R15
-         BZ    A00053E
-         L     R15,2148(,R6)
-         BCTR  R15,0
-         L     R12,TVWATABI
-         EX    R15,A00099C
-A00053E  LTR   R2,R2
-         BNZ   A00054C
-         AL    R3,2148(,R6)
-         B     A000556
-A00054C  LR    R15,R3
-         AL    R15,2148(,R6)
-         ALR   R15,R2
-         LR    R3,R15
-A000556  TM    448(R6),X'04'
-         BZ    A0004B6
-         BR    R14                         EXIT USERTRAN
-         EJECT
-*        /************************************************************/
-*        /*  CHECK THAT THIS WAS THE PRIMARY RECEIVE TO GET THE DATA */
-*        /*  IF REC2FLG=1 THEN A SUBSEQUENT RECEIVE WAS NEEDED       */
-*        /*  TO RECEIVE ALL THE DATA FROM THE TERMINAL.              */
-*        /************************************************************/
-HEADPROC SLR   R15,R15
-         STH   R15,450(,R6)
-         L     R15,2120(,R6)
-         C     R15,FW3
-         BNL   A00058C
-         LR    R12,R15
-         BCTR  R12,0
-         EX    R12,A0009A2
-         STH   R15,450(,R6)
-         ALR   R4,R15
-         AL    R15,2136(,R6)
-         ST    R15,2136(,R6)
-         B     A0005AA
-A00058C  MVC   452(3,R6),0(R4)
-         LA    R15,3
-         LH    R12,450(,R6)
-         ALR   R12,R15
-         STH   R12,450(,R6)
-         ALR   R4,R15
-         AL    R15,2136(,R6)
-         ST    R15,2136(,R6)
-A0005AA  L     R15,2136(,R6)
-         C     R15,2120(,R6)
-         BNL   A0005DA
-         CLI   0(R4),X'11'
-         BNE   A0005DA
-         MVC   455(3,R6),0(R4)
-         LA    R12,3
-         LH    R8,450(,R6)
-         ALR   R8,R12
-         STH   R8,450(,R6)
-         ALR   R4,R12
-         ALR   R15,R12
-         ST    R15,2136(,R6)
-A0005DA  BR    R14                         EXIT HEADPROC
-         EJECT
-*/********************************************************************/
-*/*    THE ADDEL ROUTINE IS CALLED TO PLACE INCOMING DATA FROM THE   */
-*/*    TERMINAL ON THE INPUT QUEUE, ONE LINE AT A TIME.              */
-*/*    NOADDEL IS CHECKED TO SEE IF THE DATA SHOULD BE ADDED TO THE  */
-*/*    QUEUE, LINE PROMPTING IS HANDLED, AND THE RETURN CODE FROM    */
-*/*    THE QUEUE MANAGER IS CHECKED TO ASSURE A SUCCESSFUL ADD.      */
-*/********************************************************************/
-ADDEL    ST    R14,2288(,R6)
-         L     R12,PSAAOLD                 PSA REFERENCE
-         L     R12,ASCBTSB-ASCB(,R12)
-         TM    TSBFLG2-TSB(R12),TSBAUTON
-         BNO   A000640
-         LH    R8,434(,R6)
-         CH    R8,450(,R6)
-         BH    A00061C
-         TM    437(R6),X'20'
-         BNZ   A00061C
-         TM    448(R6),X'01'
-         BNZ   A00061C
-         NI    437(R6),X'BF'
-         NI    16(R12),X'BF'
-         NI    TVWAFLG1,255-TVWAULK
-         B     A000640
-A00061C  L     R12,PSAAOLD                 PSA REFERENCE
-         L     R12,ASCBTSB-ASCB(,R12)
-         TM    16(R12),X'10'
-         BNO   A00063C
-         TM    437(R6),X'20'
-         BNZ   A00063C
-         OI    437(R6),X'40'
-         B     A000640
-A00063C  NI    437(R6),X'BF'
-A000640  MVI   432(R6),X'01'
-         LR    R2,R13
-         LA    R12,428(,R6)
-         ST    R12,404(,R6)
-         LA    R1,404(,R6)
-         LA    R13,2216(,R6)
-         L     R12,CVTPTR                  CVT ADDRESS
-         L     R12,CVTTCASP-CVT(,R12)
-         L     R15,TCASIQM-TCAST(,R12)
-         BALR  R14,R15                     STD LINKAGE
-         LR    R13,R2
-         NI    448(R6),X'FE'
-         CLI   433(R6),X'01'
-         BNE   A00071C
-         CLI   438(R6),X'00'
-         BNH   A00068A
-         L     R12,428(,R6)
-         SLR   R8,R8
-         IC    R8,438(,R6)
-         BCTR  R8,0
-         EX    R8,A0009A8
-A00068A  L     R12,2144(,R6)
-         LTR   R12,R12
-         BNP   A0006B6
-         TM    TVWAFLG3,TVWATRAN
-         BNO   A0006A0
-         BAL   R14,USERTRAN                PERFORM
-A0006A0  SLR   R0,R0
-         IC    R0,438(,R6)
-         AL    R0,428(,R6)
-         L     R1,2144(,R6)
-         L     R2,2140(,R6)
-         LR    R3,R1
-         MVCL  R0,R2
-A0006B6  NI    448(R6),X'EF'
-         L     R12,PSAAOLD                 PSA REFERENCE
-         L     R12,ASCBTSB-ASCB(,R12)
-         TM    16(R12),X'40'
-         BNO   A0006FA
-         TM    16(R12),X'10'
-         BNO   A0006EE
-         TM    437(R6),X'20'
-         BNZ   A0006EA
-         L     R8,48(,R12)
-         AL    R8,52(,R12)
-         ST    R8,48(,R12)
-         OI    16(R12),X'04'
-A0006EA  B     A0006FA
-A0006EE  L     R12,PSAAOLD                 PSA REFERENCE
-         L     R12,ASCBTSB-ASCB(,R12)
-         OI    16(R12),X'04'
-A0006FA  TM    TVWAFLG5,TVWAFSM
-         BNO   A000714
-         TM    TVWAFLG5,TVWAWO
-         BNZ   A000714
-         SLR   R12,R12
-         ST    R12,2144(,R6)
-         B     A000724
-A000714  BAL   R14,LINECNT                 PERFORM
-         B     A000724
-A00071C  OI    448(R6),X'10'
-         OI    TVWAFLG2,TVWAERMG
-A000724  L     R14,2288(,R6)
-         BR    R14                         EXIT ADDEL
-         EJECT
-* /*******************************************************************/
-* /*  LINECNT IS THE ROUTINE THAT WILL RECEIVE CONTROL WHEN FULL     */
-* /*  SCREEN MODE IS NOT IN EFFECT. THE INPUT LINES WILL BE INCRE-   */
-* /*  MENTED AS DATA IS RECEIVED. IF THE BYPASS FLAG IS NOT ON, THE  */
-* /*  LINE COUNT IS CHECKED AND WHEN WE HAVE REACHED THE LAST TWO    */
-* /*  LINES OF DATA ON THE SCREEN, THE DATA WILL BE SAVED AND FLASHED*/
-* /*  BACK TO THE TERMINAL USER, EXCEPT IN FULLSCREEN  PROCESSING    */
-* /*******************************************************************/
-LINECNT  L     R15,PSAAOLD                 PSA REFERENCE
-         L     R15,ASCBTSB-ASCB(,R15)
-         L     R15,TSBEXTNT-TSB(,R15)
-         CLC   74(2,R15),HW480
-         BNE   A00074A
-         MVC   2128(4,R6),FW40
-         B     A000750
-A00074A  MVC   2128(4,R6),FW80
-         CLI   TSBPRMC-TSB(R15),0          FIELD POPULATED?     ZP60009
-         BE    A000750                     NO                   ZP60009
-         MVC   2131(1,R6),TSBPRMC-TSB(R15) YES, USE REAL WIDTH  ZP60009
-         TM    TVWAFLG6,X'01'              CHECK TVWAALTS       ZP60009
-         BNO   A000750                     USE PRIMARY WIDTH    ZP60009
-         MVC   2131(1,R6),TSBALTC-TSB(R15) USE ALTERNATE WIDTH  ZP60009
-*  /******************************************************************/
-*  /*  THE FOLLOWING CODE WILL PROCESS THE DATA IF THE LINE NUMBER   */
-*  /*  IS LESS THAN THE NEXT TO LAST LINE ON THE SCREEN OR IF THE    */
-*  /*  BYPASS FLAG IS ON.                                            */
-*  /******************************************************************/
-*
-*    IF TVWALNCT < (TIMLNNO-1)   TVWANOFB='1'B   DATALINE=0
-*       TVWAFLSC='1'B THEN                                 /*@ZA13627*/
-A000750  L     R15,2312(,R6)
-         BCTR  R15,0
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         CR    R15,R12
-         BH    A00077C
-         TM    TVWAFLG4,TVWANOFB
-         BO    A00077C
-         L     R15,2144(,R6)
-         LTR   R15,R15
-         BZ    A00077C
-         TM    TVWAFLG4,TVWAFLSC
-         BNO   A000812
-A00077C  L     R15,PSAAOLD                 PSA REFERENCE
-         L     R15,ASCBTSB-ASCB(,R15)
-         TM    16(R15),X'04'
-         BNZ   A000792
-         SLR   R15,R15
-         STH   R15,TVWANCNT
-A000792  L     R15,2144(,R6)
-         L     R12,2132(,R6)
-         LR    R8,R15
-         ALR   R8,R12
-         LH    R7,TVWANCNT
-         ALR   R8,R7
-         L     R11,2128(,R6)
-         CR    R8,R11
-         BNH   A0007DE
-         ALR   R15,R7
-         SLR   R11,R12
-         SLR   R15,R11
-         ST    R15,2144(,R6)
-         AL    R11,2140(,R6)
-         ST    R11,2140(,R6)
-         LA    R15,1
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         ALR   R15,R12
-         STC   R15,TVWALNCT
-         SLR   R15,R15
-         ST    R15,2132(,R6)
-         STH   R15,TVWANCNT
-         B     A000812
-A0007DE  TM    437(R6),X'20'
-         BNZ   A000800
-         SLR   R15,R15
-         ST    R15,2132(,R6)
-         LA    R15,1
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         ALR   R15,R12
-         STC   R15,TVWALNCT
-         B     A00080C
-A000800  L     R15,2132(,R6)
-         AL    R15,2144(,R6)
-         ST    R15,2132(,R6)
-A00080C  SLR   R15,R15
-         ST    R15,2144(,R6)
-*        /************************************************************/
-*        /*  AT THIS POINT A CHECK IS MADE TO SEE IF WE ARE PROCESS- */
-*        /*  ING THE NEXT TO LAST LINE OF THE SCREEN AND FLASHBACK   */
-*        /*  IS PERMITTED. THE INPUT DATA WILL BE SAVED IN THE FIRST */
-*        /*  FLASHBACK BUFFER TO BE RETURNED TO THE TERMINAL USER.   */
-*        /************************************************************/
-*
-*        IF TVWALNCT=TIMLNNO-1 & TVWANOFB='0'B & DATALINE>0 THEN
-A000812  L     R15,2312(,R6)
-         BCTR  R15,0
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         CR    R15,R12
-         BNE   A000896
-         TM    TVWAFLG4,TVWANOFB
-         BNZ   A000896
-         L     R15,2144(,R6)
-         LTR   R15,R15
-         BNP   A000896
-         L     R12,2128(,R6)
-         CR    R15,R12
-         BNH   A000848
-         ST    R12,2148(,R6)
-         B     A000850
-A000848  L     R15,2144(,R6)
-         ST    R15,2148(,R6)
-A000850  L     R15,2148(,R6)
-         LR    R12,R15
-         BCTR  R12,0
-         L     R8,2140(,R6)
-         EX    R12,A0009AE
-         ALR   R8,R15
-         ST    R8,2140(,R6)
-         L     R12,2144(,R6)
-         SLR   R12,R15
-         ST    R12,2144(,R6)
-         STC   R15,TVWATQL1
-         TM    437(R6),X'20'
-         BZ    A000882
-         LTR   R12,R12
-         BNP   A000896
-A000882  LA    R15,1
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         ALR   R15,R12
-         STC   R15,TVWALNCT
-         OI    TVWAFLG2,TVWABKMG
-*        /************************************************************/
-*        /*  THE NEXT BLOCK OF CODE WILL BUILD THE DATA FLASHBACK    */
-*        /*  WHEN THE LINECOUNT EQUALS OR EXCEEDS THE LAST SCREEN    */
-*        /*  LINE AND THE BYPASS FLAG IS NOT SET ON.                 */
-*        /************************************************************/
-A000896  SLR   R15,R15
-         IC    R15,TVWALNCT
-         C     R15,2312(,R6)
-         BL    A00096E
-         TM    TVWAFLG4,TVWANOFB
-         BNZ   A00096E
-         L     R15,2144(,R6)
-         LTR   R15,R15
-         BNP   A00096E
-*            /********************************************************/
-*            /* ALL FOLLOWING CONDITIONS INDICATE MORE THAN 1 LINE   */
-*            /* WILL BE FLASHED BACK TO THE USER.                    */
-*            /********************************************************/
-         C     R15,2128(,R6)
-         BH    A0008D2
-         L     R15,2136(,R6)
-         C     R15,2120(,R6)
-         BL    A0008D2
-         TM    437(R6),X'20'
-         BNO   A000940
-A0008D2  L     R15,2128(,R6)
-         C     R15,2144(,R6)
-         BNL   A0008E6
-         ST    R15,2148(,R6)
-         B     A0008EE
-A0008E6  L     R15,2144(,R6)
-         ST    R15,2148(,R6)
-A0008EE  L     R15,2148(,R6)
-         LR    R12,R15
-         BCTR  R12,0
-         L     R8,2140(,R6)
-         EX    R12,A0009AE
-         L     R12,2144(,R6)
-         SLR   R12,R15
-         ST    R12,2144(,R6)
-         STC   R15,TVWATQL1
-         ALR   R8,R15
-         ST    R8,2140(,R6)
-         TM    437(R6),X'20'
-         BZ    A000920
-         LTR   R12,R12
-         BNP   A000938
-A000920  LA    R15,1
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         ALR   R15,R12
-         STC   R15,TVWALNCT
-         OI    TVWAFLG2,TVWABKMG
-         B     A00096E
-A000938  NI    TVWAFLG2,255-TVWABKMG
-         B     A00096E
-A000940  L     R15,2144(,R6)
-         LR    R12,R15
-         BCTR  R12,0
-         L     R8,2140(,R6)
-         EX    R12,A0009B4
-         STC   R15,TVWATQL2
-         OI    TVWAFLG2,TVWABKMG
-         SLR   R15,R15
-         ST    R15,2144(,R6)
-         LA    R15,1
-         SLR   R12,R12
-         IC    R12,TVWALNCT
-         ALR   R15,R12
-         STC   R15,TVWALNCT
-A00096E  L     R15,2144(,R6)
-         LTR   R15,R15
-         BP    A000750
-         TM    TVWAFLG2,TVWABKMG
-         BNO   A000984
-         OI    448(R6),X'40'
-A000984  BR    R14                         EXIT LINECNT
-HW1      DC    H'1'
-HW480    DC    H'480'
-A00098A  TRT   0(0,R4),NEWLINE
-A000990  TR    0(0,R4),0(R12)
-A000996  TRT   0(0,R3),SBATAB
-A00099C  TR    0(0,R3),0(R12)
-A0009A2  MVC   452(0,R6),0(R4)
-A0009A8  MVC   0(0,R12),452(R6)
-A0009AE  MVC   458(0,R6),0(R8)
-A0009B4  MVC   538(0,R6),0(R8)
-FW3      DC    F'3'
-FW40     DC    F'40'
-FW80     DC    F'80'
-FW1500   DC    F'1500'
-A0009CC  EQU   *
-         DC    X'80000000'
-         DC    X'07004190'
-         DC    F'0'
-IKTIDSX2 DC    V(IKTIDSX2)
-         DC    X'00509509'
-         DS    0D
-NEWLINE  DC    30X'00'
-         DC    X'1E'
-         DC    225X'00'
-SBATAB   DC    17AL1(0)
-         DC    AL1(3)
-         DC    12AL1(0)
-         DC    AL1(1)
-         DC    225AL1(0)
-PATCH    DC    20F'0'
-         EJECT
-R0       EQU   0                           EQUATES FOR REGISTERS 0-15
-R1       EQU   1
-R2       EQU   2
-R3       EQU   3
-R4       EQU   4
-R5       EQU   5
-R6       EQU   6
-R7       EQU   7
-R8       EQU   8
-R9       EQU   9
-R10      EQU   10
-R11      EQU   11
-R12      EQU   12
-R13      EQU   13
-R14      EQU   14
-R15      EQU   15
-         SPACE
-         PRINT NOGEN
-         IHAPSA
-         CVT   DSECT=YES
-         IHASCVT
-         IHAASCB
-         IKJTSB EXT=YES
-         IKTTVWA
-         IKTTCAST
-         END   IKT3270I,(C'PLS1824',0702,84045)
-/*
-//*
-//STEP11  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKT3270I('ZP60009')
-++MOD(IKT09412) DISTLIB(AOST3).
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP12  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
-         TITLE '********  IKT09412:  STFSMODE - TERMINAL CONTROL MACRO *
-                 *******'
-*
-*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
-*            TO HANDLE NOEDIT INPUT MODE AND RESHOW CODES UP TO 24
-*
-IKT09412 CSECT ,                                                   0001
-@MAINENT BALR  R15,0                                               0001
-         USING *,R15                                               0001
-         B     @PROLOG                                             0001
-         DC    AL1(16)                                             0001
-         DC    C'IKT09412  82.015'                                 0001
-         DROP  R15
-@PROLOG  BALR  R12,0                                               0001
-@PSTART  DS    0H                                                  0001
-         USING @PSTART,R12                                         0001
-         USING TSB,R5
-*        /************************************************************/
-*        /* SAVE REGISTER 1.  CLEAR RESHOW KEY VALUE IN      @G58AK3B*/
-*        /* RIGHT-MOST BYTE OF REGISTER 1.                   @G58AK3B*/
-*        /************************************************************/
-*        R6 = R1;                      /*SAVE REGISTER 1     @G58AK3B*/
-         LR    R6,R1                                               0024
-*        SRL(R1,SHIFT8);               /*SHIFT OUT RSHWKEY   @G58AK3B*/
-         SLR   R7,R7                                               0025
-         IC    R7,SHIFT8                                           0025
-         SRL   R1,0(R7)                                            0025
-*        SLL(R1,SHIFT8);               /*REALIGN REGISTER 1  @G58AK3B*/
-*                                                                  0026
-         SLL   R1,0(R7)                                            0026
-*        /************************************************************/
-*        /*                                                          */
-*        /* SHIFT OUT PARAMETER BIT. IF REMAINING BITS ARE NOT ZERO  */
-*        /* RETURN CODE 4 IS ISSUED.                                 */
-*        /*                                                          */
-*        /************************************************************/
-*        SLDL(R0,SHIFT3);              /*SHIFT OUT PARM BITS  OZ11997*/
-         SLR   R7,R7                                               0027
-         IC    R7,SHIFT3                                           0027
-         SLDL  R0,0(R7)                                            0027
-*        IF R1 ^= 0 THEN               /*INVALID - RETURN CODE 4     */
-         LTR   R1,R1                                               0028
-         BZ    @RF00028                                            0028
-*          R15 = CODE04;                                           0029
-         LA    R15,4                                               0029
-*        ELSE                                                      0030
-*          /**********************************************************/
-*          /*                                                        */
-*          /* IF THE TERMINAL IS NOT A DISPLAY TERMINAL, THE INVALID */
-*          /* TERMINAL IS NOTED WITH RETURN CODE 8                   */
-*          /*                                                        */
-*          /**********************************************************/
-*          IF TSBDSPLY = '0'B THEN                                 0030
-         B     @RC00028                                            0030
-@RF00028 TM    TSBSTAT,TSBDSPLY                                    0030
-         BNZ   @RF00030                                            0030
-*            R15 = CODE08;                                         0031
-         LA    R15,8                                               0031
-*          ELSE                                                    0032
-*            /********************************************************/
-*            /*                                                      */
-*            /* THE PARAMETER BIT IS RESTORED. FULLSCREEN MODE WILL  */
-*            /* BE SET OFF OR ON BASED ON THE PARAMETER BIT.         */
-*            /*                                                      */
-*            /********************************************************/
-*            DO;                                                   0032
-         B     @RC00030                                            0032
-@RF00030 DS    0H                                                  0033
-*              SRDL(R0,SHIFT3);        /*RESTORE PARM BITS    OZ11997*/
-         SLR   R7,R7                                               0033
-         IC    R7,SHIFT3                                           0033
-         SRDL  R0,0(R7)                                            0033
-*              R15 = CODE00;           /*SET GOOD RETURN CODE        */
-         SLR   R15,R15                                             0034
-*              IF R1 >=0 THEN          /*LOOK FOR MODE OFF    OZ11997*/
-         LTR   R1,R1                                               0035
-         BM    @RF00035                                            0035
-*                /****************************************************/
-*                /*                                                  */
-*                /* TURN OFF FULL SCREEN MODE INDICATORS             */
-*                /*                                                  */
-*                /****************************************************/
-*                DO;                                               0036
-         L     R7,TSBEXTNT                                         0037
-         L     R7,TSBXTVWA-TSBX(,R7)                               0037
-         USING TVWA,R7
-         TM    TVWAFLG5,TVWAFSM            ALREADY IN LINE MODE?
-         BNO   LINECTOK                    YES
-         TM    TVWAFLG5,TVWAWO+TVWAFSW     LINE MODE MSG ON SHOW?
-         BNZ   LINECTOK                    YES
-*                  TVWALNCT = 1;       /*SET LINE COUNTER    @YM03603*/
-         MVI   TVWALNCT,1                                          0037
-*                  TVWAFSM = '0'B;     /*FULL SCREEN MODE BIT        */
-*                  TVWAWO  = '0'B;     /*FULL SCREEN WRITTEN OVER    */
-*                  TVWAFSW = '0'B;     /*FULL SCREEN WAITING         */
-LINECTOK NI    TVWAFLG5,255-TVWAFSM-TVWAWO-TVWAFSW                 0040
-         OI    TVWAFLG4,TVWAFMSC           FORMAT THE SCREEN
-         NI    TSBFLG5,255-TSBNEDIT        RESET NOEDIT INPUT ZP60009
-*                  /**************************************************/
-*                  /* WHENEVER STFSMODE IS OFF, THE RESHOW   @G58AK3B*/
-*                  /* KEY DEFAULTS TO THE PA2 KEY.           @G58AK3B*/
-*                  /**************************************************/
-*                  TVWARSHW = PA2;     /*RESET RESHOW KEY    @G58AK3B*/
-         MVI   TVWARSHW,X'6E'                                      0041
-*                END;                                              0042
-*              ELSE                                                0043
-*                /****************************************************/
-*                /*                                                  */
-*                /* TURN ON FULL SCREEN MODE INDICATOR               */
-*                /*                                                  */
-*                /****************************************************/
-*                DO;                                               0043
-         B     @RC00035                                            0043
-@RF00035 DS    0H                                                  0044
-*                  TVWAFSM = '1'B;     /*FULL SCREEN MODE BIT        */
-         L     R7,TSBEXTNT                                         0044
-         L     R7,TSBXTVWA-TSBX(,R7)                               0044
-         OI    TVWAFLG5,TVWAFSM                                    0044
-*                  SLL(R1,SHIFT1);     /*SHIFT OUT MODE BIT   OZ11997*/
-         SLR   R4,R4                                               0045
-         IC    R4,SHIFT1                                           0045
-         SLL   R1,0(R4)                                            0045
-*                  IF R1 < 0 THEN      /*LOOK FOR INITIAL CALLOZ11997*/
-         LTR   R1,R1                                               0046
-         BNM   @RF00046                                    ZP60009 0046
-*                    TVWANFSP = '1'B;  /*SET NO FULL SCR PAGE OZ11997*/
-         OI    TVWAFLG5,TVWANFSP                                   0047
-*                  ELSE                                            0048
-*                    TVWANFSP = '0'B;  /*ALLOW FULL SCR PAGE  OZ11997*/
-         B     NOEDCHEK                                    ZP60009 0048
-@RF00046 L     R7,TSBEXTNT                                         0048
-         L     R7,TSBXTVWA-TSBX(,R7)                               0048
-         NI    TVWAFLG5,255-TVWANFSP                               0048
-*                  SLL(R1,SHIFT1);     /*SHIFT OUT INITIAL BIT       */
-NOEDCHEK SLR   R4,R4                                       ZP60009
-         IC    R4,SHIFT1                                   ZP60009
-         SLL   R1,0(R4)                                    ZP60009
-*                  IF R1 ^= 0 THEN     /*LOOK FOR NOEDIT CALL ZP60009*/
-         LTR   R1,R1                                       ZP60009
-         BZ    @RC00046                                    ZP60009
-*                    TSBNEDIT = '1'B;  /*SET NOEDIT INPUT MODEZP60009*/
-         OI    TSBFLG5,TSBNEDIT                            ZP60009
-*                  /**************************************************/
-*                  /* THE RSHWKEY VALUE IS FOUND IN THE      @G58AK3B*/
-*                  /* RIGHT-MOST BYTE OF THE REGISTER.       @G58AK3B*/
-*                  /**************************************************/
-*                  SLL(R6,SHIFT24); /*ISOLATE RESHOW         @G58AK3B*/
-@RC00046 SLR   R7,R7                                               0049
-         IC    R7,SHIFT24                                          0049
-         SLL   R6,0(R7)                                            0049
-*                  SRL(R6,SHIFT24);    /*IN RIGHT-MOST BYTE  @G58AK3B*/
-         SRL   R6,0(R7)                                            0050
-*                  /**************************************************/
-*                  /* WHEN STFSMODE IS ON AND A RSHWKEY HAS  @G58AK3B*/
-*                  /* BEEN SPECIFIED, THE SPECIFIED RSHWKEY  @G58AK3B*/
-*                  /* BECOMES THE RESHOW KEY.                @G58AK3B*/
-*                  /* WHEN STFSMODE IS ON BUT RSHWKEY HAS    @G58AK3B*/
-*                  /* NOT BEEN SPECIFIED, THE RESHOW KEY IS  @G58AK3B*/
-*                  /* NOT CHANGED.                           @G58AK3B*/
-*                  /**************************************************/
-*                  IF RSHWKEY ^= ZERO  /*RSHWKEY SPECIFIED?  @ZM20757*/
-*                  THEN                /*RSHWKEY SPECIFIED   @G58AK3B*/
-         LTR   R6,R6                                               0051
-         BZ    @RF00051                                            0051
-         LA    R7,25                                       ZP60009
-         CR    R6,R7
-         BNL   @RF00051
-*                    TVWARSHW = KEYS(RSHWKEY); /* SET RSHWKEY@G58AK3B*/
-         L     R7,TSBEXTNT                                         0052
-         L     R7,TSBXTVWA-TSBX(,R7)                               0052
-         LA    R4,KEYS-1(R6)                                       0052
-         MVC   TVWARSHW,0(R4)                                      0052
-*                  ELSE;               /*RSHWKEY NOT SPECIFD @G58AK3B*/
-@RF00051 DS    0H                                                  0054
-*                END;                                              0054
-*            END;                      /*END OF MODE PROCESSING      */
-*        END IKT09412                                              0056
-*/* THE FOLLOWING INCLUDE STATEMENTS WERE FOUND IN THIS PROGRAM.      *
-*/*%INCLUDE SYSLIB  (IKJTSB  )                                        *
-*/*%INCLUDE SYSLIB  (IKTTSBX )                                        *
-*/*%INCLUDE SYSLIB  (IKTTVWA )                                        *
-*;                                                                 0056
-@EL00001 DS    0H                                                  0056
-@EF00001 DS    0H                                                  0056
-@ER00001 BR    R14                                                 0056
-@DATA    DS    0H
-@DATD    DSECT
-         DS    0F
-IKT09412 CSECT
-         DS    0F
-@DATD    DSECT
-         DS    0D
-         ORG   *+1-(*-@DATD)/(*-@DATD) INSURE DSECT DATA
-@ENDDATD EQU   *
-IKT09412 CSECT
-         DS    0F
-@SIZDATD DC    AL1(0)
-         DC    AL3(@ENDDATD-@DATD)
-         DS    0D
-SHIFT1   DC    AL1(1)
-SHIFT3   DC    AL1(3)
-SHIFT8   DC    AL1(8)
-SHIFT24  DC    AL1(24)
-PATCH    DS    CL50
-KEYS     DC    CL1'1'
-         DC    CL1'2'
-         DC    CL1'3'
-         DC    CL1'4'
-         DC    CL1'5'
-         DC    CL1'6'
-         DC    CL1'7'
-         DC    CL1'8'
-         DC    CL1'9'
-         DC    CL1':'
-         DC    CL1'#'
-         DC    CL1'@'
-         DC    CL1'A'                                           ZP60009
-         DC    CL1'B'                                           ZP60009
-         DC    CL1'C'                                           ZP60009
-         DC    CL1'D'                                           ZP60009
-         DC    CL1'E'                                           ZP60009
-         DC    CL1'F'                                           ZP60009
-         DC    CL1'G'                                           ZP60009
-         DC    CL1'H'                                           ZP60009
-         DC    CL1'I'                                           ZP60009
-         DC    XL1'4A'                 CENT SIGN                ZP60009
-         DC    CL1'.'                                           ZP60009
-         DC    CL1'<'                                           ZP60009
-R0       EQU   00                      EQUATES FOR REGISTERS 0-15
-R1       EQU   01
-R2       EQU   02
-R3       EQU   03
-R4       EQU   04
-R5       EQU   05
-R6       EQU   06
-R7       EQU   07
-R8       EQU   08
-R9       EQU   09
-R10      EQU   10
-R11      EQU   11
-R12      EQU   12
-R13      EQU   13
-R14      EQU   14
-R15      EQU   15
-@RC00030 EQU   @EL00001
-@RC00028 EQU   @EL00001
-@RC00035 EQU   @EL00001
-@ENDDATA EQU   *
-         PRINT NOGEN                                            ZP60009
-         IKJTSB EXT=YES                                         ZP60009
-         IKTTVWA                                                ZP60009
-         PRINT GEN                                              ZP60009
-         END   IKT09412,(C'PLS2204',0702,82015)
-/*
-//*
-//STEP13  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKT09412('ZP60009')
-++MOD(IKT09413) DISTLIB(AOST3).
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP14  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
-         TITLE '******** IKT09413:  STLINENO - TERMINAL CONTROL MACRO  *
-                ********'
-*
-*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
-*
-IKT09413 CSECT ,                                                   0001
-@MAINENT BALR  R15,0                                               0001
-         USING *,R15                                               0001
-         B     @PROLOG                                             0001
-         DC    AL1(16)                                             0001
-         DC    C'IKT09413  83.318'                                 0001
-         DROP  R15
-@PROLOG  BALR  R12,0                                               0001
-@PSTART  DS    0H                                                  0001
-         USING @PSTART,R12                                         0001
-         USING TSB,R5
-*        /************************************************************/
-*        /*                                                          */
-*        /* SHIFT OUT PARAMETERS FROM INPUT REG.  IF ANY REMAINING   */
-*        /* BITS ARE NOT ZERO, ERROR RETURN CODE 4 IS ISSUED.        */
-*        /*                                                          */
-*        /************************************************************/
-*        R2 = R1;                      /*MOVE PARM REG TO WORK REG   */
-         LR    R2,R1                                               0025
-*        SLL(R2,SHIFT1);               /*SHIFT OUT MODE BIT          */
-         SLR   R10,R10                                             0026
-         IC    R10,SHIFT1                                          0026
-         SLL   R2,0(R10)                                           0026
-*        SRL(R2,SHIFT9);               /*SHIFT OUT LINE NUMBER       */
-         SLR   R10,R10                                             0027
-         IC    R10,SHIFT9                                          0027
-         SRL   R2,0(R10)                                           0027
-*        IF R2 ^= 0 THEN                                           0028
-         LTR   R2,R2                                               0028
-         BZ    @RF00028                                            0028
-*          R15 = CODE04;                                           0029
-         LA    R15,4                                               0029
-*        ELSE                                                      0030
-*          /**********************************************************/
-*          /*                                                        */
-*          /* IF THE TERMINAL IN USE IS NOT A DISPLAY TERMINAL, THE  */
-*          /* RETURN CODE IS SET TO 8.                               */
-*          /*                                                        */
-*          /**********************************************************/
-*          IF TSBDSPLY = '0'B THEN                                 0030
-         B     @RC00028                                            0030
-@RF00028 TM    TSBSTAT,TSBDSPLY                                    0030
-         BNZ   @RF00030                                            0030
-*            R15 = CODE08;                                         0031
-         LA    R15,8                                               0031
-*          ELSE                                                    0032
-*            /********************************************************/
-*            /*                                                      */
-*            /* THE LINE NUMBER SPECIFIED MUST BE GREATER THAN ZERO  */
-*            /* AND NO LARGER THAN THE MAX ALLOWED NUMBER OF LINES   */
-*            /* FOR THE TERMINAL IN USE. INVALID LINE NUMBER IS NOTED*/
-*            /* WITH RETURN CODE 12.                                 */
-*            /*                                                      */
-*            /********************************************************/
-*            DO;                                                   0032
-         B     @RC00030                                            0032
-@RF00030 DS    0H                                                  0033
-*              R2 = R1;                /*SAVE PARM WITH MODE BIT   0033
-*                                        INTACT.                     */
-         LR    R2,R1                                               0033
-*              SLL(R1,SHIFT1);         /*SHIFT OUT MODE BIT          */
-         SLR   R10,R10                                             0034
-         IC    R10,SHIFT1                                          0034
-         SLL   R1,0(R10)                                           0034
-*              SRL(R1,SHIFT1);         /*RESTORE LINE NUMBER         */
-         SRL   R1,0(R10)                                           0035
-*              IF R1 = 0 THEN          /*ZERO LINE NUMBER IS INVALID */
-         LTR   R1,R1                                               0036
-         BNZ   @RF00036                                            0036
-*                R15 = CODE12;                                     0037
-         LA    R15,12                                              0037
-*              ELSE                                                0038
-*                /****************************************************/
-*                /*                                                  */
-*                /* IF LINE NUMBER IS NOT TOO LARGE, LINNOPROC IS    */
-*                /* CALLED TO SET THE LINE NUMBER AND PERFORM MODE   */
-*                /* PROCESSING.                                      */
-*                /*                                                  */
-*                /****************************************************/
-*                                                                  0038
-*                IF TSBXTMBF = LGSCREEN THEN /*LOOK FOR LARGE SCREEN */
-         B     @RC00036                                            0038
-@RF00036 L     R10,TSBEXTNT                                        0038
-         CLC   TSBXTMBF-TSBX(2,R10),HW1920                         0038
-*ZP60009 BNE   @RF00038                                            0038
-         BL    @RF00038                    ASSUME <MOD2 => MOD1 ZP60009
-*                  IF R1 > MAXLNLG THEN /*TOO LARGE, SET R15 */
-         LA    R11,24                      DEFAULT LINE COUNT   ZP60009
-         CLI   TSBPRMR,0                   FIELD POPULATED?     ZP60009
-         BE    ROWSOKAY                    NO, TREAT AS MODEL-2 ZP60009
-         IC    R11,TSBPRMR                 YES, USE IT INSTEAD  ZP60009
-         L     R3,TSBXTVWA-TSBX(,R10)      POINT TO TVWA        ZP60009
-         USING TVWA,R3                                          ZP60009
-         TM    TVWAFLG6,X'01'              IS TVWAALTS ON?      ZP60009
-         BNO   ROWSOKAY                    NO, USE PRIMARY SIZE ZP60009
-         IC    R11,TSBALTR                 USE ALTERNATE SIZE   ZP60009
-ROWSOKAY CLR   R1,R11                      LARGER THAN MAXIMUM? ZP60009
-*ZP60009 CL    R1,FW24                                             0039
-         BNH   @RF00039                                            0039
-*                    R15 = CODE12;                                 0040
-         LA    R15,12                                              0040
-*                  ELSE                     /*OK, CALL LNNOPROC      */
-*                    GEN (BAL R11,LNNOPROC)                        0041
-*                       SETS (R11) REFS (LNNOPROC);                0041
-         B     @RC00039                                            0041
-@RF00039 DS    0H                                                  0041
-         BAL   R11,LNNOPROC
-*                ELSE                       /*MUST BE SMALL SCREEN   */
-*                  IF R1 > MAXLNSM THEN /*TOO LARGE, SET R15 */
-         B     @RC00038                                            0042
-@RF00038 LA    R10,12                                              0042
-         CLR   R1,R10                                              0042
-         BNH   @RF00042                                            0042
-*                    R15 = CODE12;                                 0043
-         LR    R15,R10                                             0043
-*                  ELSE                     /*OK, CALL LNNOPROC      */
-*                    GEN (BAL R11,LNNOPROC)                        0044
-*                       SETS (R11) REFS (LNNOPROC);                0044
-         B     @RC00042                                            0044
-@RF00042 DS    0H                                                  0044
-         BAL   R11,LNNOPROC
-*            END;                                                  0045
-*        RETURN;                                           /*@ZM20487*/
-@EL00001 DS    0H                                                  0046
-@EF00001 DS    0H                                                  0046
-@ER00001 BR    R14                                                 0046
-*        /************************************************************/
-*        /*                                                          */
-*        /* LNNOPROC: STORES LINE NUMBER IN TVWALNCT.  SETS FULL     */
-*        /*           SCREEN MODE ON OR OFF BASED ON THE MODE BIT    */
-*        /*           IN PARAMETER REGISTER 1.                       */
-*        /*                                                          */
-*        /************************************************************/
-*LNNOPROC:                                                         0047
-*        R3 = TSBXTVWA;                /*GET ADDRES OF TVWA          */
-LNNOPROC L     R10,TSBEXTNT                                        0047
-         L     R3,TSBXTVWA-TSBX(,R10)                              0047
-*        RFY TVWA BASED(R3);           /*REBASE TVWA                 */
-*        GEN (STCM R1,1,TVWALNCT(R3))                              0049
-*           REFS (R1) SETS (TVWALNCT); /*STORE LINE NUM IN TVWA      */
-         STCM  R1,1,TVWALNCT
-*        IF R2 < 0 THEN                /*HIGH ORDER BIT ON?          */
-         LTR   R2,R2                                               0050
-         BNM   @RF00050                                            0050
-*          DO;                                                     0051
-*            TVWAFSM = '1'B;           /*YES-SET FULL SCREEN MODE ON */
-         OI    TVWAFLG5,TVWAFSM                                    0052
-*          END;                                                    0053
-*        ELSE                          /*HIGH ORDER BIT OFF          */
-*          DO;                         /*TURN OFF FULL SCR MODE INDIC*/
-         B     @RC00050                                            0054
-@RF00050 DS    0H                                                  0055
-*            TVWAFSM = '0'B;           /*FULL SCREEN MODE            */
-*            TVWAWO  = '0'B;           /*FULL SCREEN WRITTEN OVER    */
-*            TVWAFSW = '0'B;           /*FULL SCREEN TPUT WAITING    */
-         NI    TVWAFLG5,255-TVWAFSM-TVWAWO-TVWAFSW                 0057
-         NI    TSBFLG5,255-TSBNEDIT    /*EDIT INPUT          ZP60009 */
-*          IF TVWALNCT = 1 THEN        /*IS LINENO 1?        AZ74745 */
-         CLI   TVWALNCT,1
-         BNE   @RC00050
-*            TVWAFMSC = '1'B;          /*YES-FORMAT SCREEN   AZ74745 */
-         OI    TVWAFLG4,TVWAFMSC                                   0057
-*          END;                                                    0058
-*        /************************************************************/
-*        /*                                                          */
-*        /* RETURN TO MAINLINE WITH RETURN CODE 0                    */
-*        /*                                                          */
-*        /************************************************************/
-*        R15 = CODE00;                 /*SET GOOD RETURN CODE        */
-@RC00050 SLR   R15,R15                                             0059
-*        GEN (BR R11)                                              0060
-*           REFS (R11);                /*RETURN TO MAINLINE          */
-         BR    R11
-*        END   IKT09413                                            0061
-*/* THE FOLLOWING INCLUDE STATEMENTS WERE FOUND IN THIS PROGRAM.      *
-*/*%INCLUDE SYSLIB  (IKJTSB  )                                        *
-*/*%INCLUDE SYSLIB  (IKTTSBX )                                        *
-*/*%INCLUDE SYSLIB  (IKTTVWA )                                        *
-*;                                                                 0061
-         B     @EL00001                                            0061
-@DATA    DS    0H
-HW1920   DC    H'1920'
-*ZP60009 @DATD    DSECT
-*ZP60009          DS    0F
-*ZP60009 IKT09413 CSECT
-*ZP60009          DS    0F
-*ZP60009 FW24     DC    F'24'
-@DATD    DSECT
-         DS    0D
-         ORG   *+1-(*-@DATD)/(*-@DATD) INSURE DSECT DATA
-@ENDDATD EQU   *
-IKT09413 CSECT
-         DS    0F
-@SIZDATD DC    AL1(0)
-         DC    AL3(@ENDDATD-@DATD)
-         DS    0D
-SHIFT1   DC    AL1(1)
-SHIFT9   DC    AL1(9)
-         DS    CL2
-PATCH    DC    15F'0'
-R0       EQU   00                      EQUATES FOR REGISTERS 0-15
-R1       EQU   01
-R2       EQU   02
-R3       EQU   03
-R4       EQU   04
-R5       EQU   05
-R6       EQU   06
-R7       EQU   07
-R8       EQU   08
-R9       EQU   09
-R10      EQU   10
-R11      EQU   11
-R12      EQU   12
-R13      EQU   13
-R14      EQU   14
-R15      EQU   15
-@RC00030 EQU   @EL00001
-@RC00028 EQU   @EL00001
-@RC00042 EQU   @EL00001
-@RC00038 EQU   @EL00001
-@RC00036 EQU   @EL00001
-@RC00039 EQU   @RC00038
-@ENDDATA EQU   *
-         PRINT NOGEN                                            ZP60009
-         IKJTSB EXT=YES                                         ZP60009
-         IKTTVWA                                                ZP60009
-         PRINT GEN                                              ZP60009
-         END   IKT09413,(C'PLS1932',0702,83318)
-/*
-//*
-//STEP15  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKT09413('ZP60009')
-++MOD(IKT0940A) DISTLIB(AOST3).
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP16  EXEC PGM=IFOX00,PARM='OBJECT,NODECK,NOTERM,XREF(SHORT),RENT'
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT2   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSUT3   DD  UNIT=SYSALLDA,SPACE=(CYL,10)
-//SYSLIB   DD  DSN=SYS1.MACLIB,DISP=SHR
-//         DD  DSN=SYS1.SMPMTS,DISP=SHR
-//         DD  DSN=SYS1.AMODGEN,DISP=SHR
-//SYSGO    DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  *
-         TITLE '******** IKT0940A:    STSIZE  - TERMINAL CONTROL MACRO *
-                 *******'
-*
-*   MODIFIED BY GREG PRICE JANUARY 2003 FOR USERMOD ZP60009
-*
-IKT0940A CSECT ,                                                   0001
-@MAINENT BALR  R15,0                                               0001
-         USING *,R15                                               0001
-         B     @PROLOG                                             0001
-         DC    AL1(16)                                             0001
-         DC    C'IKT0940A  77.319'                                 0001
-         DROP  R15
-@PROLOG  BALR  R12,0                                               0001
-@PSTART  DS    0H                                                  0001
-         USING @PSTART,R12                                         0001
-         USING TSB,R5
-*        R2 = R0;                      /*COPY REGISTERS              */
-         LR    R2,R0                                               0027
-*        R3 = R1;                                                  0028
-         LR    R3,R1                                               0028
-*        SLL(R2,SHIFT8);               /*SHIFT OUT ENTRY CODE        */
-         SLR   R10,R10                                             0029
-         IC    R10,SHIFT8                                          0029
-         SLL   R2,0(R10)                                           0029
-*        SRL(R2,SHIFT16);              /*SHIFT OUT LINE PARM         */
-         SLR   R4,R4                                               0030
-         IC    R4,SHIFT16                                          0030
-         SRL   R2,0(R4)                                            0030
-*        SRL(R3,SHIFT8);               /*SHIFT OUT SIZE PARM         */
-*                                                                  0031
-         SRL   R3,0(R10)                                           0031
-*        IF R2 ^= 0       R3 ^= 0                                  0032
-*        THEN                                                      0032
-         SLR   R10,R10                                             0032
-         CLR   R2,R10                                              0032
-         BNE   @RT00032                                            0032
-         CLR   R3,R10                                              0032
-         BE    @RF00032                                            0032
-@RT00032 DS    0H                                                  0033
-*          R15 = CODE04;                                           0033
-         LA    R15,4                                               0033
-*        ELSE                                                      0034
-*                                                                  0034
-*          /**********************************************************/
-*          /*                                                        */
-*          /* THE SIZE PARAMETER IN R1 IS REQUIRED WHENEVER          */
-*          /* STSIZE IS INVOKED. IF R1 IS ZERO, THE RETURN CODE      */
-*          /* IS SET TO 8.                                           */
-*          /*                                                        */
-*          /**********************************************************/
-*                                                                  0034
-*          IF R1 = 0                                               0034
-*          THEN                                                    0034
-         B     @RC00032                                            0034
-@RF00032 LTR   R1,R1                                               0034
-         BNZ   @RF00034                                            0034
-*            R15 = CODE08;                                         0035
-         LA    R15,8                                               0035
-*          ELSE                                                    0036
-*                                                                  0036
-*            /********************************************************/
-*            /*                                                      */
-*            /* SHIFT OUT ENTRY CODE FROM R0 AND ACQUIRE THE         */
-*            /* KEY OF THE TSB CREATOR (TCAS).                       */
-*            /*                                                      */
-*            /********************************************************/
-*                                                                  0036
-*STSZPROC:   DO;                                                   0036
-         B     @RC00034                                            0036
-@RF00034 DS    0H                                                  0036
-STSZPROC DS    0H                                                  0037
-*              GEN(MODESET KEYADDR=TCASKEY,WORKREG=2)              0037
-*                  REFS(TCASKEY) SETS(R2);/*GET TCAS KEY             */
-         MODESET KEYADDR=TCASKEY,WORKREG=2
-*              SLL(R0,SHIFT8);         /*SHIFT OUT ENTRY CODE        */
-         SLR   R10,R10                                             0038
-         IC    R10,SHIFT8                                          0038
-         SLL   R0,0(R10)                                           0038
-*              SRL(R0,SHIFT8);                                     0039
-*                                                                  0039
-         SRL   R0,0(R10)                                           0039
-*              /******************************************************/
-*              /*                                                    */
-*              /* IF THE TERMINAL IN USE IS A DISPLAY AND THE LINE   */
-*               /* PARAMETER WAS NOT SPECIFIED, THE RETURN CODE IS   */
-*              /* SET TO 8.                                          */
-*              /*                                                    */
-*              /******************************************************/
-*                                                                  0040
-*              IF TSBDSPLY = '1'B                                  0040
-*              THEN                                                0040
-*                                                                  0040
-         TM    TSBSTAT,TSBDSPLY                                    0040
-         BNO   @RF00040                                            0040
-*                IF R0 = 0                                         0041
-*                THEN                                              0041
-         LTR   R0,R0                                               0041
-         BNZ   @RF00041                                            0041
-*                  R15 = CODE08;                                   0042
-         LA    R15,8                                               0042
-*                ELSE                                              0043
-*                                                                  0043
-*                  /**************************************************/
-*                  /*                                                */
-*                  /* THE DISPROC ROUTINE IS INVOKED TO UPDATE THE   */
-*                  /* TSB AND VERIFY THE SCREEN DIMENSIONS AS        */
-*                  /* STANDARD.                                      */
-*                  /*                                                */
-*                  /**************************************************/
-*                                                                  0043
-*                  GEN(BAL R11,DISPROC)                            0043
-*                      REFS(DISPROC) SETS(R11);                    0043
-*                                                                  0043
-         B     @RC00041                                            0043
-@RF00041 DS    0H                                                  0043
-         BAL   R11,DISPROC
-*              ELSE                                                0044
-*                                                                  0044
-*                /****************************************************/
-*                /*                                                  */
-*                /* IF THE TERMINAL IN USE IS NOT A DISPLAY AND THE  */
-*                /* LINE PARAMETER WAS SPECIFIED, THE RETURN CODE IS */
-*                /* SET TO 8.                                        */
-*                /*                                                  */
-*                /****************************************************/
-*                                                                  0044
-*                IF R0 ^= 0                                        0044
-*                THEN                                              0044
-         B     @RC00040                                            0044
-@RF00040 LTR   R0,R0                                               0044
-         BZ    @RF00044                                            0044
-*                  R15 = CODE08;                                   0045
-         LA    R15,8                                               0045
-*                ELSE                                              0046
-*                                                                  0046
-*                  /**************************************************/
-*                  /*                                                */
-*                  /* SET VALUE OF SIZE IN TSB AND SET GOOD          */
-*                  /* RETURN CODE                                    */
-*                  /*                                                */
-*                  /**************************************************/
-*                                                                  0046
-*                  DO;                                             0046
-         B     @RC00044                                            0046
-@RF00044 DS    0H                                                  0047
-*                    TSBLNSZ = R1;                                 0047
-         STC   R1,TSBLNSZ                                          0047
-*                    R15 = CODE00;                                 0048
-         SLR   R15,R15                                             0048
-*                  END;                                            0049
-*                                                                  0049
-*            GEN(MODESET EXTKEY=SUPR); /*RETURN TO SUPR KEY          */
-*                                                                  0050
-@RC00044 DS    0H                                                  0050
-@RC00040 DS    0H                                                  0050
-         MODESET EXTKEY=SUPR
-*            END STSZPROC;                                         0051
-*        RETURN;                                           /*@ZM20487*/
-@EL00001 DS    0H                                                  0052
-@EF00001 DS    0H                                                  0052
-@ER00001 BR    R14                                                 0052
-*        /************************************************************/
-*        /*                                                          */
-*        /* DISPROC IS INVOKED VIA A 'BAL' FROM THE MAINLINE. THIS   */
-*        /* ROUTINE SETS THE FIELDS IN THE TSB TO INDICATE THE       */
-*        /* SPECIFIED SCREEN DIMENSIONS, AND CHECKS THE DIMENSION    */
-*        /* AGAINST KNOWN STANDARDS. NON-STANDARD DIMENSIONS ARE     */
-*        /* ALLOWED, BUT CAUSE THE RETURN CODE TO BE SET TO 12.      */
-*        /*                                                          */
-*        /************************************************************/
-*                                                                  0053
-*DISPROC:                                                          0053
-*                                                                  0053
-*        TSBLNSZ = R1;                 /*MOVE IN LINE SIZE           */
-DISPROC  STC   R1,TSBLNSZ                                          0053
-*        TSBLNNO = R0;                 /*MOVE IN NUMBER OF LINES     */
-         STC   R0,TSBLNNO                                          0054
-*        TVWAXSCD = '1'B;              /*EXAM SCR DIMEN SW   @G58AK3A*/
-*                                                                  0055
-         L     R10,TSBEXTNT                                        0055
-         L     R10,TSBXTVWA-TSBX(,R10)                             0055
-         USING TVWA,R10
-         OI    TVWAFLG1,TVWAXSCD                                   0055
-*        /***********************************************************/
-*        /*                                                         */
-*        /* NEW LOGIC FOR USERMOD ZP60009 IS TO CHECK THE NEW       */
-*        /* DIMENSIONS AGAINST THE PRIMARY AND ALTERNATE SCREEN     */
-*        /* SIZES.  A MATCH TO EITHER IS CONSIDERED TO MEAN THAT    */
-*        /* A STANDARD SIZE WAS SPECIFIED NO MATTER WHAT THE        */
-*        /* VALUES HAPPEN TO BE.                                    */
-*        /*                                                         */
-*        /* NO MATCH CAUSES THE ORIGINAL LOGIC TO BE USED.          */
-*        /*                                                         */
-*        /***********************************************************/
-         CLM   R0,1,TSBPRMR                PRIMARY LINES?       ZP60009
-         BNE   ALTCHECK                    NO                   ZP60009
-         CLM   R1,1,TSBPRMC                PRIMARY COLUMNS?     ZP60009
-         BE    @RT00056                    YES, IT IS STANDARD  ZP60009
-ALTCHECK CLM   R0,1,TSBALTR                ALTERNATE LINES?     ZP60009
-         BNE   STDCHECK                    NO                   ZP60009
-         CLM   R1,1,TSBALTC                ALTERNATE COLUMNS?   ZP60009
-         BE    @RT00056                    YES, IT IS STANDARD  ZP60009
-STDCHECK EQU   *                                                ZP60009
-*        /***********************************************************/
-*        /*                                                         */
-*        /* STANDARD SIZES FOR 3270 DISPLAYS ARE 24X80 AND 12X40.   */
-*        /* IF A STANDARD SIZE WAS SPECIFIED, RETURN CODE IS 0. IF  */
-*        /* NON-STANDARD SIZE WAS SPECIFIED, RETURN CODE IS 12. NO  */
-*        /* OTHER DISPLAYS ARE SUPPORTED BY TSO/VTAM.               */
-*        /*                                                         */
-*        /***********************************************************/
-*                                                                  0056
-*        IF (TSBLNNO = LENGTH1 & TSBLNSZ = WIDTH1)                 0056
-*           (TSBLNNO = LENGTH2 & TSBLNSZ = WIDTH2)       /*        0056
-*                                      WAS STANDARD SIZE GIVEN      */
-*        THEN                                                      0056
-         CLI   TSBLNNO,24                                          0056
-         BNE   @GL00002                                            0056
-         CLI   TSBLNSZ,80                                          0056
-         BE    @RT00056                                            0056
-@GL00002 CLI   TSBLNNO,12                                          0056
-         BNE   @RF00056                                            0056
-         CLI   TSBLNSZ,40                                          0056
-         BNE   @RF00056                                            0056
-@RT00056 DS    0H                                                  0057
-*          R15 = CODE00;               /*YES - STANDARD SIZE        */
-         SLR   R15,R15                                             0057
-*        ELSE                                                      0058
-*          R15 = CODE12;               /*NO - NON STANDARD SIZE     */
-*                                                                  0058
-         B     @RC00056                                            0058
-@RF00056 LA    R15,12                                              0058
-*        /***********************************************************/
-*        /*                                                         */
-*        /* RETURN TO MAINLINE                                      */
-*        /*                                                         */
-*        /***********************************************************/
-*                                                                  0059
-*        GEN(BR R11)                                               0059
-*            REFS(R11);                                            0059
-@RC00056 DS    0H                                                  0059
-         BR    R11
-*        END IKT0940A                                              0060
-*/* THE FOLLOWING INCLUDE STATEMENTS WERE FOUND IN THIS PROGRAM.      *
-*/*%INCLUDE SYSLIB  (IKJTSB  )                                        *
-*/*%INCLUDE SYSLIB  (IKTTSBX )                                        *
-*/*%INCLUDE SYSLIB  (IKTTVWA )                                        *
-*;                                                                 0060
-         B     @EL00001                                            0060
-@DATA    DS    0H
-@DATD    DSECT
-         DS    0F
-@ZTEMPS  DS    C
-@ZTEMPND EQU   *
-@ZLEN    EQU   @ZTEMPND-@ZTEMPS
-IKT0940A CSECT
-         DS    0F
-@DATD    DSECT
-         DS    0D
-         ORG   *+1-(*-@DATD)/(*-@DATD) INSURE DSECT DATA
-@ENDDATD EQU   *
-IKT0940A CSECT
-         DS    0F
-@SIZDATD DC    AL1(0)
-         DC    AL3(@ENDDATD-@DATD)
-         DS    0D
-SHIFT8   DC    AL1(8)
-SHIFT16  DC    AL1(16)
-TCASKEY  DC    BL1'01100000'
-         DS    CL1
-PATCH    DC    15F'0'
-R0       EQU   00                      EQUATES FOR REGISTERS 0-15
-R1       EQU   01
-R2       EQU   02
-R3       EQU   03
-R4       EQU   04
-R5       EQU   05
-R6       EQU   06
-R7       EQU   07
-R8       EQU   08
-R9       EQU   09
-R10      EQU   10
-R11      EQU   11
-R12      EQU   12
-R13      EQU   13
-R14      EQU   14
-R15      EQU   15
-@RC00041 EQU   @RC00040
-@RC00034 EQU   @EL00001
-@RC00032 EQU   @EL00001
-@ENDDATA EQU   *
-         PRINT NOGEN                                            ZP60009
-         IKJTSB EXT=YES                                         ZP60009
-         IKTTVWA                                                ZP60009
-         PRINT GEN                                              ZP60009
-         END   IKT0940A,(C'PLS2016',0701,77319)
-/*
-//*
-//STEP17  EXEC PGM=IEBGENER
-//SYSPRINT DD  SYSOUT=*
-//SYSUT1   DD  *
-  IDENTIFY IKT0940A('ZP60009')
+./ ENDUP
+??
+//ASM1     EXEC SMPASM,M=IKTVTGET,COND=(0,NE)
+//ASM2     EXEC SMPASM,M=IKTXLOG,COND=(0,NE)
+//ASM3     EXEC SMPASM,M=IKT0009D,COND=(0,NE)
+//ASM4     EXEC SMPASM,M=IKT0940A,COND=(0,NE)
+//ASM5     EXEC SMPASM,M=IKT09412,COND=(0,NE)
+//ASM6     EXEC SMPASM,M=IKT09413,COND=(0,NE)
+//ASM7     EXEC SMPASM,M=IKT3270I,COND=(0,NE)
+//ASM8     EXEC SMPASM,M=IKT3270O,COND=(0,NE)
+//RECEIVE  EXEC SMPREC,WORK='SYSALLDA',COND=(0,NE)
+//SMPPTFIN DD  DATA,DLM='??'
+++USERMOD(ZP60009)   REWORK(20221126)                      .
+++VER(Z038) FMID(ETV0108)
+  PRE(UZ35180,UZ26905,UZ67122,UZ22286,UZ55134,UZ28255,
+      UZ71054,UZ54020,UZ68882,UZ57385,UZ28016)
+ /*
+   PROBLEM DESCRIPTION:
+     THE NOEDIT OPERAND OF TPUT AND TPG IS NOT HONOURED BY TSO/VTAM.
+       THE TIOC COMMON SVC 93 ROUTINE IGC0009C CORRECTLY DETECTS THE
+       REQUEST OF NOEDIT FOR TPUT AND TPG REQUESTS, BUT THIS IS NOT
+       HANDLED PROPERLY BY TSO/VTAM.
+     THE GTTERM MACRO FUNCTION IS NOT SUPPORTED BY TSO/VTAM.
+       WHEN A TSO APPLICATION ISSUES THE GTTERM MACRO RC=4 RESULTS.
+       AN APPLICATION CANNOT DETERMINE IF THE READ PARTITION (QUERY)
+       FUNCTION IS SUPPORTED.  ALSO, THE ALTERNATE SCREEN SIZE CANNOT
+       BE DETERMINED.
+     3270 HOUSEKEEPING IS LIMITED TO MODEL-1 AND MODEL-2 SCREEN SIZES.
+       TSO WILL ONLY PERFORM LINE MODE 3270 SCREEN HOUSEKEEPING FOR
+       MODEL-1 (12 BY 40) AND MODEL-2 (24 BY 80) SCREEN SIZES.  THE
+       ALTERNATE SCREEN SIZE OF A TERMINAL CANNOT BE PROPERLY EXPLOITED
+       BY TSO LINE MODE, NOR BY TSO FULLSCREEN APPLICATIONS.
+     THE NOEDIT OPERAND OF STFSMODE IS NOT SUPPORTED BY TSO/VTAM.
+       NOEDIT INPUT MODE IS SET BY SPECIFYING NOEDIT=YES ON A
+       'STFSMODE ON' MACRO.  THIS IS NOT SUPPORTED BY TSO.  WITHOUT
+       THIS ABILITY ANY X'1E' IN INPUT DATA (INCLUDING A QUERY
+       RESPONSE, OR AN SBA ORDER FROM A SCREEN WITH MORE THAN 4096
+       LOCATIONS) WILL BE INTERPRETED AS A FIELD MARK CHARACTER AND
+       CAUSE THE DATA FOLLOWING IT TO BE HELD OVER UNTIL THE NEXT TGET
+       MACRO IS ISSUED.
+
+       THIS USERMOD CHANGES SEVERAL TSO/VTAM MODULES.
+
+       THE TSO/VTAM SVC 93 ROUTER IS CHANGED TO NOT REJECT REQUESTS
+       WITH NOEDIT SPECIFIED.
+
+       THE TSO/VTAM TPUT HANDLER IS CHANGED TO NOT TRUNCATE TRAILING
+       BLANKS FROM NOEDIT REQUESTS.  A PREVIOUSLY RESERVED BIT IS
+       USED TO FLAG NOEDIT REQUESTS, WHICH ARE ALSO FLAGGED AS
+       FULLSCREEN REQUESTS BY THE TPUT AND TPG MACROS (AND NOW ALSO
+       BY THIS MODULE).
+
+       THE TSO/VTAM TGET HANDLER IS CHANGED TO BACK OUT THE FIX FOR
+       APAR OZ60978 SHIPPED IN PTF UZ57385 TO REGRESS FUNCTIONALITY
+       TO THE UZ55134 LEVEL SO THAT TPUT MACROS ISSUED AFTER TGET
+       MACROS WITH THE NOWAIT OPERAND ARE NOT QUEUED UNTIL THERE IS
+       SOME INPUT, BUT SENT TO THE SCREEN ASYNCHRONOUSLY.  THIS HAS
+       THE EFFECT OF REINTRODUCING THE PROBLEM WHERE A TGET NOWAIT
+       DOES NOT FORCE THE KEYBOARD TO BECOME UNLOCKED, BUT THIS CAN
+       BE CIRCUMVENTED BY THE APPLICATION SETTING THE X'02' BIT IN
+       THE WCC WHEN APPROPRIATE.
+
+       THE TSO/VTAM TGET HANDLER IS ALSO CHANGED TO ADD THE TGET MACRO
+       RETURN CODES 24 AND 28 WHICH MAY BE GIVEN WHEN NOEDIT INPUT
+       MODE IS IN EFFECT, THEREBY IMPROVING COMPATIBILITY WITH TSO/E.
+
+       THE TSO/VTAM INITIALIZATION ROUTINE FOR THE TSO INPUT MANAGER
+       AND TSO OUTPUT MANAGER HAS BEEN CHANGED TO NOT REGARD TERMINALS
+       WITH BUFFER SIZES LARGER THAN 1920 BYTES AS MODEL-1 TERMINALS.
+       THIS WILL HELP AVOID LINE MODE SCREEN HANDLING ERRORS AFTER
+       LOGON RECONNECT PROCESSING.
+
+       THE TSO/VTAM LOGON RECONNECT ROUTINE HAS BEEN CHANGED TO
+       INCLUDE THE PRIMARY AND ALTERNATE SCREEN DIMENSIONS IN THE
+       DATA PERTAINING TO THE NEW TERMINAL PROPAGATED TO CONTROL
+       BLOCKS WHEN A LOGON RECONNECT IS PERFORMED, THUS ALLOWING TSO
+       APPLICATIONS TO DETECT DYNAMIC CHANGES TO THE SCREEN SIZE.
+
+       THE TSO/VTAM 3270 TERMINAL SCREEN MANAGER IS ALTERED TO SKIP
+       ANY DATA TRANSLATION FOR NOEDIT TPUTS.  FURTHER, IN KEEPING
+       WITH 3270 ARCHITECTURE DATA INTEGRITY FOR DISPLAYABLE CODE
+       POINTS (WHERE ALL CODE POINTS IN THE RANGE X'40' TO X'FE'
+       ARE CONSIDERED "DISPLAYABLE", AND REGARDLESS OF THE TERMINAL'S
+       ABILITY TO DISPLAY THE CHARACTER, WHEN SUCH A CODE POINT IS
+       WRITTEN TO THE TERMINAL, IT CAN BE READ BACK UNALTERED) ALL
+       TPUTS TO 3270 EBCDIC TERMINALS WILL NO LONGER ALTER ANY DATA
+       CODE POINTS IN THE X'40' TO X'FE' RANGE.  (THE X'40' CODE POINT
+       IS RESERVED FOR A BLANK IN ALL SINGLE-BYTE CHARACTER SETS.)
+
+       THE TSO/VTAM 3270 TERMINAL SCREEN MANAGER IS ALSO ALTERED TO
+       SUPPORT DIFFERENT PRIMARY AND ALTERNATE SCREEN SIZES OF ANY
+       SIZE SUBJECT TO THE 3270 ARCHITECTURE LIMITATIONS, AND ALSO
+       THAT THE ALTERNATE SCREEN SIZE NEVER HAS FEWER COLUMNS NOR
+       FEWER LINES THAN THE PRIMARY SCREEN SIZE.  TSO/VTAM LINE MODE
+       HOUSEKEEPING WILL NOW USE 14-BIT ADDRESSING FOR ALL BUFFER
+       LOCATIONS GREATER THAN 4095, BUT WILL STILL USE 12-BIT
+       ADDRESSING FOR LOCATIONS FROM 0 TO 4095 INCLUSIVE.  THIS
+       CHANGE HAS THE EFFECT OF INCREASING THE MAXIMUM TSO/VTAM 3270
+       SCREEN SIZE SUPPORTED FROM 4096 LOCATIONS TO 16384 LOCATIONS.
+
+       THE TSO/VTAM 3270 TERMINAL SCREEN MANAGER NOW HANDLES TPUT
+       FULLSCR DIFFERENTLY TO THE EXTENT THAT A STANDARD WRITE (X'F1')
+       WITH A NO-OP WCC (X'40') WILL NOT FORCE THE INCLUSION OF AN
+       INSERT CURSOR ORDER AS THE TPUT MAY BE SENDING AN ASYNCHRONOUS
+       PARTIAL SCREEN UPDATE WHICH DOES NOT OVERWRITE AN ACTIVE INPUT
+       AREA WHERE SOME TEXT MAY BE BEING TYPED IN.
+
+       THE TSO/VTAM 3270 INPUT DATA HANDLER HAS BEEN ALTERED TO NOT
+       PROCESS FIELD MARK CHARACTERS INPUT WHEN NOEDIT MODE IS IN
+       EFFECT.  FURTHER, THE ACTUAL NUMBER OF COLUMNS AND LINES ON
+       THE SCREEN IS USED IN LINE COUNT CALCULATIONS.
+
+       THE TSO/VTAM SVC 94 ROUTER IS ALTERED TO PASS CONTROL TO A NEW
+       CSECT FOR TSO TERMINAL CONTROL FUNCTION 17 (GTTERM).  A TSO
+       APPLICATION CAN NOW ISSUE A GTTERM MACRO TO DETERMINE IF THE
+       QUERY BIT IS ON, AND CAN GET THE DIMENSIONS OF THE PRIMARY AND
+       ALTERNATE SCREEN SIZES.  NOEDIT TPUT/TPG MACROS CAN BE USED
+       TO ISSUE WRITE STRUCTURED FIELD COMMANDS TO GAIN ACCESS TO
+       VARIOUS 3270 EXTENSIONS INCLUDING GRAPHICS.  QUERY SUPPORT IS
+       NOT NEEDED FOR A READ BUFFER COMMAND WHICH CAN NOW ALSO BE
+       ISSUED VIA A NOEDIT TPUT/TPG MACRO.  GTTERM RETURN CODES AND
+       OUTPUT IS COMPATIBLE WITH TSO/E, EXCEPT THAT THE TERMID OUTPUT
+       AREA IS CURRENTLY LIMITED TO 8 BYTES.
+
+       THE TERMINAL CONTROL MACRO ROUTINE FOR THE STFSMODE MACRO HAS
+       BEEN CHANGED TO SUPPORT THE NOEDIT OPERAND, AND RESHOW KEY CODES
+       CAN NOW BE IN THE RANGE OF FROM 1 TO 24 INCLUSIVE (REPRESENTING
+       THE VALID PFK NUMBERS).
+
+       THE TERMINAL CONTROL MACRO ROUTINE FOR THE STLINENO MACRO HAS
+       BEEN CHANGED TO SUPPORT THE SPECIFICATION OF ANY VALID LINE
+       NUMBER THAT EXISTS ON THE SCREEN.  IT HAS ALSO BEEN CHANGED TO
+       SUPPORT NOEDIT INPUT MODE.
+
+       THE TERMINAL CONTROL MACRO ROUTINE FOR THE STSIZE MACRO HAS
+       BEEN CHANGED TO INDICATE THAT ANY REQUESTED SCREEN SIZE WHICH
+       MATCHES EITHER THE PRIMARY OR ALTERNATE SIZE OF THE SCREEN IS
+       CONSIDERED A STANDARD SIZE, EVEN IF IT IS NOT THE SIZE OF A
+       MODEL-1 OR MODEL-2 SCREEN.  THIS IS DONE WITH A RETURN CODE
+       OF ZERO INSTEAD OF A RETURN CODE OF 12 WHICH INDICATES A
+       NON-STANDARD SCREEN SIZE.  (THE FLAGGING OF NON-STANDARD
+       SCREEN SIZES IS INTENDED TO WARN OF THE POSSIBILITY OF
+       SCREEN CONTROL ERRORS.)
+
+       THE MAPPING MACRO FOR THE TSO/VTAM WORK AREA IKTTVWA IS
+       UPDATED TO ADD BIT TVWAALTS WHICH IS SET WHEN THE TSO/VTAM
+       SCREEN MANAGER SETS THE SCREEN TO ITS ALTERNATE SIZE.
+       (THE MAPPING OF THIS BIT IS INCOMPATIBLE WITH TSO/E.)
+
+       THE STFSMODE TERMINAL CONTROL MACRO FOR TSO FULLSCREEN
+       APPLICATIONS HAS BEEN UPDATED TO ADD THE NOEDIT OPERAND,
+       WHICH CAN BE ASSIGNED THE VALUE OF YES OR NO.  NO IS THE
+       DEFAULT.  NOEDIT=YES IS USED TO ALLOW BYTES WITH A VALUE OF
+       X'1E' TO BE RETURNED TO AN APPLICATION AS INPUT DATA
+       FROM THE TERMINAL WITHOUT EACH SUCH BYTE BEING PROCESSED AS
+       A FIELD MARK.
+
+   SPECIAL CONDITIONS:
+     ACTION:
+       A "CLPA" MUST BE PERFORMED AT IPL TIME FOR THIS SYSMOD TO
+       BECOME ACTIVE.
+
+   COMMENTS:
+     PRYCROFT SIX P/L PUBLIC DOMAIN USERMOD FOR MVS 3.8 NUMBER 9.
+
+     REWORK HISTORY:
+       2003-02-01: INITIAL RELEASE.
+       2003-03-05: KBD (UN)LOCK ASYNC MSGS DURING NOEDIT TPUTS.
+       2003-03-30: DO NOT FORCE IC IF WRT WITH NO-OP WCC.
+       2005-08-14: DO NOT FORCE LINE-WRAP AFTER COLUMN 80.
+       2009-06-01: USE SCREEN SIZES AND QUERY BIT FROM SNA BIND.
+       2009-11-07: CHANGE IKTIIOM AND ADD IKTLOGR ZAPS FOR RECONNECT.
+       2012-04-28: IMPROVE THE INTEROPERABILITY OF TPUT NOEDIT (WITH
+                   "UNLOCK KEYBOARD" SET IN THE WCC) AND TGET NOWAIT
+                   TO MATCH THAT OF TPUT FULLSCR AND TGET NOWAIT.
+       2019-04-22: CHANGE IKTVTGET SO THAT TGET NOWAIT REQUESTS DO
+                   NOT INHIBIT WRITES TO THE TERMINAL UNTIL SOME
+                   INBOUND DATA IS FIRST RECEIVED FROM THE TERMINAL.
+                   REMOVE DEBUG CODE AND FLAGS FROM IKT3270O CSECT.
+                   REMOVE FLSCRTAB EDITING OF TPUT FULLSCR DATA.
+       2020-06-21: CHANGE IKT3270I TO FIX LINE COUNT OF INPUT WIDTH.
+       2022-11-26: FIX 2019 IKTVTGET SOURCE CODE UPDATES TO CORRECTLY
+                   IMPLEMENT THE ZAP PREVIOUSLY USED, THEREBY FIXING
+                   TPUT HOLD BEHAVIOUR.  MAKE THE CORRECT IKTVTGET
+                   SOURCE CODE CHANGES SO THAT TGET NOWAIT REQUESTS
+                   DO NOT INHIBIT WRITES TO THE TERMINAL UNTIL SOME
+                   INBOUND DATA IS FIRST RECEIVED FROM THE TERMINAL.
+
+     TSO/VTAM IS A VTAM APPLICATION.  THIS SYSMOD DOES NOT IMPLY
+     THAT VTAM CAN CORRECTLY PROCESS THE DATA THAT CAN NOW BE
+     GENERATED BY TSO APPLICATIONS, EVEN IF THE DATA CONSISTS OF
+     A PERFECTLY VALID 3270 DATA STREAM.
+
+     EVT0108 LOCAL NON-SNA SUPPORT IS PROVIDED BY USERMOD ZP60008.
+
+     USERMOD ZP60032 UPGRADES THE GTTERM MACRO TO BE ABLE TO EXPLOIT
+     NEW FUNCTION DELIVERED IN THIS SYSMOD.
+
+     THE FOLLOWING MODULES AND/OR MACROS ARE AFFECTED BY THIS USERMOD:
+     MODULES:
+       IKT0009C
+       IKTVTPUT
+       IKTIIOM
+       IKTLOGR
+       IKTVTGET
+       IKT3270O
+       IKT0009D
+       IKTXLOG
+       IKT3270I
+       IKT09412
+       IKT09413
+       IKT0940A
+     MACROS:
+       IKTTVWA
+       STFSMODE
+ */.
+++ZAP(IKT0009C) DISTLIB(AOST3).
+ NAME IKT0009C
+ IDRDATA ZP60009
+VER 00C6 4870,5060           LH    R7,XSAPRMTJ
+VER 00CA 1277                LTR   R7,R7
+VER 00CC 4780,C0C6           BZ
+VER 00E4 4870,5060           LH    R7,XSAPRMTJ
+VER 00E8 1277                LTR   R7,R7
+VER 00EA 4780,C1AE           BZ
+REP 00CC 47D0                BNP
+REP 00EA 47D0                BNP
+++ZAP(IKTVTPUT) DISTLIB(AOST3).
+ NAME IKTVTPUT
+ IDRDATA ZP60009
+VER 0016 05C0                BALR  R12,0
+VER 0258 5010,D050           ST    R1,OPFLAGS
+VER 02DA 5010,D050           ST    R1,OPFLAGS
+VER 043E 50E0,506C  DATAEDIT ST    R14,XSASAVEA
+VER 0442 9103,5064           TM    XSAOPTNS,XSAEDITO
+VER 0446 4770,C472           BNZ   @RT00307
+VER 044A 9640,5068  NEXTINST OI    XSAFLAG,XSADMOVE
+VER 0508 0000,0000  *        PATCH AREA
+VER 050C 0000,0000  *        PATCH AREA
+VER 0510 0000,0000  *        PATCH AREA
+VER 0514 0000,0000  *        PATCH AREA
+VER 0518 0000,0000  *        PATCH AREA
+VER 051C 0000,0000  *        PATCH AREA
+VER 0520 0000       *        PATCH AREA
+VER 0522 0000,0000  *        PATCH AREA
+VER 0526 0000       *        PATCH AREA
+REP 0258 45E0,C500           BAL   R14,PATCH2
+REP 02DA 45E0,C500           BAL   R14,PATCH2
+REP 0446 47F0,C4F0           B     PATCH1
+REP 0508 4770,C472  PATCH1   BNZ   @RT00307
+REP 050C 9180,5060           TM    XSAPRMTJ,XSANOED
+REP 0510 4710,C472           BO    @RT00307
+REP 0514 47F0,C432           B     NEXTINST
+REP 0518 5010,D050  PATCH2   ST    R1,OPFLAGS
+REP 051C 9180,5060           TM    XSAPRMTJ,XSANOED
+REP 0520 07EE                BNOR  R14
+REP 0522 9634,D051           OI    OPOPTNS,OPEDIT+OPNOED
+REP 0526 07FE                BR    R14
+++ZAP(IKTIIOM) DISTLIB(AOST4).
+ NAME IKTIIOM
+ IDRDATA ZP60009
+VER 03C4 D501,804A,64D4      CLC   TSBXTMBF,=H'1920'
+VER 03CA 4770,63BE           BNE   MODEL1
+VER 03CE 9250,C008           MVI   TSBLNSZ,80
+VER 03D2 9218,C028           MVI   TSBLNNO,24
+VER 03D6 47F0,63EA           B     SIZESET
+REP 03CA 4740,63BE           BL    MODEL1
+++ZAP(IKTLOGR) DISTLIB(AOST4).
+ NAME IKTLOGR
+ IDRDATA ZP60009
+VER 0150 D207,B068,A068      MVC   TSBTRMID(8,TSBBASE),TSBTRMID(@10)
+REP 0150 D20B,B064,A064      MVC   TSBPRMR(12,TSBBASE),TSBPRMR(@10)
+++MOD(IKTVTGET) DISTLIB(AOST3) TXLIB(IKTVTGET).
+++MOD(IKT3270O) DISTLIB(AOST3) TXLIB(IKT3270O).
+++MOD(IKT0009D) DISTLIB(AOST3) TXLIB(IKT0009D).
+++MOD(IKTXLOG) DISTLIB(AOST4)  TXLIB(IKTXLOG).
+++MOD(IKT3270I) DISTLIB(AOST3) TXLIB(IKT3270I).
+++MOD(IKT09412) DISTLIB(AOST3) TXLIB(IKT09412).
+++MOD(IKT09413) DISTLIB(AOST3) TXLIB(IKT09413).
+++MOD(IKT0940A) DISTLIB(AOST3) TXLIB(IKT0940A).
 ++MACUPD(IKTTVWA) DISTLIB(ATSOMAC).
 ./ CHANGE NAME=IKTTVWA
-*/*            ZP60009 - ADDING BIT TVWAALTS.                        */ 00147900
+*/*            ZP60009 - ADD TVWAALTS BIT.                           */ 00147900
 TVWAALTS EQU   X'01'             ALTERNATE SCREEN SIZE IN USE   ZP60009 01268400
 *     3 TVWAALTS     BIT(1),     /*ALT SCREEN SIZE IN USE     ZP60009*/ 03110400
 ++MACUPD(STFSMODE) DISTLIB(ATSOMAC).
@@ -7649,19 +8058,22 @@ TVWAALTS EQU   X'01'             ALTERNATE SCREEN SIZE IN USE   ZP60009 01268400
 .ERROR5  IHBERMAC 54,,NOEDIT                                    ZP60009 01347000
          MEXIT                                                  ZP60009 01348000
 &NAME    LA    1,&SYSFS+&SYSINIT+&SYSNEDT  MODE/INITIAL/NOEDIT  ZP60009 01400000
-/*
-//SYSUT2   DD  DSN=&&SMPMCS,DISP=(MOD,PASS)
-//SYSIN    DD  DUMMY
-//*
-//STEP18  EXEC SMPREC,WORK='SYSALLDA'
-//SMPPTFIN DD  DSN=&&SMPMCS,DISP=(OLD,DELETE)
+??
 //SMPCNTL  DD  *
   RECEIVE
           SELECT(ZP60009)
           .
 /*
 //*
-//STEP19  EXEC SMPAPP,WORK='SYSALLDA'
+//APPLYCK  EXEC SMPAPP,COND=(0,NE),WORK='SYSALLDA'
+//IKTVTGET DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKTVTGET)
+//IKTXLOG  DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKTXLOG)
+//IKT0009D DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT0009D)
+//IKT0940A DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT0940A)
+//IKT09412 DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT09412)
+//IKT09413 DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT09413)
+//IKT3270I DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT3270I)
+//IKT3270O DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT3270O)
 //SMPCNTL  DD  *
   APPLY
         SELECT(ZP60009)
@@ -7669,7 +8081,15 @@ TVWAALTS EQU   X'01'             ALTERNATE SCREEN SIZE IN USE   ZP60009 01268400
         .
 /*
 //*
-//STEP20  EXEC SMPAPP,COND=(0,NE),WORK='SYSALLDA'
+//APPLY    EXEC SMPAPP,COND=(0,NE),WORK='SYSALLDA'
+//IKTVTGET DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKTVTGET)
+//IKTXLOG  DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKTXLOG)
+//IKT0009D DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT0009D)
+//IKT0940A DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT0940A)
+//IKT09412 DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT09412)
+//IKT09413 DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT09413)
+//IKT3270I DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT3270I)
+//IKT3270O DD  DISP=SHR,DSN=SYS1.UMODOBJ(IKT3270O)
 //SMPCNTL  DD  *
   APPLY
         SELECT(ZP60009)

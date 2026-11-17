@@ -224,7 +224,7 @@ R14      EQU   14                  REGISTER 14
 //             SPACE=(CYL,(2,1,10)),                                    
 //             DCB=SYS1.LPALIB                                          
 //SYSGO    DD  DSN=&&SYSGO,DISP=(OLD,DELETE)                            
-//SYSUT1   DD  UNIT=3330,SPACE=(CYL,(5,1))                              
+//SYSUT1   DD  UNIT=3350,SPACE=(CYL,(5,1))                              
 //SYSLIN   DD  *                                                        
  INCLUDE SYSLIB(IEFBR14)         DUMMY SVC 240                          
  NAME IGC0024{(R)                                                       

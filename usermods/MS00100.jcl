@@ -3,12 +3,15 @@
 //             MSGCLASS=A,
 //             MSGLEVEL=(1,1),
 //             REGION=4096K
+/*JOBPARM LINES=100
+//JOBCAT   DD  DSN=SYS1.VSAM.MASTER.CATALOG,DISP=SHR
 //*
 //* MS00100: allow a volume serial in brackets after a data set name in
 //* LNKLSTxx, e.g. BREXX.LINKLIB(MVSRES); (******) means the system
 //* residence volume. Zaps IEAVNP03, needs TNIP800, takes effect at the
-//* next IPL. Used in step 7 so BREXX.LINKLIB (cataloged in UCPUB001,
-//* not the master catalog) can be in the link list.
+//* next IPL. Applied in step 5 (as in Jay Moseley's installMVS V8) so
+//* SYSC.LINKLIB(SYSCPK) is in the link list from the first IPL, and
+//* later BREXX.LINKLIB(MVSRES) (both not in the master catalog).
 //*
 //* Source: https://prince-webdesign.nl/images/downloads/ms00100.zip
 //*   USERMOD.MS00100(@CVRLET), REWORK(20230906), unchanged.

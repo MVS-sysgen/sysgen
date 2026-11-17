@@ -11,6 +11,7 @@
 //SMPAPP  EXEC SMPAPP                                                   
 //SMPCNTL  DD  *                                                        
   APPLY SELECT(                                                         
+               UZ54567                                    /* RP00002 */ 
                UZ57911 UZ60375 UZ63374 UZ65742            /* TJES801 */ 
                UZ68537 UZ71437 UZ76165 UZ77164 UY02859                  
                UZ45157 UZ45158                            /* TMVS816 */ 
@@ -26,6 +27,7 @@
                UZ48744                                    /* ZP60016 */ 
                UZ67391                                    /* ZP60019 */ 
                UZ48373 UZ69717                            /* ZP60020 */ 
+               UZ81148                                    /* ZP60024 */ 
                UZ75398                                    /* ZP60027 */ 
                UZ44753                                    /* ZP60032 */ 
                UZ42622                                    /* ZP60035 */ 

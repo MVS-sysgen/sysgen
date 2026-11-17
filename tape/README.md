@@ -33,7 +33,7 @@ The origin of these tapes was a CD-ROM ordered from the CBT web site: *CBT MVS U
 ### Instalation Tapes
 
 1) **apvtmacs.het** Macros required for some user modifications
-1) **j90009.het** Jim Morrison's 3375/3380/3390 modifications
+1) **j90012.het** Jim Morrison's 3375/3380/3390 modifications (00.09 + 00.11, with Rob Prins' April 2024 updates; from Jay Moseley's installMVS V8)
 1) **ptfs.het** A large collection (1,482!)  of known PTFs (program Temporary Fixes) for MVS 3.8j
 1) **rpf184.het**  	A collection of macros required for some Usermods
 1) **stage1.het** A blank, initialized tape used to transfer stage1 output to host computer stage 2 jobstreams

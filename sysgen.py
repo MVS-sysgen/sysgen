@@ -50,7 +50,15 @@ usermods = ["AY12275","JLM0001","JLM0002","JLM0003","JLM0004","SLB0002","SYZM001
             "ZP60015","ZP60016","ZP60017","ZP60018","ZP60019","ZP60020","ZP60021","ZP60022","ZP60026", #usermods4.jcl
             "ZP60027","ZP60028","ZP60029","ZP60030","ZP60031","ZP60032","ZP60033","ZP60034","ZP60035", #usermods5.jcl
             "ZP60036","ZP60037","ZP60038","ZP60039","ZUM0007","ZUM0008",                               #usermods6.jcl
-            "SYZJ2001", "TNIP800", "ZP60025", "UZ61025","SLB0001" #"DYNPROC"
+            "SYZJ2001", "TNIP800", "ZP60025", "UZ61025","SLB0001", #"DYNPROC"
+            # From Jay Moseley's installMVS V8 (tape/usermods.het). MS00100
+            # needs TNIP800 and lets LNKLST00 name SYSC.LINKLIB(SYSCPK) from
+            # the first IPL; M096220/RP0000x go with J90012 (3375/3380/3390).
+            # M096220 zaps IEAVNP12, which ZP60042 (step 10) replaces: the
+            # ZP60042 source in jcl/ZP60041.jcl has the M096220 fix and is
+            # SUP(M096220), so it is kept for a master catalog on 3390.
+            "MS00100", "M096220", "RP00001", "RP00003", "SLB0003", "ZP60024",
+            "ZUM0015",
             ]
 
 
@@ -744,7 +752,8 @@ class sysgen:
         self.send_reply('u')
         self.wait_for_string('IEH841D 14A    CONFIRM REQUEST TO INITIALIZE')
         self.send_reply('u')
-        self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
+        # S6 (V8) updates SYS1.PARMLIB on START1: IEC507D
+        self.reply_u_until_idle('SMP4P44')
         self.print("SMP 4.44 Install Complete",color="GREEN")
 
         self.check_maxcc(jobname='SMP4P44')
@@ -906,7 +915,7 @@ class sysgen:
         self.smpjobs_ipl('Installing Jim Morrison Usermods for 3375, 3380, and 3390 DASD devices')
         self.send_herc("devinit 12 jcl/smpjob04.jcl")
         self.wait_for_string("IEF247I SMPJOB04 - 471,570,571,670,671 NOT ACCESSIBLE")
-        self.send_herc("devinit 170 tape/j90009.het")
+        self.send_herc("devinit 170 tape/j90012.het")
         # wait for the reply prompt so reply_num is current before replying
         self.wait_for_string("IEF238D SMPJOB04 - REPLY DEVICE NAME OR 'CANCEL'.")
         self.send_reply('170')
@@ -943,19 +952,25 @@ class sysgen:
 
         self.reset_hercules()
         self.set_configs('smp2')
-        self.smpjobs_ipl('Building ICKDSF Utility and Re-Linking IFOX00')
+        self.smpjobs_ipl('Building ICKDSF Utility and Re-Linking IFOX00 and IEBGENER')
         self.send_herc("devinit 12 jcl/smpjob07.jcl")
-        self.wait_for_string("IEC507D REPLY 'U'-USE OR 'M'-UNLOAD")
-        self.send_reply('u')
-        self.wait_for_string("IEC507D REPLY 'U'-USE OR 'M'-UNLOAD")
-        self.send_reply('u')
-        self.wait_for_string("IEC507D REPLY 'U'-USE OR 'M'-UNLOAD")
-        self.send_reply('u')
-        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
+        # V8: 3 IEC507D for SYS1.LINKLIB, 1 for SYS1.SVCLIB, +1 with the
+        # IEBGENER relink
+        self.reply_u_until_idle('SMPJOB07')
         self.check_maxcc(jobname='SMPJOB07')
         self.shutdown_mvs()
         self.quit_hercules(msg=False)
         self.backup_dasd("10_SMPJOB07")
+
+    def reply_u_until_idle(self, job):
+        '''Every OPEN for output of an expiration-date protected START1
+           library asks IEC507D; reply U to each until JES2 is idle again.'''
+        replies = 0
+        while self.wait_for_strings(["IEC507D REPLY 'U'-USE OR 'M'-UNLOAD",
+                                     "$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE"]).startswith("IEC507D"):
+            self.send_reply('u')
+            replies += 1
+        logging.debug("{}: replied U to {} IEC507D".format(job, replies))
 
     def smpjobs_ipl(self, step_text=''):
         self.print(step_text)
@@ -1069,8 +1084,8 @@ class sysgen:
         self.ipl_reply('/r 0,clpa', "00 $HASP426 SPECIFY OPTIONS - HASP-II, VERSION JES2 4.0")
         self.send_oper('r 0,noreq')
         self.wait_for_string('$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE')
-        self.send_oper('$pi2-3')
-        self.wait_for_string('IS PURGED')
+        # No $pi2-3: SMP4P44 S6 (V8) starts JES2 on START1 with I2-I6
+        # drained, so only initiator 1 runs and nothing is purged.
         #self.print('System Online, mounting DASD')
         self.send_herc('attach 149 3350 MVSCE/DASD/mvsres.3350')
         self.send_herc('attach 14a 3350 MVSCE/DASD/mvs000.3350')
@@ -1685,11 +1700,23 @@ class sysgen:
                     "ZP60041" : "Add support for indirect cataloging using VOLUME(******) (includes ZP60041, ZP60042, ZP60043)",
                     "UZ61025" : "Fixes RESETPL typo in SYS1.AMACLIB",
                     "SLB0001" : "TSO exit to verify JOBNAME STATUS, OUTPUT, and CANCEL, allows OPERATOR to cancel/purge jobs",
+                    "MS00100" : "Allow a volume serial after a data set name in LNKLSTxx (link list data sets not in the master catalog)",
+                    "M096220" : "Fix hard wait during IPL if the master catalog is on a 3375/3380/3390",
+                    "RP00001" : "Add 3375/3380/3390 support to AMDPRDMP and dump data set creation (includes RP00002)",
+                    "RP00003" : "DEVTYPE SVC returns the actual number of cylinders of 3375/3380/3390",
+                    "SLB0003" : "STIMER ignores a zero CSDGDCC under Hercules (avoids ABEND22F at IPL)",
+                    "ZP60024" : "Expand the number of ESD entries allowed in XF assembler",
+                    "ZUM0015" : "Put the consoles in roll delete mode at IPL",
                     }
 
-        EBCDIC_mods = ['ZP60025']
+        EBCDIC_mods = ['ZP60024', 'ZP60025']
 
         expected_cc = {"STEP20": "0004"}
+        # Per usermod: APPLY links with NCAL and gets IEW0461 (unresolved
+        # external reference) warnings, as in Jay Moseley's V8 (UMOD032).
+        usermod_cc = {
+            "ZP60009": {"APPLY": "0004"},
+        }
 
 
         # Restart: go back to the last IPL point at or before `start` (its
@@ -1713,7 +1740,7 @@ class sysgen:
             self.set_step("step_05_usermods",umod)
             self.print(f"Applying usermod ({count}/{len(umods)}) {umod}: {umods_desc[umod]}")
             self.submit_usermod(umod, 'ebcdic' if umod in EBCDIC_mods else 'ascii',
-                                steps_cc=expected_cc)
+                                steps_cc={**expected_cc, **usermod_cc.get(umod, {})})
         self.shutdown_mvs()
         self.quit_hercules(msg=False)
         self.check_usermod_extents(extents)
@@ -1730,12 +1757,21 @@ class sysgen:
            goes in after that, so JES2 never runs two usermod jobs at once.'''
         self.send_herc("devinit 12 usermods/{}.jcl eof trunc {}".format(umod, codepage))
         self.send_herc()
-        lines = self.console_until(["$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE"],
-                                   timeout=self.get_wait_timeout())
         ended = "$HASP395 {:<8} ENDED".format(umod)
-        if not any(ended in l for l in lines):
-            raise Exception("{}: $HASP099 without '{}' before it, job did not run "
-                            "(or ran out of order)".format(umod, ended))
+        # Wait for the $HASP099 after this job ended. An earlier $HASP099
+        # is not this job: e.g. a full SYSLOG queued for printing
+        # (IEE043I) right after the previous job gives a second one. A job
+        # that never runs ends in the console_until timeout.
+        started = time.time()
+        timeout = self.get_wait_timeout()
+        seen = False
+        while not seen:
+            left = max(1, timeout - (time.time() - started))
+            lines = self.console_until(["$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE"],
+                                       timeout=left)
+            seen = any(ended in l for l in lines)
+            if not seen:
+                logging.debug("{}: $HASP099 before '{}', waiting for the next".format(umod, ended))
         self.check_maxcc(jobname=umod, steps_cc=steps_cc)
 
     def library_extents(self):
@@ -1858,11 +1894,11 @@ class sysgen:
             "223 2314 MVSCE/DASD/sortw4.2314",
             "224 2314 MVSCE/DASD/sortw5.2314",
             "225 2314 MVSCE/DASD/sortw6.2314",
-            "253 3350 MVSCE/DASD/syscpk.3350"
         ]
+        # syscpk.3350 (253) is in the customization config, online at IPL
         for i in dasd:
             self.send_herc('attach {}'.format(i))
-        self.wait_for_string("HHC00414I 0:0253 CCKD file MVSCE/DASD/syscpk.3350")
+        self.wait_for_string("HHC00414I 0:0225 ")
         self.submit_file('jcl/mvs00.jcl')
 
         dev = ["180","190","220","221","222","223","224","225"]
@@ -1991,12 +2027,10 @@ class sysgen:
             self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
             self.check_maxcc(job.name)
 
-        # Link list way 1 (ug-install-linklist-ms): MS00100 lets LNKLST00
-        # name BREXX.LINKLIB(MVSRES), which is cataloged in UCPUB001, not
-        # the master catalog. Both take effect at the next IPL.
-        self.submit_file('usermods/MS00100.jcl')
-        self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
-        self.check_maxcc("MS00100")
+        # Link list way 1 (ug-install-linklist-ms): MS00100 (applied in
+        # step 5) lets LNKLST00 name BREXX.LINKLIB(MVSRES), which is
+        # cataloged in UCPUB001, not the master catalog. Takes effect at the
+        # next IPL.
         self.submit_file('jcl/brexxcfg.jcl')
         self.wait_for_string("$HASP099 ALL AVAILABLE FUNCTIONS COMPLETE")
         self.check_maxcc("BRXXCFG")
@@ -2700,6 +2734,11 @@ class sysgen:
         '''
         rakf_admin_user,rakf_admin_password = self.get_rakf_admin()
 
+        # ZP60042 replaces all of IEAVNP12, which M096220 (step 5) zaps.
+        # Its IEAVNP12 source in jcl/ZP60041.jcl carries the M096220 fix
+        # (GETTRNM, sequence M0962201-11) and ZP60042 is SUP(M096220), so a
+        # master catalog on 3375/3380/3390 still IPLs (no IEA326I/wait 00A).
+
         #self.submit_file_binary('jcl/ZP60041.jcl')
 
         self.submit_file_binary_post_rakf(
@@ -2755,8 +2794,7 @@ class sysgen:
            the JCL that sysgen submits, in step order.'''
         import mvslovers
         files = (['usermods/{}.jcl'.format(u) for u in usermods] +
-                 ['usermods/DYNPROC.jcl', 'jcl/transmit.jcl', 'usermods/MS00100.jcl',
-                  'jcl/ZP60041.jcl'])
+                 ['usermods/DYNPROC.jcl', 'jcl/transmit.jcl', 'jcl/ZP60041.jcl'])
         ids = []
         for f in files:
             ids.extend(mvslovers.usermod_ids(f))

@@ -37,6 +37,7 @@
 /*MESSAGE  ************************************************************ 
 /*MESSAGE  * An IPL is required after this job has completed!!!       * 
 /*MESSAGE  ************************************************************ 
+//*
 //*-------------------------------------------------------------------- 
 //S1       EXEC PGM=IDCAMS,REGION=1024K                                 
 //SYSIN    DD  *                                                        
@@ -47,7 +48,8 @@
 //             UNIT=SYSDA,SPACE=(TRK,(1,1)),                            
 //             DCB=(RECFM=FB,LRECL=80,BLKSIZE=3120)                     
 //SYSPRINT DD  SYSOUT=*                                                 
-//*-------------------------------------------------------------------- 
+//*-----------------------------------------------------------(End S1)- 
+//*
 //S2       EXEC PGM=IEBCOPY,REGION=1024K                                
 //SYSIN    DD  *                                                        
          COPY  OUTDD=O1,INDD=I1                                         
@@ -60,7 +62,8 @@
 //             UNIT=SYSDA,SPACE=(TRK,(50,20,30))                        
 //O2       DD  DSN=SYS1.PROCLIB,DISP=SHR                                
 //SYSPRINT DD  SYSOUT=*                                                 
-//*-------------------------------------------------------------------- 
+//*-----------------------------------------------------------(End S2)- 
+//*
 //S3       EXEC LINKS,                                                  
 //             PARM='LIST,NCAL,SIZE=(512K,100K)',CLASS='*',             
 //             OBJ=,UNIT=,SER=,N=' ',NAME=,P1=,MOD=,P2=                 
@@ -68,7 +71,8 @@
 //SYSLMOD  DD  DSN=SYS1.LINKLIB,DISP=SHR                                
 //SYSLIN   DD  DSN=*.S1.O1,DISP=(OLD,DELETE)                            
 //AOS12    DD  DSN=*.S2.O1,DISP=(OLD,DELETE)                            
-//*-------------------------------------------------------------------- 
+//*-----------------------------------------------------------(End S3)- 
+//*
 //S4       EXEC PGM=IEBUPDTE,REGION=1024K,PARM=NEW                      
 //SYSUT2    DD DISP=MOD,DSN=SYS1.PROCLIB                                
 //SYSPRINT  DD SYSOUT=*                                                 
@@ -166,6 +170,7 @@
 //HASPSRC  DD  DSN=SYS1.HASPSRC,DISP=OLD                                
 //********************************************************************* 
 ><                                                                      
+//*-----------------------------------------------------------(End S4)- 
 //*                                                                     
 //S5       EXEC  PGM=IEHDASDR,REGION=1024K                              
 //SYSPRINT DD  SYSOUT=A                                                 
@@ -173,4 +178,68 @@
    ANALYZE TODD=148,VTOC=1,EXTENT=15,NEWVOLID=SMP000                    
    ANALYZE TODD=149,VTOC=1,EXTENT=15,NEWVOLID=WORK00                    
    ANALYZE TODD=14A,VTOC=1,EXTENT=15,NEWVOLID=WORK01                    
+//*-----------------------------------------------------------(End S5)- 
+//*
+//S6       EXEC PGM=IEBUPDTE,PARM=NEW
+//*
+//* ***************************************************************** *
+//* This step replaces 3 members of SYS1.PARMLIB on START1. This is   *
+//* the parameter library for the MVS Starter System delivered by IBM *
+//* for building the target MVS 3.8j system. These changes will make  *
+//* the generation process easier and more reliable. The changes are: *
+//*                                                                   *
+//* 1: Implement a Volume Attribute List for the DASD volumes mounted *
+//*    automatically at IPL time.                                     *
+//* 2: Add the Starter System IPL volume and JES2 Spool volume to the *
+//*    Volume Attribute List.                                         *
+//*                                                                   *
+//*    As distributed, both of these volumes are eligible to receive  *
+//*    allocation of storage and non-directed datasets. This is not   *
+//*    a good idea and I have had jobs ABEND as a result of datasets  *
+//*    being allocated on these volumes where there is insufficient   *
+//*    space available. These 2 volumes should be reserved to the     *
+//*    exclusive use of the Starter System.                           *
+//*                                                                   *
+//* 3: Set JES2 to start with only 1 Initiator running. This ensures  *
+//*    that only 1 job will execute at a time.                        *
+//*                                                                   *
+//*    There is no benefit to having the system able to execute       *
+//*    multiple jobs simultaneously. There are many instances where   *
+//*    a particular job must execute, and complete, before a          *
+//*    subsequent job is started. Also, if you are new to MVS, you    *
+//*    should not jump in and attempt to manage multiple jobs         *
+//*    executing simultaneously.                                      *
+//*                                                                   *
+//* ***************************************************************** *
+//*
+//SYSUT2   DD  DISP=MOD,DSN=SYS1.PARMLIB,
+//             UNIT=3330,VOL=SER=START1
+//SYSPRINT DD  SYSOUT=*
+//SYSIN DD *
+./ ADD NAME=IEASYS00,LIST=ALL
+./ NUMBER NEW1=10,INCR=10
+HARDCPY=(SYSLOG,ALL,NOCMDS),
+WTOBFRS=100,
+CVIO,
+CSA=400,
+MAXUSER=20,
+PAGE=(SYS1.STARTER.PAGE.SPACE1,SYS1.STARTER.PAGE.SPACE2,               *
+               SYS1.STARTER.PAGE.SPACE3),
+VAL=00
+./ ADD NAME=VATLST00,LIST=ALL
+./ NUMBER NEW1=10,INCR=10
+START1,0,2,3330    ,Y        SYSTEM RESIDENCE (PRIVATE)
+SPOOL0,0,2,3330    ,Y        JES2 QUEUES (PRIVATE)
+./ ADD NAME=JES2PARM,LIST=ALL
+./ NUMBER NEW1=10,INCR=10
+&MAXPART=6
+&RDROPSU=00100300051220E00011
+&SPOOL=SPOOL0
+I2 DRAIN
+I3 DRAIN
+I4 DRAIN
+I5 DRAIN
+I6 DRAIN
+/*
+//*-----------------------------------------------------------(End S6)- 
 //                                                                      

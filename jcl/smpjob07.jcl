@@ -36,11 +36,30 @@
          SGIEH404                                                       
          END                                                            
 //*                                                                     
+//*                                                                     
+//********************************************************************* 
+//* USE SGIFO401+SGIEH402 TO GENERATE LINK EDIT STATEMENTS FOR IEBGENER 
+//* (V8: THE STARTER SYSTEM IEBGENER HAS BEEN SEEN TO ABEND S0C4). THE  
+//* PUNCH HAS THE SAME PREFIX AS IN V8, SO SKIP(68) COUNT(9) IS IEBGENER
+//********************************************************************* 
+//*                                                                     
+//ASM2     EXEC PGM=IEUASM,REGION=1024K,PARM='LIST,NOOBJECT,DECK'       
+//SYSLIB   DD  DSN=SYS1.AGENLIB,DISP=SHR,UNIT=SYSDA,VOL=SER=SMP000      
+//SYSUT1   DD  UNIT=SYSDA,SPACE=(1700,(1400,50))                        
+//SYSUT2   DD  UNIT=SYSDA,SPACE=(1700,(1400,50))                        
+//SYSUT3   DD  UNIT=SYSDA,SPACE=(1700,(1400,50))                        
+//SYSPRINT DD  SYSOUT=A                                                 
+//SYSPUNCH DD  UNIT=SYSDA,DISP=(,PASS),SPACE=(TRK,15),DCB=BLKSIZE=80    
+//SYSIN    DD  *                                                        
+         PRINT OFF                                                      
+         SGIFO401                                                       
+         SGIEH402                                                       
+         END                                                            
 //********************************************************************* 
 //* BUILD JOBSTREAM TO LINK EDIT IFOX00 and ICKDSF                      
 //********************************************************************* 
 //*                                                                     
-//IDCAMS   EXEC PGM=IDCAMS,REGION=4096K,COND=(0,NE,ASM)                 
+//IDCAMS   EXEC PGM=IDCAMS,REGION=4096K,COND=((0,NE,ASM),(0,NE,ASM2))   
 //SYSPRINT DD  DUMMY                                                    
 //DDIN1    DD  DATA,DLM='><'                                            
 //SMPJOB07 JOB (SYSGEN),'LINK IFOX00/ICKDSF',
@@ -111,17 +130,29 @@
 //SYSLMOD  DD  DSN=SYS1.LINKLIB,DISP=SHR                                
 ><                                                                      
 //DDIN2    DD  DSN=*.ASM.SYSPUNCH,DISP=(OLD,DELETE)                     
+//DDIN3    DD  DATA,DLM='><'                                            
+//*                                                                     
+//LINKGEN EXEC LINKS,PARM=(NCAL,LET,LIST,XREF),                         
+//             CLASS=A,OBJ=,UNIT=,SER=,N=' ',NAME=,P1=,MOD=,P2=         
+//SYSPUNCH DD  DUMMY                                                    
+//SYSLMOD  DD  DSN=SYS1.LINKLIB,DISP=SHR                                
+//AOSU0    DD  DISP=SHR,DSN=SYS1.AOSU0                                  
+//SYSLIN   DD  *                                                        
+><                                                                      
+//DDIN4    DD  DSN=*.ASM2.SYSPUNCH,DISP=(OLD,DELETE)                    
 //DDOUT    DD  UNIT=SYSDA,DISP=(MOD,PASS),                              
 //             SPACE=(TRK,15),DCB=BLKSIZE=80                            
 //SYSIN    DD  *                                                        
   REPRO INFILE(DDIN1) OUTFILE(DDOUT)                                    
   REPRO INFILE(DDIN2) OUTFILE(DDOUT) SKIP(4)                            
+  REPRO INFILE(DDIN3) OUTFILE(DDOUT)                                    
+  REPRO INFILE(DDIN4) OUTFILE(DDOUT) SKIP(68) COUNT(9)                  
 //*                                                                     
 //********************************************************************* 
 //* WRITE JOBSTEAM TO INTERNAL READER TO LINK EDIT IFOX00/ICKDSF        
 //********************************************************************* 
 //*                                                                     
-//IEBGENER EXEC PGM=IEBGENER,COND=(0,NE,ASM)                            
+//IEBGENER EXEC PGM=IEBGENER,COND=((0,NE,ASM),(0,NE,ASM2))              
 //SYSIN    DD  DUMMY                                                    
 //SYSPRINT DD  DUMMY                                                    
 //SYSUT1   DD  DSN=*.IDCAMS.DDOUT,DISP=(OLD,DELETE)                     
@@ -131,7 +162,7 @@
 //* COPY SVC REQUIRED BY ICKDSF TO SVCLIB                               
 //********************************************************************* 
 //*                                                                     
-//IEBCOPY EXEC PGM=IEBCOPY,REGION=1024K,COND=(0,NE,ASM)                 
+//IEBCOPY EXEC PGM=IEBCOPY,REGION=1024K,COND=((0,NE,ASM),(0,NE,ASM2))   
 //SYSPRINT DD  SYSOUT=A                                                 
 //IN       DD  DSN=SYS1.AOSU0,DISP=SHR,UNIT=SYSDA,VOL=SER=SMP000        
 //OUT      DD  DSN=SYS1.SVCLIB,DISP=OLD                                 
