@@ -6,6 +6,7 @@ start_mvs.sh
 release/
 sysgen/herclogo.txt
 sysgen.log
+mvslog.txt
 build/
 .step
 MVP/
