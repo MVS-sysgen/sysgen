@@ -28,7 +28,25 @@ jobs:
       - name: Running sysgen.py
         id: sysgen
         working-directory: /mvsce
+        # a build takes ~30 minutes: give the --CONTINUE retries 2 hours,
+        # then fail the job instead of looping until it is cancelled
+        timeout-minutes: 120
         run: until ./sysgen.py --release --timeout 500 --version ${{ github.ref_name }} --CONTINUE; do echo "Failed, rerunning"; done
+      # always(): also after a failure, the timeout above or a cancel.
+      # sysgen.log has every Hercules console line ([HERCLOG]), prt00e.txt
+      # the job output, .step where a failed build stopped.
+      - name: Upload sysgen logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysgen-logs-${{ github.run_attempt }}
+          path: |
+            /mvsce/sysgen.log
+            /mvsce/prt00e.txt
+            /mvsce/.step
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
